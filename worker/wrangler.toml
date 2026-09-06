@@ -8,7 +8,7 @@ database_name = "asa-events"
 database_id = "173ebad5-1462-486f-b086-11620891dafb"
 
 [vars]
-ALLOWED_ORIGINS = "https://events.mostafamaarof.com,https://mostafamaarof.github.io,http://localhost:8000"
+ALLOWED_ORIGINS = "https://mostafamaarof.com,https://www.mostafamaarof.com,https://events.mostafamaarof.com,https://mostafamaarof.github.io,http://localhost:8000"
 MAIL_FROM = "ASA Events (test) <events@mostafamaarof.com>"
 OTP_TTL_MINUTES = "10"
 
