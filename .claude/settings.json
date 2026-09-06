@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(winget install *)",
+      "Bash(\"/c/Program Files/GitHub CLI/gh.exe\" --version)",
+      "Bash(npx wrangler *)",
+      "Bash(cat \"C:\\\\Users\\\\IT\\\\AppData\\\\Roaming\\\\xdg.config\\\\.wrangler\\\\config\\\\default.toml\" 2>&1 | head -5)",
+      "Read(//c/Users/IT/AppData/Roaming/xdg.config/.wrangler/config/**)",
+      "Bash(curl -s https://asa-events-api.mostafamaarof.workers.dev/v1/health)",
+      "Bash(curl -sv https://asa-events-api.mostafamaarof.workers.dev/v1/health)",
+      "Bash(node -e \"fetch\\('https://asa-events-api.mostafamaarof.workers.dev/v1/health'\\).then\\(r=>r.text\\(\\)\\).then\\(t=>console.log\\(t\\)\\).catch\\(e=>console.error\\('ERR',e\\)\\)\")",
+      "Bash(node -e \"fetch\\('https://asa-events-api.mostafamaarof.workers.dev/v1/health'\\).then\\(r=>r.text\\(\\)\\).then\\(t=>console.log\\('OK',t\\)\\).catch\\(e=>console.error\\('ERR',e.message\\)\\)\")",
+      "Bash(node -e \"fetch\\('https://mostafamaarof.github.io/asa-events-test/register/'\\).then\\(r=>console.log\\(r.status\\)\\).catch\\(e=>console.error\\('ERR',e.message\\)\\)\")"
+    ]
+  }
+}

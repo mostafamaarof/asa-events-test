@@ -9,8 +9,8 @@
    Set MOCK=false and apiBase to the deployed Worker once the backend is live.
    --------------------------------------------------------------------------- */
 const CONFIG = {
-  apiBase: 'https://asa-events-api.PUT-YOUR-ACCOUNT.workers.dev/v1',
-  MOCK: true,                       // demo mode: no network calls
+  apiBase: 'https://asa-events-api.mostafamaarof.workers.dev/v1',
+  MOCK: false,                      // demo mode: no network calls
   turnstileSiteKey: '',             // fill in to enable Cloudflare Turnstile
   draftKey: 'asa_reg_draft_v1',
   minFillSeconds: 15,               // bot heuristic, enforced again server-side

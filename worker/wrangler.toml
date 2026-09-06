@@ -5,7 +5,7 @@ compatibility_date = "2026-01-01"
 [[d1_databases]]
 binding = "DB"
 database_name = "asa-events"
-database_id = "PUT-YOUR-D1-DATABASE-ID-HERE"
+database_id = "173ebad5-1462-486f-b086-11620891dafb"
 
 [vars]
 ALLOWED_ORIGINS = "https://events.mostafamaarof.com,https://mostafamaarof.github.io,http://localhost:8000"
