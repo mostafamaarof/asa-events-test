@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow, noarchive">
+<title>Invitation Codes — ASA Events Admin</title>
+<style>
+:root{
+  --ink:#0B2135; --ink-soft:#1C3A56; --surface:#EEF2F6; --sheet:#FFFFFF;
+  --rule:#CBD6E0; --rule-strong:#93A6B8; --muted:#556A7D;
+  --brass:#A8842C; --brass-tint:#F3EBD8;
+  --ok:#1D6B4C; --ok-tint:#E9F4EE; --err:#A02226; --err-tint:#FAECEC;
+  --f-body:"IBM Plex Sans",system-ui,sans-serif; --f-num:ui-monospace,Consolas,monospace;
+}
+*,*::before,*::after{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{font-family:var(--f-body);font-size:15px;line-height:1.55;color:var(--ink);background:var(--surface)}
+header{background:var(--ink);color:#fff;padding:16px 24px}
+header h1{margin:0;font-size:18px;font-weight:500}
+header p{margin:4px 0 0;font-size:13px;color:#A9BDD0}
+main{max-width:900px;margin:0 auto;padding:24px 20px 64px;display:grid;gap:20px}
+.card{background:var(--sheet);border:1px solid var(--rule);padding:20px 24px}
+.card h2{font-size:16px;margin:0 0 16px}
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px 20px}
+@media (max-width:640px){.grid{grid-template-columns:1fr}}
+.f{display:flex;flex-direction:column;gap:5px}
+.f.wide{grid-column:1/-1}
+label{font-size:13px;font-weight:500}
+.req{color:var(--brass)}
+input,select{font:inherit;font-size:14px;padding:8px 10px;border:1px solid var(--rule-strong);border-radius:2px;background:#fff;color:var(--ink)}
+.choice{display:flex;align-items:center;gap:8px;font-size:14px}
+.actions{display:flex;align-items:center;gap:12px;margin-top:18px}
+button{font:inherit;font-size:14px;font-weight:500;padding:10px 20px;border-radius:2px;border:1px solid transparent;background:var(--ink);color:#fff;cursor:pointer}
+button:hover{background:var(--ink-soft)}
+button:disabled{opacity:.5;cursor:not-allowed}
+button.ghost{background:transparent;color:var(--ink);border-color:var(--rule-strong)}
+button.ghost:hover{background:#F1F5F8}
+.msg{font-size:13px;padding:10px 12px;border-radius:2px;display:none}
+.msg.ok{display:block;background:var(--ok-tint);color:var(--ok)}
+.msg.err{display:block;background:var(--err-tint);color:var(--err)}
+.result{display:none;margin-top:16px;padding:14px 16px;background:var(--brass-tint);border:1px solid var(--brass)}
+.result.show{display:block}
+.result .code{font-family:var(--f-num);font-size:20px;letter-spacing:.03em;font-weight:600;color:var(--ink)}
+.result button{margin-top:8px}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--rule);white-space:nowrap}
+th{color:var(--muted);font-weight:500}
+td.code{font-family:var(--f-num)}
+.empty{color:var(--muted);font-size:13px;padding:8px 0}
+.hint{font-size:12px;color:var(--muted);margin-top:2px}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>ASA Events — Invitation Codes</h1>
+  <p>Internal tool. Not linked from the public site. Requires the admin token.</p>
+</header>
+
+<main>
+  <div class="card">
+    <h2>Admin token</h2>
+    <div class="grid">
+      <div class="f wide">
+        <label for="token">Admin token <span class="req">*</span></label>
+        <input type="password" id="token" autocomplete="off" placeholder="paste ADMIN_TOKEN">
+        <span class="hint">Kept only in this browser tab (sessionStorage), never sent anywhere but the API below.</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Generate a new invitation code</h2>
+    <div class="grid">
+      <div class="f">
+        <label for="event">Event <span class="req">*</span></label>
+        <select id="event">
+          <option value="WGITA-35-2026">35th WGITA Annual Meeting</option>
+          <option value="KSC-SC18-2026">18th KSC Steering Committee</option>
+        </select>
+      </div>
+      <div class="f">
+        <label for="org">Organization / invitee <span class="req">*</span></label>
+        <input type="text" id="org" placeholder="e.g. Supreme Audit Institution of ...">
+      </div>
+      <div class="f">
+        <label for="country">Country</label>
+        <input type="text" id="country" placeholder="ISO or name, optional">
+      </div>
+      <div class="f">
+        <label for="orgType">Type</label>
+        <select id="orgType">
+          <option value="sai">SAI / delegation</option>
+          <option value="expert">Invited expert</option>
+          <option value="other">Other</option>
+        </select>
+      </div>
+      <div class="f">
+        <label for="liaison">Liaison email</label>
+        <input type="email" id="liaison" placeholder="optional">
+      </div>
+      <div class="f">
+        <label for="maxUses">Max uses</label>
+        <input type="number" id="maxUses" min="1" placeholder="blank = unlimited">
+      </div>
+      <div class="f">
+        <label for="expires">Expires</label>
+        <input type="date" id="expires" value="2026-12-31">
+      </div>
+      <div class="f">
+        <label>&nbsp;</label>
+        <span class="choice"><input type="checkbox" id="freeEmail"> <label for="freeEmail" style="font-weight:400">Allow personal email (Gmail, Yahoo, ...)</label></span>
+      </div>
+    </div>
+    <div class="actions">
+      <button id="generate">Generate code</button>
+      <span id="genMsg" class="msg"></span>
+    </div>
+    <div id="result" class="result">
+      <div>Code: <span class="code" id="resultCode"></span></div>
+      <button class="ghost" id="copyBtn" type="button">Copy</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Existing codes</h2>
+    <div class="actions" style="margin-top:0">
+      <button class="ghost" id="refresh">Refresh list</button>
+      <span id="listMsg" class="msg"></span>
+    </div>
+    <div id="listWrap" style="margin-top:14px;overflow-x:auto"></div>
+  </div>
+</main>
+
+<script>
+const CONFIG = { apiBase: 'https://asa-events-api.mostafamaarof.workers.dev/v1' };
+
+const $ = (id) => document.getElementById(id);
+const tokenInput = $('token');
+tokenInput.value = sessionStorage.getItem('asa_admin_token') || '';
+tokenInput.addEventListener('input', () => sessionStorage.setItem('asa_admin_token', tokenInput.value));
+
+function showMsg(el, text, ok) {
+  el.textContent = text;
+  el.className = 'msg ' + (ok ? 'ok' : 'err');
+}
+
+async function callApi(path, opts) {
+  const token = tokenInput.value.trim();
+  if (!token) throw new Error('Enter the admin token first.');
+  const res = await fetch(CONFIG.apiBase + path, {
+    ...opts,
+    headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json', ...(opts && opts.headers) }
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || data.ok === false) throw new Error(data.error || ('HTTP ' + res.status));
+  return data;
+}
+
+$('generate').addEventListener('click', async () => {
+  const genMsg = $('genMsg'); genMsg.className = 'msg';
+  $('result').classList.remove('show');
+  const org = $('org').value.trim();
+  if (!org) { showMsg(genMsg, 'Organization / invitee name is required.', false); return; }
+
+  const body = {
+    event_code: $('event').value,
+    organization_name: org,
+    country: $('country').value.trim() || undefined,
+    org_type: $('orgType').value,
+    liaison_email: $('liaison').value.trim() || undefined,
+    max_uses: $('maxUses').value ? Number($('maxUses').value) : undefined,
+    expires_at: $('expires').value || undefined,
+    allow_free_email: $('freeEmail').checked
+  };
+
+  $('generate').disabled = true;
+  try {
+    const data = await callApi('/admin/invitations', { method: 'POST', body: JSON.stringify(body) });
+    $('resultCode').textContent = data.code;
+    $('result').classList.add('show');
+    showMsg(genMsg, 'Created.', true);
+    loadList();
+  } catch (e) {
+    showMsg(genMsg, e.message, false);
+  } finally {
+    $('generate').disabled = false;
+  }
+});
+
+$('copyBtn').addEventListener('click', () => {
+  navigator.clipboard?.writeText($('resultCode').textContent).catch(() => {});
+});
+
+async function loadList() {
+  const listMsg = $('listMsg'); listMsg.className = 'msg';
+  const wrap = $('listWrap');
+  try {
+    const data = await callApi('/admin/invitations', { method: 'GET' });
+    if (!data.invitations.length) { wrap.innerHTML = '<p class="empty">No invitation codes yet.</p>'; return; }
+    const rows = data.invitations.map(inv => `
+      <tr>
+        <td class="code">${inv.code}</td>
+        <td>${inv.event_code}</td>
+        <td>${inv.organization_name || ''}</td>
+        <td>${inv.used_count}${inv.max_uses !== null ? ' / ' + inv.max_uses : ''}</td>
+        <td>${inv.allow_free_email ? 'yes' : 'no'}</td>
+        <td>${inv.expires_at || ''}</td>
+        <td>${inv.is_active ? 'active' : 'inactive'}</td>
+      </tr>`).join('');
+    wrap.innerHTML = `<table>
+      <thead><tr><th>Code</th><th>Event</th><th>Organization</th><th>Used</th><th>Personal email</th><th>Expires</th><th>Status</th></tr></thead>
+      <tbody>${rows}</tbody></table>`;
+  } catch (e) {
+    showMsg(listMsg, e.message, false);
+  }
+}
+
+$('refresh').addEventListener('click', loadList);
+if (tokenInput.value) loadList();
+</script>
+</body>
+</html>

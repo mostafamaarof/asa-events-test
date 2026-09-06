@@ -6,6 +6,8 @@
      POST /v1/registrations        store the submission as under_review
      GET  /v1/admin/registrations  read the data back (Bearer ADMIN_TOKEN)
      GET  /v1/admin/export.csv     same data as CSV
+     GET  /v1/admin/invitations    list invitation codes (Bearer ADMIN_TOKEN)
+     POST /v1/admin/invitations    generate a new invitation code (Bearer ADMIN_TOKEN)
    Nothing here trusts the browser: every rule in the form is re-checked.
    ============================================================================= */
 
@@ -246,6 +248,56 @@ async function adminRead(req, env, ch, csv) {
     'Content-Disposition': 'attachment; filename="registrations.csv"', ...ch } });
 }
 
+function requireAdmin(req, env) {
+  const token = (req.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '');
+  return !!env.ADMIN_TOKEN && token === env.ADMIN_TOKEN;
+}
+
+async function adminListInvitations(req, env, ch) {
+  if (!requireAdmin(req, env)) return fail('unauthorized', 401, ch);
+  const { results } = await env.DB.prepare(
+    `SELECT invitation_id, event_code, code, organization_name, country, org_type, liaison_email,
+            max_uses, used_count, allow_free_email, expires_at, is_active
+     FROM invitations ORDER BY rowid DESC LIMIT 500`).all();
+  return json({ ok: true, count: results.length, invitations: results }, 200, ch);
+}
+
+async function adminCreateInvitation(req, env, ch, ipHash) {
+  if (!requireAdmin(req, env)) return fail('unauthorized', 401, ch);
+  const b = await req.json().catch(() => ({}));
+  const eventCode = String(b.event_code || '').trim();
+  const orgName = String(b.organization_name || '').trim();
+  if (!eventCode || !orgName) return fail('missing_fields', 400, ch);
+
+  const ev = await env.DB.prepare('SELECT code FROM events WHERE code = ?').bind(eventCode).first();
+  if (!ev) return fail('invalid_event', 400, ch);
+
+  const maxUses = (b.max_uses === '' || b.max_uses === null || b.max_uses === undefined) ? null : parseInt(b.max_uses, 10);
+  if (maxUses !== null && (!Number.isFinite(maxUses) || maxUses < 1)) return fail('invalid_max_uses', 400, ch);
+
+  const prefix = (eventCode.replace(/[^A-Z0-9]/gi, '').slice(0, 6).toUpperCase() || 'EVT');
+  const alphabet = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+  const genTail = () => [...crypto.getRandomValues(new Uint8Array(4))].map(x => alphabet[x % alphabet.length]).join('');
+
+  let code, taken = true;
+  for (let i = 0; i < 10 && taken; i++) {
+    code = `ASA-${prefix}-INV-${genTail()}`;
+    taken = !!(await env.DB.prepare('SELECT 1 FROM invitations WHERE code = ?').bind(code).first());
+  }
+  if (taken) return fail('code_generation_failed', 500, ch);
+
+  const id = 'inv-' + crypto.randomUUID();
+  await env.DB.prepare(
+    `INSERT INTO invitations (invitation_id, event_code, code, organization_name, country, org_type,
+      liaison_email, max_uses, allow_free_email, expires_at, is_active)
+     VALUES (?,?,?,?,?,?,?,?,?,?,1)`)
+    .bind(id, eventCode, code, orgName, b.country || null, b.org_type || null, b.liaison_email || null,
+      maxUses, b.allow_free_email ? 1 : 0, b.expires_at || null).run();
+
+  await audit(env, 'invitation_created', 'invitation', id, code, ipHash);
+  return json({ ok: true, invitation_id: id, code }, 201, ch);
+}
+
 /* ---------- router ---------- */
 export default {
   async fetch(req, env) {
@@ -260,6 +312,8 @@ export default {
       if (req.method === 'POST' && pathname === '/v1/registrations')      return await createRegistration(req, env, ch, ipHash);
       if (req.method === 'GET'  && pathname === '/v1/admin/registrations')return await adminRead(req, env, ch, false);
       if (req.method === 'GET'  && pathname === '/v1/admin/export.csv')   return await adminRead(req, env, ch, true);
+      if (req.method === 'GET'  && pathname === '/v1/admin/invitations')  return await adminListInvitations(req, env, ch);
+      if (req.method === 'POST' && pathname === '/v1/admin/invitations')  return await adminCreateInvitation(req, env, ch, ipHash);
       if (pathname === '/v1/health') return json({ ok: true, time: new Date().toISOString() }, 200, ch);
       return fail('not_found', 404, ch);
     } catch (e) {
