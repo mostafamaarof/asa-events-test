@@ -1,3 +1,4 @@
 node_modules/
 .wrangler/
 worker/.secrets.local.txt
+.claude/
