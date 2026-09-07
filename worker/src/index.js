@@ -5,7 +5,8 @@
      POST /v1/otp/verify           check the OTP, return a session token
      POST /v1/registrations        store the submission as under_review
      GET  /v1/admin/registrations  read the data back (Bearer ADMIN_TOKEN)
-     GET  /v1/admin/export.csv     same data as CSV
+     GET  /v1/admin/export.csv     same data as CSV (summary columns only)
+     GET  /v1/admin/export.json    full submissions incl. every form field (Bearer ADMIN_TOKEN)
      GET  /v1/admin/invitations    list invitation codes (Bearer ADMIN_TOKEN)
      POST /v1/admin/invitations    generate a new invitation code (Bearer ADMIN_TOKEN)
    Nothing here trusts the browser: every rule in the form is re-checked.
@@ -248,6 +249,22 @@ async function adminRead(req, env, ch, csv) {
     'Content-Disposition': 'attachment; filename="registrations.csv"', ...ch } });
 }
 
+async function adminExportFull(req, env, ch) {
+  if (!requireAdmin(req, env)) return fail('unauthorized', 401, ch);
+  const { results } = await env.DB.prepare(
+    `SELECT registration_id, reference, created_at, status, event_code, invitation_id, email, full_name,
+            organization_name, country, attendance_mode, role_in_delegation, visa_letter_needed,
+            flag_personal_email, flag_org_mismatch, fill_seconds, locale, data_json, consents_json
+     FROM registrations ORDER BY created_at DESC LIMIT 1000`).all();
+  const registrations = results.map(r => ({
+    ...r,
+    data_json: undefined, consents_json: undefined,
+    data: JSON.parse(r.data_json || '{}'),
+    consents: JSON.parse(r.consents_json || '{}')
+  }));
+  return json({ ok: true, count: registrations.length, exported_at: new Date().toISOString(), registrations }, 200, ch);
+}
+
 function requireAdmin(req, env) {
   const token = (req.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '');
   return !!env.ADMIN_TOKEN && token === env.ADMIN_TOKEN;
@@ -312,6 +329,7 @@ export default {
       if (req.method === 'POST' && pathname === '/v1/registrations')      return await createRegistration(req, env, ch, ipHash);
       if (req.method === 'GET'  && pathname === '/v1/admin/registrations')return await adminRead(req, env, ch, false);
       if (req.method === 'GET'  && pathname === '/v1/admin/export.csv')   return await adminRead(req, env, ch, true);
+      if (req.method === 'GET'  && pathname === '/v1/admin/export.json')  return await adminExportFull(req, env, ch);
       if (req.method === 'GET'  && pathname === '/v1/admin/invitations')  return await adminListInvitations(req, env, ch);
       if (req.method === 'POST' && pathname === '/v1/admin/invitations')  return await adminCreateInvitation(req, env, ch, ipHash);
       if (pathname === '/v1/health') return json({ ok: true, time: new Date().toISOString() }, 200, ch);

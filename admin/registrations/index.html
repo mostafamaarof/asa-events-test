@@ -81,7 +81,8 @@ td.ref{font-family:var(--f-num)}
     </div>
     <div class="actions" style="margin-top:14px">
       <button id="load">Load registrations</button>
-      <button class="ghost" id="exportCsv">Export CSV</button>
+      <button class="ghost" id="exportCsv">Export CSV (summary)</button>
+      <button class="ghost" id="exportJson">Export full data (JSON)</button>
       <span id="topMsg" class="msg"></span>
     </div>
   </div>
@@ -242,6 +243,23 @@ $('exportCsv').addEventListener('click', async () => {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url; a.download = 'registrations.csv';
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+  } catch (e) {
+    showMsg(msg, e.message, false);
+  }
+});
+
+$('exportJson').addEventListener('click', async () => {
+  const msg = $('topMsg'); msg.className = 'msg';
+  try {
+    const res = await fetch(CONFIG.apiBase + '/admin/export.json', { headers: authHeaders() });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || data.ok === false) throw new Error(data.error || ('HTTP ' + res.status));
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'registrations-full.json';
     document.body.appendChild(a); a.click(); a.remove();
     URL.revokeObjectURL(url);
   } catch (e) {
