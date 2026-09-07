@@ -82,6 +82,7 @@ td.ref{font-family:var(--f-num)}
     <div class="actions" style="margin-top:14px">
       <button id="load">Load registrations</button>
       <button class="ghost" id="exportCsv">Export CSV (summary)</button>
+      <button class="ghost" id="exportFullCsv">Export full data (Excel/CSV)</button>
       <button class="ghost" id="exportJson">Export full data (JSON)</button>
       <span id="topMsg" class="msg"></span>
     </div>
@@ -245,6 +246,66 @@ $('exportCsv').addEventListener('click', async () => {
     a.href = url; a.download = 'registrations.csv';
     document.body.appendChild(a); a.click(); a.remove();
     URL.revokeObjectURL(url);
+  } catch (e) {
+    showMsg(msg, e.message, false);
+  }
+});
+
+const SUMMARY_COLS = ['reference', 'created_at', 'status', 'event_code', 'full_name', 'email',
+  'organization_name', 'country', 'attendance_mode', 'role_in_delegation', 'visa_letter_needed',
+  'flag_personal_email', 'flag_org_mismatch', 'fill_seconds', 'locale', 'invitation_id', 'registration_id'];
+
+function cellText(v) {
+  if (v === null || v === undefined) return '';
+  if (typeof v === 'boolean') return v ? 'TRUE' : 'FALSE';
+  if (Array.isArray(v)) return v.join('; ');
+  if (typeof v === 'object') return JSON.stringify(v);
+  return String(v);
+}
+
+function fullExportToCsv(payload) {
+  const regs = payload.registrations || [];
+  const dataCols = [...new Set(regs.flatMap(r => Object.keys(r.data || {})))].sort();
+  const consentCols = [...new Set(regs.flatMap(r => Object.keys(r.consents || {})))].sort();
+
+  const header = [
+    ...SUMMARY_COLS,
+    ...dataCols.map(k => 'form_' + k),
+    ...consentCols.flatMap(k => ['consent_' + k, 'consent_' + k + '_at'])
+  ];
+
+  const esc = (v) => `"${cellText(v).replace(/"/g, '""')}"`;
+  const rows = regs.map(r => {
+    const cells = [
+      ...SUMMARY_COLS.map(c => esc(r[c])),
+      ...dataCols.map(k => esc((r.data || {})[k])),
+      ...consentCols.flatMap(k => {
+        const c = (r.consents || {})[k];
+        return [esc(c ? c.value : ''), esc(c ? c.at : '')];
+      })
+    ];
+    return cells.join(',');
+  });
+
+  return '﻿' + [header.map(esc).join(','), ...rows].join('\n');
+}
+
+function downloadText(text, filename, mime) {
+  const blob = new Blob([text], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+}
+
+$('exportFullCsv').addEventListener('click', async () => {
+  const msg = $('topMsg'); msg.className = 'msg';
+  try {
+    const res = await fetch(CONFIG.apiBase + '/admin/export.json', { headers: authHeaders() });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || data.ok === false) throw new Error(data.error || ('HTTP ' + res.status));
+    downloadText(fullExportToCsv(data), 'registrations-full.csv', 'text/csv; charset=utf-8');
   } catch (e) {
     showMsg(msg, e.message, false);
   }
