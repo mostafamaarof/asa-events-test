@@ -1,4 +1,5 @@
 node_modules/
 .wrangler/
 worker/.secrets.local.txt
+worker/registrations-full-export.json
 .claude/
