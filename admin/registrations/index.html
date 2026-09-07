@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow, noarchive">
+<title>Registrations & Reports — ASA Events Admin</title>
+<style>
+:root{
+  --ink:#0B2135; --ink-soft:#1C3A56; --surface:#EEF2F6; --sheet:#FFFFFF;
+  --rule:#CBD6E0; --rule-strong:#93A6B8; --muted:#556A7D;
+  --brass:#A8842C; --brass-tint:#F3EBD8;
+  --ok:#1D6B4C; --ok-tint:#E9F4EE; --err:#A02226; --err-tint:#FAECEC; --warn-tint:#FBF3DF; --warn:#8A6100;
+  --f-body:"IBM Plex Sans",system-ui,sans-serif; --f-num:ui-monospace,Consolas,monospace;
+}
+*,*::before,*::after{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{font-family:var(--f-body);font-size:15px;line-height:1.55;color:var(--ink);background:var(--surface)}
+header{background:var(--ink);color:#fff;padding:16px 24px;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+header h1{margin:0;font-size:18px;font-weight:500}
+header p{margin:4px 0 0;font-size:13px;color:#A9BDD0}
+header nav{margin-inline-start:auto;display:flex;gap:14px}
+header nav a{color:#fff;font-size:13px;text-decoration:underline}
+main{max-width:1100px;margin:0 auto;padding:24px 20px 64px;display:grid;gap:20px}
+.card{background:var(--sheet);border:1px solid var(--rule);padding:20px 24px}
+.card h2{font-size:16px;margin:0 0 16px}
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px 20px}
+@media (max-width:640px){.grid{grid-template-columns:1fr}}
+.f{display:flex;flex-direction:column;gap:5px}
+.f.wide{grid-column:1/-1}
+label{font-size:13px;font-weight:500}
+input,select{font:inherit;font-size:14px;padding:8px 10px;border:1px solid var(--rule-strong);border-radius:2px;background:#fff;color:var(--ink)}
+.hint{font-size:12px;color:var(--muted);margin-top:2px}
+.actions{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+button{font:inherit;font-size:14px;font-weight:500;padding:10px 20px;border-radius:2px;border:1px solid transparent;background:var(--ink);color:#fff;cursor:pointer}
+button:hover{background:var(--ink-soft)}
+button:disabled{opacity:.5;cursor:not-allowed}
+button.ghost{background:transparent;color:var(--ink);border-color:var(--rule-strong)}
+button.ghost:hover{background:#F1F5F8}
+.msg{font-size:13px;padding:10px 12px;border-radius:2px;display:none}
+.msg.ok{display:block;background:var(--ok-tint);color:var(--ok)}
+.msg.err{display:block;background:var(--err-tint);color:var(--err)}
+.filters{display:flex;gap:12px;flex-wrap:wrap;align-items:end;margin-bottom:16px}
+.filters .f{min-width:180px}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px}
+.tile{border:1px solid var(--rule);padding:14px 16px;background:#FAFCFD}
+.tile .n{font-family:var(--f-num);font-size:26px;font-weight:600;color:var(--ink)}
+.tile .l{font-size:12px;color:var(--muted);margin-top:2px}
+.tile.warn{background:var(--warn-tint);border-color:var(--warn)}
+.tile.warn .n{color:var(--warn)}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--rule);white-space:nowrap}
+th{color:var(--muted);font-weight:500;position:sticky;top:0;background:var(--sheet)}
+td.ref{font-family:var(--f-num)}
+.badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:500}
+.badge.flag{background:var(--err-tint);color:var(--err)}
+.empty{color:var(--muted);font-size:13px;padding:8px 0}
+.tablewrap{overflow-x:auto;max-height:60vh;overflow-y:auto}
+.count{font-size:13px;color:var(--muted)}
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>ASA Events — Registrations &amp; Reports</h1>
+    <p>Internal tool. Not linked from the public site. Requires the admin token.</p>
+  </div>
+  <nav><a href="../">Invitation codes</a></nav>
+</header>
+
+<main>
+  <div class="card">
+    <h2>Admin token</h2>
+    <div class="grid">
+      <div class="f wide">
+        <label for="token">Admin token <span style="color:var(--brass)">*</span></label>
+        <input type="password" id="token" autocomplete="off" placeholder="paste ADMIN_TOKEN">
+        <span class="hint">Kept only in this browser tab (sessionStorage), shared with the invitation-codes page.</span>
+      </div>
+    </div>
+    <div class="actions" style="margin-top:14px">
+      <button id="load">Load registrations</button>
+      <button class="ghost" id="exportCsv">Export CSV</button>
+      <span id="topMsg" class="msg"></span>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Summary</h2>
+    <div class="filters">
+      <div class="f">
+        <label for="fEvent">Event</label>
+        <select id="fEvent">
+          <option value="">All events</option>
+          <option value="WGITA-35-2026">35th WGITA Annual Meeting</option>
+          <option value="KSC-SC18-2026">18th KSC Steering Committee</option>
+        </select>
+      </div>
+    </div>
+    <div class="tiles" id="tiles"><p class="empty">Load registrations to see the summary.</p></div>
+  </div>
+
+  <div class="card">
+    <h2>Registered persons</h2>
+    <div class="filters">
+      <div class="f">
+        <label for="fStatus">Status</label>
+        <select id="fStatus">
+          <option value="">All statuses</option>
+        </select>
+      </div>
+      <div class="f" style="flex:1;min-width:220px">
+        <label for="fSearch">Search (name, email, organization)</label>
+        <input type="text" id="fSearch" placeholder="type to filter...">
+      </div>
+      <span class="count" id="rowCount"></span>
+    </div>
+    <div class="tablewrap" id="tableWrap"><p class="empty">No data loaded yet.</p></div>
+  </div>
+</main>
+
+<script>
+const CONFIG = { apiBase: 'https://asa-events-api.mostafamaarof.workers.dev/v1' };
+const $ = (id) => document.getElementById(id);
+const tokenInput = $('token');
+tokenInput.value = sessionStorage.getItem('asa_admin_token') || '';
+tokenInput.addEventListener('input', () => sessionStorage.setItem('asa_admin_token', tokenInput.value));
+
+let all = [];
+
+function showMsg(el, text, ok) { el.textContent = text; el.className = 'msg ' + (ok ? 'ok' : 'err'); }
+
+function authHeaders() {
+  const token = tokenInput.value.trim();
+  if (!token) throw new Error('Enter the admin token first.');
+  return { 'Authorization': 'Bearer ' + token };
+}
+
+async function loadData() {
+  const msg = $('topMsg'); msg.className = 'msg';
+  try {
+    const res = await fetch(CONFIG.apiBase + '/admin/registrations', { headers: authHeaders() });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || data.ok === false) throw new Error(data.error || ('HTTP ' + res.status));
+    all = data.registrations;
+    populateStatusFilter();
+    render();
+    showMsg(msg, `Loaded ${all.length} registration(s).`, true);
+  } catch (e) {
+    showMsg(msg, e.message, false);
+  }
+}
+
+function populateStatusFilter() {
+  const sel = $('fStatus');
+  const current = sel.value;
+  const statuses = [...new Set(all.map(r => r.status))].sort();
+  sel.innerHTML = '<option value="">All statuses</option>' +
+    statuses.map(s => `<option value="${s}">${s}</option>`).join('');
+  sel.value = statuses.includes(current) ? current : '';
+}
+
+function filteredByEvent() {
+  const ev = $('fEvent').value;
+  return ev ? all.filter(r => r.event_code === ev) : all;
+}
+
+function renderTiles(rows) {
+  const tiles = $('tiles');
+  if (!rows.length) { tiles.innerHTML = '<p class="empty">No registrations for this selection.</p>'; return; }
+  const byStatus = {}, byMode = {};
+  let visa = 0, flagged = 0;
+  for (const r of rows) {
+    byStatus[r.status] = (byStatus[r.status] || 0) + 1;
+    const mode = r.attendance_mode || 'unspecified';
+    byMode[mode] = (byMode[mode] || 0) + 1;
+    if (r.visa_letter_needed) visa++;
+    if (r.flag_personal_email || r.flag_org_mismatch) flagged++;
+  }
+  const tile = (n, l, warn) => `<div class="tile${warn ? ' warn' : ''}"><div class="n">${n}</div><div class="l">${l}</div></div>`;
+  let html = tile(rows.length, 'Total registrations');
+  for (const [s, n] of Object.entries(byStatus)) html += tile(n, s.replace(/_/g, ' '));
+  for (const [m, n] of Object.entries(byMode)) html += tile(n, m.replace(/_/g, ' '));
+  html += tile(visa, 'Need visa letter', visa > 0);
+  html += tile(flagged, 'Flagged (email/org)', flagged > 0);
+  tiles.innerHTML = html;
+}
+
+function renderTable(rows) {
+  const wrap = $('tableWrap');
+  const search = $('fSearch').value.trim().toLowerCase();
+  const status = $('fStatus').value;
+  let out = rows;
+  if (status) out = out.filter(r => r.status === status);
+  if (search) out = out.filter(r =>
+    (r.full_name || '').toLowerCase().includes(search) ||
+    (r.email || '').toLowerCase().includes(search) ||
+    (r.organization_name || '').toLowerCase().includes(search));
+
+  $('rowCount').textContent = `${out.length} of ${rows.length} shown`;
+
+  if (!out.length) { wrap.innerHTML = '<p class="empty">No matching registrations.</p>'; return; }
+  const rowsHtml = out.map(r => `
+    <tr>
+      <td class="ref">${r.reference}</td>
+      <td>${(r.created_at || '').replace('T', ' ').slice(0, 16)}</td>
+      <td>${r.event_code}</td>
+      <td>${r.status}</td>
+      <td>${r.full_name || ''}</td>
+      <td>${r.email || ''}</td>
+      <td>${r.organization_name || ''}</td>
+      <td>${r.country || ''}</td>
+      <td>${r.attendance_mode || ''}</td>
+      <td>${r.role_in_delegation || ''}</td>
+      <td>${r.visa_letter_needed ? 'yes' : ''}</td>
+      <td>${r.flag_personal_email ? '<span class="badge flag">personal email</span>' : ''}${r.flag_org_mismatch ? ' <span class="badge flag">org mismatch</span>' : ''}</td>
+    </tr>`).join('');
+  wrap.innerHTML = `<table>
+    <thead><tr><th>Reference</th><th>Date</th><th>Event</th><th>Status</th><th>Name</th><th>Email</th>
+      <th>Organization</th><th>Country</th><th>Mode</th><th>Role</th><th>Visa</th><th>Flags</th></tr></thead>
+    <tbody>${rowsHtml}</tbody></table>`;
+}
+
+function render() {
+  const rows = filteredByEvent();
+  renderTiles(rows);
+  renderTable(rows);
+}
+
+$('load').addEventListener('click', loadData);
+$('fEvent').addEventListener('change', render);
+$('fStatus').addEventListener('change', render);
+$('fSearch').addEventListener('input', render);
+
+$('exportCsv').addEventListener('click', async () => {
+  const msg = $('topMsg'); msg.className = 'msg';
+  try {
+    const res = await fetch(CONFIG.apiBase + '/admin/export.csv', { headers: authHeaders() });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'registrations.csv';
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+  } catch (e) {
+    showMsg(msg, e.message, false);
+  }
+});
+
+if (tokenInput.value) loadData();
+</script>
+</body>
+</html>
