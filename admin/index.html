@@ -78,12 +78,13 @@ td.code{font-family:var(--f-num)}
   <div class="card">
     <h2>Generate a new invitation code</h2>
     <div class="grid">
-      <div class="f">
-        <label for="event">Event <span class="req">*</span></label>
-        <select id="event">
-          <option value="WGITA-35-2026">35th WGITA Annual Meeting</option>
-          <option value="KSC-SC18-2026">18th KSC Steering Committee</option>
-        </select>
+      <div class="f wide">
+        <label>Event(s) <span class="req">*</span></label>
+        <div style="display:flex;gap:20px;flex-wrap:wrap">
+          <label class="choice"><input type="checkbox" class="eventCb" value="WGITA-35-2026" checked> 35th WGITA Annual Meeting</label>
+          <label class="choice"><input type="checkbox" class="eventCb" value="KSC-SC18-2026"> 18th KSC Steering Committee</label>
+        </div>
+        <span class="hint">Check both to generate one code that covers both events — the invitee registers once and gets a separate submission per event.</span>
       </div>
       <div class="f">
         <label for="org">Organization / invitee <span class="req">*</span></label>
@@ -167,10 +168,12 @@ $('generate').addEventListener('click', async () => {
   const genMsg = $('genMsg'); genMsg.className = 'msg';
   $('result').classList.remove('show');
   const org = $('org').value.trim();
+  const eventCodes = [...document.querySelectorAll('.eventCb:checked')].map(cb => cb.value);
   if (!org) { showMsg(genMsg, 'Organization / invitee name is required.', false); return; }
+  if (!eventCodes.length) { showMsg(genMsg, 'Select at least one event.', false); return; }
 
   const body = {
-    event_code: $('event').value,
+    event_codes: eventCodes,
     organization_name: org,
     country: $('country').value.trim() || undefined,
     org_type: $('orgType').value,
@@ -207,7 +210,7 @@ async function loadList() {
     const rows = data.invitations.map(inv => `
       <tr>
         <td class="code">${inv.code}</td>
-        <td>${inv.event_code}</td>
+        <td>${(inv.event_codes || []).join(' + ')}</td>
         <td>${inv.organization_name || ''}</td>
         <td>${inv.used_count}${inv.max_uses !== null ? ' / ' + inv.max_uses : ''}</td>
         <td>${inv.allow_free_email ? 'yes' : 'no'}</td>

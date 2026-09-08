@@ -97,7 +97,12 @@ const UI = {
   sending:       { en: 'Sending…', ar: 'جارٍ الإرسال…' },
   netErr:        { en: 'The request could not be completed. Check your connection and try again.', ar: 'تعذّر إتمام الطلب. تحقق من الاتصال وحاول مجدداً.' },
   errExpired:    { en: 'Your session has expired. Reload the page and verify your email again — your draft is kept.', ar: 'انتهت صلاحية الجلسة. أعد تحميل الصفحة وتحقق من بريدك مجدداً، ومسودتك محفوظة.' },
-  errDuplicate:  { en: 'A registration already exists for this email. Contact the secretariat to amend it.', ar: 'يوجد تسجيل بهذا البريد بالفعل. راسل الأمانة لتعديله.' }
+  errDuplicate:  { en: 'A registration already exists for this email. Contact the secretariat to amend it.', ar: 'يوجد تسجيل بهذا البريد بالفعل. راسل الأمانة لتعديله.' },
+  eventsPickKicker: { en: 'Choose your event(s)', ar: 'اختيار الفعاليات' },
+  eventsPickTitle:  { en: 'This invitation covers more than one event', ar: 'هذه الدعوة تغطي أكثر من فعالية' },
+  eventsPickDesc:   { en: 'Select the event(s) you will attend. You register once; a separate submission is created for each event you choose.', ar: 'حدد الفعالية أو الفعاليات التي ستحضرها. سجّل مرة واحدة، وسيُنشأ طلب منفصل لكل فعالية تختارها.' },
+  errNoEvents:      { en: 'Select at least one event.', ar: 'اختر فعالية واحدة على الأقل.' },
+  alreadyRegistered: { en: 'already on file', ar: 'مسجَّل مسبقاً' }
 };
 
 const T = (k) => (UI[k] ? UI[k][state.lang] : k);
@@ -483,8 +488,11 @@ const SCHEMA = [
    ============================================================================= */
 const state = {
   lang: 'en',
-  event: null,
-  screen: 'gate',        // gate | otp | form | review | done | closed
+  events: [],             // Event objects the applicant is actually registering for (finalized after the picker)
+  coveredEvents: [],      // event codes this invitation currently unlocks (from the server, before picking)
+  selectedEventCodes: [], // checkbox state on the events-picker screen
+  invitationId: '',
+  screen: 'gate',        // gate | otp | events | form | review | done | closed
   idx: 0,
   data: {},
   files: {},             // key -> File (never persisted to the device draft)
@@ -493,8 +501,25 @@ const state = {
   startedAt: Date.now(),
   otpEmail: '',
   session: '',
-  reference: ''
+  results: {}            // event_code -> { reference, already_registered }
 };
+
+/* A display-only stand-in event for screens shown before/across a specific
+   selection: the masthead before code entry, and date-range logic for a
+   multi-event registration. Never sent to the server. */
+function combinedEvent(list) {
+  const items = list && list.length ? list : Object.values(EVENTS);
+  if (items.length === 1) return items[0];
+  return {
+    code: items.map(e => e.code).join('+'),
+    title: { en: items.map(e => e.short.en).join(' & '), ar: items.map(e => e.short.ar).join(' و') },
+    short: { en: items.map(e => e.short.en).join(' & '), ar: items.map(e => e.short.ar).join(' و') },
+    dates: { en: items.map(e => e.dates.en).join(' · '), ar: items.map(e => e.dates.ar).join(' · ') },
+    venue: items[0].venue,
+    endDate: items.reduce((max, e) => (e.endDate > max ? e.endDate : max), items[0].endDate),
+    hotels: [...new Set(items.flatMap(e => e.hotels || []))]
+  };
+}
 
 /* Device draft. Falls back to memory when storage is blocked. */
 const store = (() => {
@@ -520,13 +545,15 @@ function saveDraft() {
       });
     } else clean[k] = v;
   }
-  store.set(CONFIG.draftKey, JSON.stringify({ ev: state.event.code, at: Date.now(), data: clean }));
+  const ev = state.events.map(e => e.code).sort().join('+');
+  store.set(CONFIG.draftKey, JSON.stringify({ ev, at: Date.now(), data: clean }));
 }
 function loadDraft() {
   try {
     const raw = store.get(CONFIG.draftKey); if (!raw) return;
     const d = JSON.parse(raw);
-    if (d.ev === state.event.code && Date.now() - d.at < 30 * 864e5) Object.assign(state.data, d.data);
+    const ev = state.events.map(e => e.code).sort().join('+');
+    if (d.ev === ev && Date.now() - d.at < 30 * 864e5) Object.assign(state.data, d.data);
   } catch (e) { }
 }
 
@@ -578,7 +605,7 @@ function validateField(f, d, scope) {
     if (!(age >= 18 && age <= 100)) return T('errAge');
   }
   if (f.rule === 'past' && new Date(v) > new Date()) return T('errDate');
-  if (f.rule === 'expiry' && new Date(v) <= new Date(state.event.endDate)) return T('errDate');
+  if (f.rule === 'expiry' && new Date(v) <= new Date(combinedEvent(state.events).endDate)) return T('errDate');
   if (f.rule === 'checkout' && d.check_in_date && new Date(v) <= new Date(d.check_in_date)) return T('errCheckout');
   return null;
 }
@@ -606,7 +633,7 @@ function validateSection(sec) {
 /* Soft warning: passport validity shorter than six months after the meeting. */
 function passportWarning() {
   const v = state.data.passport_expiry_date; if (!v) return null;
-  const limit = new Date(state.event.endDate); limit.setMonth(limit.getMonth() + 6);
+  const limit = new Date(combinedEvent(state.events).endDate); limit.setMonth(limit.getMonth() + 6);
   return new Date(v) < limit ? T('warnPassport') : null;
 }
 
@@ -631,7 +658,7 @@ const clear = (n) => { while (n.firstChild) n.removeChild(n.firstChild); };
    8. FIELD RENDERING
    ============================================================================= */
 function optionsFor(f) {
-  if (f.dynamic === 'hotels') return (state.event.hotels || []).map(h => ({ v: h, l: { en: h, ar: h } }));
+  if (f.dynamic === 'hotels') return (combinedEvent(state.events).hotels || []).map(h => ({ v: h, l: { en: h, ar: h } }));
   return f.opts || [];
 }
 
@@ -804,7 +831,7 @@ function setLang(lang) {
 }
 
 function renderChrome() {
-  const ev = state.event;
+  const ev = combinedEvent(state.events);
   document.getElementById('ev-title').textContent = L(ev.title);
   document.getElementById('ev-org').textContent = state.lang === 'ar'
     ? 'الجهاز المركزي للمحاسبات — جمهورية مصر العربية'
@@ -881,14 +908,17 @@ function mock(path, body) {
       if (!RE.code.test(body.invitation_code)) return rej(new Error('invalid_code'));
       const allowFree = CONFIG.mockFreeEmailCodes.includes(body.invitation_code);
       if (FREE_MAIL.includes(domainOf(body.email)) && !allowFree) return rej(new Error('free_email_not_allowed'));
+      const eventCodes = body.invitation_code.includes('BOTH') ? Object.keys(EVENTS) : [Object.keys(EVENTS)[0]];
       return res({ ok: true, organization_name: 'Office of the Auditor-General', country: 'KE',
-                   allow_free_email: allowFree, otp_sent: true });
+                   allow_free_email: allowFree, otp_sent: true, invitation_id: 'mock-inv', event_codes: eventCodes });
     }
     if (path === '/otp/verify') {
       return body.otp === '123456' ? res({ ok: true, session: 'mock-session' }) : rej(new Error('bad_otp'));
     }
     if (path === '/registrations') {
-      return res({ ok: true, status: 'under_review', reference: 'SUB-' + Math.random().toString(36).slice(2, 8).toUpperCase() });
+      const results = {};
+      for (const code of body.event_codes || []) results[code] = { ok: true, reference: 'SUB-' + Math.random().toString(36).slice(2, 8).toUpperCase() };
+      return res({ ok: true, status: 'under_review', results });
     }
     res({ ok: true });
   }, 500));
@@ -969,15 +999,19 @@ async function submitGate() {
   state.errors = e;
   if (Object.keys(e).length) return renderGate();
   try {
-    const r = await call('/invitations/verify', { event_code: state.event.code, invitation_code: c, email: m });
+    const r = await call('/invitations/verify', { invitation_code: c, email: m });
     state.data.personal_email = FREE_MAIL.includes(domainOf(m));
     state.data.personal_email_permitted = !!r.allow_free_email;
     if (r.organization_name && !state.data.organization_name) state.data.organization_name = r.organization_name;
     if (r.country && !state.data.country) state.data.country = r.country;
     state.data.email = m;
     state.otpEmail = m;
+    state.invitationId = r.invitation_id || '';
+    state.coveredEvents = r.event_codes || [];
+    state.selectedEventCodes = [...state.coveredEvents];
     state.screen = 'otp'; state.errors = {}; render();
   } catch (err) {
+    if (String(err.message) === 'registration_closed') { state.screen = 'closed'; render(); return; }
     state.errors = String(err.message) === 'free_email_not_allowed'
       ? { institutional_email: T('errFreeEmail') }
       : { invitation_code: T('errCode') };
@@ -1007,11 +1041,52 @@ function renderOtp() {
 async function verifyOtp() {
   const v = document.getElementById('otp').value;
   try {
-    const r = await call('/otp/verify', { email: state.otpEmail, otp: v, event_code: state.event.code });
+    const r = await call('/otp/verify', { email: state.otpEmail, otp: v, invitation_id: state.invitationId });
     state.session = r.session || '';
-    loadDraft(); autofill();
-    state.screen = 'form'; state.idx = 0; state.errors = {}; render(); window.scrollTo(0, 0);
+    if (state.coveredEvents.length > 1) {
+      state.screen = 'events'; state.errors = {}; render(); window.scrollTo(0, 0);
+    } else {
+      state.events = state.coveredEvents.map(c => EVENTS[c]).filter(Boolean);
+      proceedToForm();
+    }
   } catch (e) { state.errors = { otp: T('errOtp') }; renderOtp(); }
+}
+
+/* --- Events picker (only when the invitation covers more than one) ---- */
+function renderEventsPick() {
+  showChrome(false);
+  head(T('eventsPickKicker'), T('eventsPickTitle'), T('eventsPickDesc'));
+  const b = body();
+  const err = state.errors.events;
+  const wrap = el('div', { class: 'choices' });
+  state.coveredEvents.forEach(code => {
+    const ev = EVENTS[code]; if (!ev) return;
+    const checked = state.selectedEventCodes.includes(code);
+    const cb = el('input', { type: 'checkbox', checked });
+    cb.addEventListener('change', () => {
+      state.selectedEventCodes = cb.checked
+        ? [...state.selectedEventCodes, code]
+        : state.selectedEventCodes.filter(c => c !== code);
+      renderEventsPick();
+    });
+    wrap.append(el('label', { class: 'choice' + (checked ? ' on' : '') }, cb,
+      el('div', {}, el('span', { class: 't' }, L(ev.title)),
+        el('span', { class: 'd' }, `${L(ev.dates)} · ${L(ev.venue)}`))));
+  });
+  b.append(wrap);
+  if (err) b.append(el('div', { class: 'err', style: 'margin-top:10px' }, err));
+  foot().append(
+    el('button', { class: 'btn ghost', onclick: () => { state.screen = 'gate'; state.errors = {}; render(); } }, T('back')),
+    el('button', { class: 'btn', onclick: confirmEventsPick }, T('next')));
+}
+function confirmEventsPick() {
+  if (!state.selectedEventCodes.length) { state.errors = { events: T('errNoEvents') }; renderEventsPick(); return; }
+  state.events = state.selectedEventCodes.map(c => EVENTS[c]).filter(Boolean);
+  proceedToForm();
+}
+function proceedToForm() {
+  loadDraft(); autofill();
+  state.screen = 'form'; state.idx = 0; state.errors = {}; render(); window.scrollTo(0, 0);
 }
 
 /* --- Form ------------------------------------------------------------- */
@@ -1087,7 +1162,7 @@ async function doSubmit(btn) {
   btn.disabled = true; btn.textContent = T('sending');
   try {
     const r = await call('/registrations', buildPayload());
-    state.reference = r.reference || '';
+    state.results = r.results || {};
     store.del(CONFIG.draftKey);
     state.screen = 'done'; render(); window.scrollTo(0, 0);
   } catch (e) {
@@ -1102,7 +1177,7 @@ function buildPayload() {
   for (const k of ['consent_processing', 'consent_visa_sharing', 'consent_hotel_sharing', 'consent_media', 'consent_delegate_list', 'consent_recording', 'declaration_accuracy'])
     if (k in state.data) consents[k] = { value: !!state.data[k], at: new Date().toISOString(), policy_version: '1.0' };
   return {
-    event_code: state.event.code,
+    event_codes: state.events.map(e => e.code),
     invitation_code: state.data.invitation_code,
     locale: state.lang,
     fill_seconds: Math.round((Date.now() - state.startedAt) / 1000),
@@ -1123,8 +1198,16 @@ function renderDone() {
       : 'It is now under review by the Technical Office for International Relations.');
   const b = body();
   b.append(el('div', { class: 'stamp' }, state.lang === 'ar' ? 'قيد المراجعة' : 'Under review'));
-  if (state.reference) b.append(el('p', { style: 'margin-top:20px' },
-    (state.lang === 'ar' ? 'الرقم المرجعي للطلب: ' : 'Your submission reference: '), el('b', {}, state.reference)));
+  const refRows = Object.entries(state.results).filter(([, r]) => r.ok);
+  if (refRows.length) {
+    const dl = el('dl', { class: 'dl', style: 'margin-top:20px' });
+    for (const [code, r] of refRows) {
+      const ev = EVENTS[code];
+      dl.append(el('dt', {}, ev ? L(ev.short) : code));
+      dl.append(el('dd', {}, el('b', {}, r.reference), r.already_registered ? ` (${T('alreadyRegistered')})` : ''));
+    }
+    b.append(dl);
+  }
   b.append(el('div', { class: 'notice', style: 'margin-top:20px' },
     el('div', {}, state.lang === 'ar' ? 'ما يحدث بعد ذلك:' : 'What happens next:'),
     el('ul', {},
@@ -1144,7 +1227,7 @@ function renderClosed() {
 }
 
 function render() {
-  ({ gate: renderGate, otp: renderOtp, form: renderForm, review: renderReview, done: renderDone, closed: renderClosed }[state.screen])();
+  ({ gate: renderGate, otp: renderOtp, events: renderEventsPick, form: renderForm, review: renderReview, done: renderDone, closed: renderClosed }[state.screen])();
 }
 
 /* =============================================================================
@@ -1152,11 +1235,11 @@ function render() {
    ============================================================================= */
 (function init() {
   const q = new URLSearchParams(location.search);
-  const code = q.get('event') || Object.keys(EVENTS)[0];
-  state.event = EVENTS[code] || EVENTS[Object.keys(EVENTS)[0]];
   if (q.get('code')) state.data.invitation_code = q.get('code').toUpperCase();
   const lang = q.get('lang') === 'ar' ? 'ar' : 'en';
   document.getElementById('langToggle').addEventListener('click', () => setLang(state.lang === 'ar' ? 'en' : 'ar'));
-  if (state.event.closesAt && Date.now() > new Date(state.event.closesAt).getTime()) state.screen = 'closed';
+  /* Which event(s) are open isn't known until the invitation code is
+     verified server-side; the gate/otp screens show a generic combined
+     masthead (see combinedEvent) until then. */
   setLang(lang);
 })();
