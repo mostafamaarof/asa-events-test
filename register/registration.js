@@ -204,6 +204,10 @@ const OPT = {
     ['ground', 'Ground-floor room', 'غرفة بالدور الأرضي'], ['sign', 'Sign language interpretation', 'ترجمة بلغة الإشارة'],
     ['print', 'Large-print materials', 'مواد بخط كبير'], ['other', 'Other', 'أخرى']
   ]),
+  covidCert: O([
+    ['not_provided', 'Not provided', 'غير مقدَّمة'],
+    ['valid', 'I hold a valid certificate', 'لديّ شهادة سارية']
+  ]),
   accRel: O([
     ['spouse', 'Spouse', 'زوج/زوجة'], ['aide', 'Aide or assistant', 'مساعد'],
     ['security', 'Security', 'مرافقة أمنية'], ['interpreter', 'Interpreter', 'مترجم'],
@@ -255,7 +259,7 @@ const SCHEMA = [
 {
   id: 'institution',
   title: { en: 'Institution and delegation', ar: 'الجهة والصفة التمثيلية' },
-  desc: { en: 'Your institution, your role in the delegation, and the liaison officer who nominated you. The secretariat matches every registration against the nomination received from your institution.', ar: 'جهة عملك وصفتك في الوفد وضابط الاتصال الذي رشّحك. تطابق الأمانة كل تسجيل مع الترشيح الوارد من جهتك.' },
+  desc: { en: 'Your institution and your role in the delegation. The secretariat matches every registration against the nomination received from your institution.', ar: 'جهة عملك وصفتك في الوفد. تطابق الأمانة كل تسجيل مع الترشيح الوارد من جهتك.' },
   fields: [
     { k: 'organization_name', t: 'text', req: true, wide: true, l: { en: 'SAI or organisation', ar: 'الجهة الرقابية أو المؤسسة' } },
     { k: 'organization_type', t: 'select', req: true, opts: OPT.orgType, l: { en: 'Type of organisation', ar: 'نوع الجهة' } },
@@ -265,8 +269,6 @@ const SCHEMA = [
     { k: 'department', t: 'text', max: 100, l: { en: 'Department', ar: 'الإدارة' } },
     { k: 'protocol_level', t: 'select', req: true, opts: OPT.protocol, l: { en: 'Protocol level', ar: 'المستوى البروتوكولي' }, hint: { en: 'Determines seating, name plates and reception arrangements.', ar: 'يحدد ترتيب الجلوس ولوحات الأسماء والاستقبال.' } },
     { k: 'role_in_delegation', t: 'select', req: true, opts: OPT.delRole, l: { en: 'Role in the delegation', ar: 'الصفة في الوفد' } },
-    { k: 'liaison_officer_name', t: 'text', req: true, l: { en: 'Nominating liaison officer', ar: 'ضابط الاتصال المرشِّح' } },
-    { k: 'liaison_officer_email', t: 'email', req: true, l: { en: 'Liaison officer email', ar: 'بريد ضابط الاتصال' }, hint: { en: 'A copy of your confirmation is sent to this address.', ar: 'تُرسل نسخة من التأكيد إلى هذا العنوان.' } },
     { k: 'nomination_letter_ref', t: 'text', l: { en: 'Nomination letter reference', ar: 'رقم خطاب الترشيح' } },
     { k: 'attendance_mode', t: 'radio', req: true, wide: true, opts: OPT.attendance, l: { en: 'How will you attend?', ar: 'كيف ستحضر؟' }, hint: { en: 'Travel, visa and hotel sections appear only for in-person attendance.', ar: 'تظهر أقسام السفر والتأشيرة والفندق للحضور الشخصي فقط.' } },
     { k: 'interpretation_language', t: 'multi', wide: true, opts: OPT.interp, l: { en: 'Interpretation you will need', ar: 'الترجمة الفورية التي تحتاجها' } },
@@ -340,26 +342,16 @@ const SCHEMA = [
     { k: 'arrival_date', t: 'date', l: { en: 'Arrival date', ar: 'تاريخ الوصول' } },
     { k: 'arrival_time', t: 'time', l: { en: 'Arrival time, Cairo local', ar: 'وقت الوصول بتوقيت القاهرة' } },
     { k: 'arrival_terminal', t: 'select', opts: OPT.terminal, wide: true, l: { en: 'Arrival terminal', ar: 'صالة الوصول' } },
-    {
-      k: 'connecting_flights', t: 'repeat', wide: true,
-      itemLabel: { en: 'Connecting flight', ar: 'رحلة ترانزيت' },
-      addLabel: { en: 'Add a connecting flight', ar: 'إضافة رحلة ترانزيت' },
-      sub: [
-        { k: 'cf_via_airport', t: 'text', l: { en: 'Via airport', ar: 'عبر مطار' } },
-        { k: 'cf_airline', t: 'text', l: { en: 'Airline', ar: 'شركة الطيران' } },
-        { k: 'cf_flight_no', t: 'text', max: 8, l: { en: 'Flight number', ar: 'رقم الرحلة' } },
-        { k: 'cf_date', t: 'date', l: { en: 'Date', ar: 'التاريخ' } },
-        { k: 'cf_time', t: 'time', l: { en: 'Time', ar: 'الوقت' } }
-      ]
-    },
+    { k: 'has_connecting_flight', t: 'check', wide: true, l: { en: 'I have a connecting flight on arrival', ar: 'لدي رحلة ترانزيت عند الوصول' } },
+    { k: 'connecting_airline', t: 'text', showIf: (d) => d.has_connecting_flight, l: { en: 'Connecting flight airline', ar: 'شركة طيران رحلة الترانزيت' } },
+    { k: 'connecting_flight_no', t: 'text', max: 8, showIf: (d) => d.has_connecting_flight, l: { en: 'Connecting flight number', ar: 'رقم رحلة الترانزيت' } },
+    { k: 'connecting_date', t: 'date', showIf: (d) => d.has_connecting_flight, l: { en: 'Connecting flight date', ar: 'تاريخ رحلة الترانزيت' } },
+    { k: 'connecting_time', t: 'time', showIf: (d) => d.has_connecting_flight, l: { en: 'Connecting flight time', ar: 'وقت رحلة الترانزيت' } },
     { k: 'departure_airline', t: 'text', l: { en: 'Departure airline', ar: 'شركة طيران المغادرة' } },
     { k: 'departure_flight_no', t: 'text', max: 8, l: { en: 'Departure flight number', ar: 'رقم رحلة المغادرة' } },
     { k: 'departure_date', t: 'date', l: { en: 'Departure date', ar: 'تاريخ المغادرة' } },
     { k: 'departure_time', t: 'time', l: { en: 'Departure time', ar: 'وقت المغادرة' } },
     { k: 'departure_terminal', t: 'select', opts: OPT.terminal, wide: true, l: { en: 'Departure terminal', ar: 'صالة المغادرة' } },
-    { k: 'airport_pickup_required', t: 'radio', req: true, wide: true, opts: OPT.yesno, l: { en: 'Do you need a pickup from the airport?', ar: 'هل تحتاج توصيلاً من المطار؟' } },
-    { k: 'airport_dropoff_required', t: 'radio', req: true, wide: true, opts: OPT.yesno, l: { en: 'Do you need a drop-off to the airport?', ar: 'هل تحتاج توصيلاً إلى المطار؟' } },
-    { k: 'luggage_count', t: 'number', min: 0, max: 10, showIf: (d) => isYes(d.airport_pickup_required), l: { en: 'Pieces of luggage', ar: 'عدد الحقائب' }, hint: { en: 'Used to size the vehicle.', ar: 'لتحديد حجم المركبة.' } },
     { k: 'ticket_file', t: 'file', wide: true, accept: 'any', maxMB: 10, l: { en: 'Flight itinerary', ar: 'خط سير الرحلة' } }
   ]
 },
@@ -377,9 +369,7 @@ const SCHEMA = [
     { k: 'own_hotel_name_address', t: 'textarea', wide: true, showIf: (d) => d.accommodation_type === 'own', reqIf: (d) => d.accommodation_type === 'own', l: { en: 'Hotel name and address', ar: 'اسم الفندق وعنوانه' } },
     { k: 'check_in_date', t: 'date', reqIf: (d) => !!d.accommodation_type, l: { en: 'Check-in', ar: 'تاريخ الوصول للفندق' } },
     { k: 'check_out_date', t: 'date', rule: 'checkout', reqIf: (d) => !!d.accommodation_type, l: { en: 'Check-out', ar: 'تاريخ المغادرة' } },
-    { k: 'booking_reference', t: 'text', l: { en: 'Booking reference, if already booked', ar: 'رقم الحجز إن وُجد' } },
-    { k: 'room_paid_by', t: 'select', req: true, opts: OPT.paidBy, l: { en: 'Who pays for the room?', ar: 'من يتحمل تكلفة الغرفة؟' } },
-    { k: 'shuttle_required', t: 'radio', req: true, wide: true, opts: OPT.yesno, l: { en: 'Do you need the shuttle between hotel and venue?', ar: 'هل تحتاج الحافلة بين الفندق ومقر الاجتماع؟' } }
+    { k: 'booking_reference', t: 'text', l: { en: 'Booking reference, if already booked', ar: 'رقم الحجز إن وُجد' } }
   ]
 },
 
@@ -398,6 +388,7 @@ const SCHEMA = [
     { k: 'dietary_notes', t: 'textarea', wide: true, max: 300, showIf: (d) => Array.isArray(d.dietary_requirements) && d.dietary_requirements.includes('other'), l: { en: 'Dietary notes', ar: 'ملاحظات غذائية' } },
     { k: 'allergies', t: 'textarea', wide: true, max: 300, l: { en: 'Allergies', ar: 'الحساسية' } },
     { k: 'medical_notes_emergency', t: 'textarea', wide: true, max: 500, l: { en: 'Medical information relevant in an emergency', ar: 'معلومات طبية تهم في حالات الطوارئ' }, hint: { en: 'Only what a first responder in Cairo would need to know.', ar: 'فقط ما يحتاج مسعف في القاهرة معرفته.' } },
+    { k: 'covid_certificate', t: 'select', opts: OPT.covidCert, l: { en: 'COVID / vaccination certificate', ar: 'شهادة كوفيد / التطعيم' } },
     { k: 'accessibility_needs', t: 'multi', wide: true, opts: OPT.access, l: { en: 'Accessibility needs', ar: 'احتياجات الإتاحة' } },
     { k: 'accessibility_notes', t: 'textarea', wide: true, max: 300, showIf: (d) => Array.isArray(d.accessibility_needs) && d.accessibility_needs.includes('other'), l: { en: 'Accessibility notes', ar: 'ملاحظات الإتاحة' } },
     { k: 'travel_insurance', t: 'radio', wide: true, opts: OPT.yesno, showIf: inPerson, l: { en: 'Do you hold valid travel or medical insurance for this trip?', ar: 'هل لديك تأمين سفر أو طبي ساري لهذه الرحلة؟' } }
@@ -441,9 +432,7 @@ const SCHEMA = [
   desc: { en: 'Headcounts are given to the venue and the caterer a week in advance, so an accurate answer here matters more than it looks.', ar: 'تُسلَّم الأعداد للمقر ومتعهد الضيافة قبل أسبوع، فدقة الإجابة هنا أهم مما تبدو.' },
   showIf: inPerson,
   fields: [
-    { k: 'attend_welcome_reception', t: 'radio', req: true, wide: true, opts: OPT.yesno, l: { en: 'Welcome reception', ar: 'حفل الاستقبال' } },
-    { k: 'attend_official_dinner', t: 'radio', req: true, wide: true, opts: OPT.yesno, l: { en: 'Official dinner', ar: 'العشاء الرسمي' } },
-    { k: 'attend_cultural_tour', t: 'radio', wide: true, opts: OPT.yesno, l: { en: 'Cultural tour', ar: 'الجولة الثقافية' } },
+    { k: 'social_program_attending', t: 'radio', req: true, wide: true, opts: OPT.yesno, l: { en: 'Will you join the social programme (welcome reception and official dinner)?', ar: 'هل ستحضر البرنامج الاجتماعي (حفل الاستقبال والعشاء الرسمي)؟' } },
     { k: 'needs_local_sim', t: 'check', wide: true, l: { en: 'I would like help getting a local SIM card', ar: 'أرغب في المساعدة للحصول على شريحة اتصال محلية' } },
     { k: 'notes_to_secretariat', t: 'textarea', wide: true, max: 1000, count: true, l: { en: 'Anything else the secretariat should know', ar: 'أي شيء آخر ينبغي أن تعرفه الأمانة' } }
   ]
@@ -472,7 +461,6 @@ const SCHEMA = [
   fields: [
     { k: 'consent_processing', t: 'check', wide: true, req: true, l: { en: 'I consent to the organising secretariat processing this data for accreditation and meeting logistics.', ar: 'أوافق على معالجة أمانة التنظيم لهذه البيانات لأغراض الاعتماد والترتيبات اللوجستية.' } },
     { k: 'consent_visa_sharing', t: 'check', wide: true, showIf: (d) => isYes(d.visa_letter_needed), reqIf: (d) => isYes(d.visa_letter_needed), l: { en: 'I consent to my passport details being shared with the Egyptian Ministry of Foreign Affairs and immigration authorities for visa facilitation.', ar: 'أوافق على مشاركة بيانات جوازي مع وزارة الخارجية المصرية وجهات الجوازات لتسهيل التأشيرة.' } },
-    { k: 'consent_hotel_sharing', t: 'check', wide: true, showIf: (d) => d.accommodation_type === 'official', reqIf: (d) => d.accommodation_type === 'official', l: { en: 'I consent to my name and stay dates being shared with the official hotel.', ar: 'أوافق على مشاركة اسمي وتواريخ إقامتي مع الفندق الرسمي.' } },
     { k: 'consent_media', t: 'check', wide: true, l: { en: 'I consent to photographs and video in which I appear being published on the event media page.', ar: 'أوافق على نشر الصور ومقاطع الفيديو التي أظهر فيها على صفحة وسائط الحدث.' }, hint: { en: 'Optional.', ar: 'اختياري.' } },
     { k: 'consent_delegate_list', t: 'check', wide: true, l: { en: 'I consent to my name, title and organisation appearing in the delegates list circulated to participants.', ar: 'أوافق على إدراج اسمي ووظيفتي وجهتي في كشف المشاركين المتداول.' }, hint: { en: 'Optional.', ar: 'اختياري.' } },
     { k: 'declaration_accuracy', t: 'check', wide: true, req: true, l: { en: 'I declare that the information given is accurate and matches my official travel documents.', ar: 'أقر بصحة البيانات المقدمة ومطابقتها لوثائق سفري الرسمية.' } },
@@ -1174,7 +1162,7 @@ async function doSubmit(btn) {
 }
 function buildPayload() {
   const consents = {};
-  for (const k of ['consent_processing', 'consent_visa_sharing', 'consent_hotel_sharing', 'consent_media', 'consent_delegate_list', 'consent_recording', 'declaration_accuracy'])
+  for (const k of ['consent_processing', 'consent_visa_sharing', 'consent_media', 'consent_delegate_list', 'consent_recording', 'declaration_accuracy'])
     if (k in state.data) consents[k] = { value: !!state.data[k], at: new Date().toISOString(), policy_version: '1.0' };
   return {
     event_codes: state.events.map(e => e.code),

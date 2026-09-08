@@ -205,7 +205,7 @@ async function createRegistration(req, env, ch, ipHash) {
   const missing = [];
   for (const k of ['first_name_passport','family_name_passport','date_of_birth','nationality','mobile',
                    'organization_name','country','job_title','protocol_level','role_in_delegation',
-                   'liaison_officer_name','liaison_officer_email','attendance_mode',
+                   'attendance_mode',
                    'consent_processing','declaration_accuracy','signature_typed_name'])
     if (!d[k]) missing.push(k);
   if (d.attendance_mode === 'in_person') {
@@ -269,7 +269,6 @@ async function createRegistration(req, env, ch, ipHash) {
       <p style="direction:rtl;text-align:right">${listAr}</p>
       <p style="direction:rtl;text-align:right">قيد المراجعة لدى المكتب الفني للعلاقات الدولية. ولا يصدر رقم التسجيل ولا رمز QR قبل الاعتماد.</p>`;
     await sendMail(env, s.e, `Registration received — ${newlyCreated.map(([, r]) => r.reference).join(', ')}`, shell(body));
-    if (d.liaison_officer_email) await sendMail(env, d.liaison_officer_email, `Registration received for ${fullName}`, shell(body));
   }
 
   return json({ ok: true, status: 'under_review', results }, 201, ch);
