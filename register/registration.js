@@ -969,10 +969,7 @@ function renderGate() {
   g.append(
     el('div', { class: 'f wide' }, el('label', { for: 'gcode' }, state.lang === 'ar' ? 'رمز الدعوة' : 'Invitation code', el('span', { class: 'req' }, '*')),
       code, codeErr ? el('div', { class: 'err' }, codeErr) : null),
-    el('div', { class: 'f wide' }, el('label', { for: 'gmail' }, state.lang === 'ar' ? 'بريد جهة العمل' : 'Institutional email', el('span', { class: 'req' }, '*')),
-      el('div', { class: 'hint' }, state.lang === 'ar'
-        ? 'استخدم بريد جهة عملك. تُقبل العناوين الشخصية للدعوات التي حددتها الأمانة مسبقاً فقط، ولا تُقبل العناوين المؤقتة.'
-        : 'Use your institutional email. Personal addresses are accepted only on invitations the secretariat has designated, and temporary addresses are never accepted.'),
+    el('div', { class: 'f wide' }, el('label', { for: 'gmail' }, state.lang === 'ar' ? 'البريد الإلكتروني' : 'Email', el('span', { class: 'req' }, '*')),
       mail, mailErr ? el('div', { class: 'err' }, mailErr) : null),
     el('input', { type: 'text', name: 'company_url', class: 'sr', tabindex: '-1', autocomplete: 'off', id: 'hp' })
   );
