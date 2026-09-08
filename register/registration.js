@@ -102,7 +102,11 @@ const UI = {
   eventsPickTitle:  { en: 'This invitation covers more than one event', ar: 'هذه الدعوة تغطي أكثر من فعالية' },
   eventsPickDesc:   { en: 'Select the event(s) you will attend. You register once; a separate submission is created for each event you choose.', ar: 'حدد الفعالية أو الفعاليات التي ستحضرها. سجّل مرة واحدة، وسيُنشأ طلب منفصل لكل فعالية تختارها.' },
   errNoEvents:      { en: 'Select at least one event.', ar: 'اختر فعالية واحدة على الأقل.' },
-  alreadyRegistered: { en: 'already on file', ar: 'مسجَّل مسبقاً' }
+  alreadyRegistered: { en: 'already on file', ar: 'مسجَّل مسبقاً' },
+  uploading:        { en: 'Uploading…', ar: 'جارٍ الرفع…' },
+  onFile:           { en: 'On file', ar: 'مرفوع مسبقاً' },
+  errUploadPending: { en: 'Still uploading — wait a moment and try again.', ar: 'الرفع لا يزال جارياً، انتظر لحظة وحاول مجدداً.' },
+  errUploadFailed:  { en: 'Upload failed. Choose the file again to retry.', ar: 'فشل الرفع. اختر الملف مجدداً للمحاولة.' }
 };
 
 const T = (k) => (UI[k] ? UI[k][state.lang] : k);
@@ -484,6 +488,7 @@ const state = {
   idx: 0,
   data: {},
   files: {},             // key -> File (never persisted to the device draft)
+  fileUpload: {},         // key -> 'uploading' | 'error' (absent once done; the R2 key lives in data[key+'_key'])
   errors: {},
   touched: false,
   startedAt: Date.now(),
@@ -574,12 +579,13 @@ function validateField(f, d, scope) {
   const empty = v === undefined || v === null || v === '' || (Array.isArray(v) && !v.length) || (f.t === 'check' && !v);
   if (f.t === 'file') {
     const file = state.files[f.k];
-    if (req && !file) return T('errRequired');
-    if (file) {
-      const allow = ACCEPT[f.accept || 'any'];
-      if (allow && !allow.includes(file.type)) return T('errFileType');
-      if (file.size > (f.maxMB || 10) * 1048576) return T('errFileSize');
-    }
+    if (!file) return req && !scope[f.k + '_key'] ? T('errRequired') : null;
+    const allow = ACCEPT[f.accept || 'any'];
+    if (allow && !allow.includes(file.type)) return T('errFileType');
+    if (file.size > (f.maxMB || 10) * 1048576) return T('errFileSize');
+    if (state.fileUpload[f.k] === 'uploading') return T('errUploadPending');
+    if (state.fileUpload[f.k] === 'error') return T('errUploadFailed');
+    if (req && !scope[f.k + '_key']) return T('errRequired');
     return null;
   }
   if (empty) return req ? T('errRequired') : null;
@@ -707,13 +713,26 @@ function renderField(f, scope, path) {
     wrap.append(el('label', { for: id }, ...labelText));
     if (f.hint) wrap.append(el('div', { class: 'hint' }, L(f.hint)));
     const file = state.files[f.k];
-    const name = el('span', { class: 'name' + (file ? ' set' : '') }, file ? file.name : T('noFile'));
+    const status = state.fileUpload[f.k];
+    const key = scope[f.k + '_key'];
+    const label = status === 'uploading' ? T('uploading')
+      : file ? file.name
+      : key ? (scope[f.k + '_filename'] || T('onFile'))
+      : T('noFile');
+    const name = el('span', { class: 'name' + ((file || key) && status !== 'error' ? ' set' : '') }, label);
     const inp = el('input', { type: 'file', id, class: 'sr', accept: (ACCEPT[f.accept || 'any'] || []).join(',') });
-    inp.addEventListener('change', () => { if (inp.files[0]) { state.files[f.k] = inp.files[0]; onChange(true); } });
+    inp.addEventListener('change', () => {
+      const chosen = inp.files[0]; if (!chosen) return;
+      state.files[f.k] = chosen;
+      delete scope[f.k + '_key']; delete scope[f.k + '_filename'];
+      startUpload(f, chosen, scope);
+    });
     const row = el('div', { class: 'file' },
       el('button', { type: 'button', class: 'btn ghost small', onclick: () => inp.click() }, T('chooseFile')),
       name, inp,
-      file ? el('button', { type: 'button', class: 'btn danger', onclick: () => { delete state.files[f.k]; onChange(true); } }, T('remove')) : null);
+      (file || key) ? el('button', { type: 'button', class: 'btn danger', onclick: () => {
+        delete state.files[f.k]; delete state.fileUpload[f.k]; delete scope[f.k + '_key']; delete scope[f.k + '_filename']; onChange(true);
+      } }, T('remove')) : null);
     wrap.append(row);
     if (err) wrap.append(el('div', { class: 'err' }, err));
     return wrap;
@@ -921,6 +940,40 @@ function mock(path, body) {
     }
     res({ ok: true });
   }, 500));
+}
+
+/* Files upload immediately on selection (multipart, not the JSON `call()`
+   above), so the final submit only ever carries small R2 object keys. */
+async function startUpload(f, file, scope) {
+  state.fileUpload[f.k] = 'uploading';
+  onChange(true);
+  if (CONFIG.MOCK) {
+    await new Promise((r) => setTimeout(r, 400));
+    scope[f.k + '_key'] = 'mock-key-' + f.k;
+    scope[f.k + '_filename'] = file.name;
+    delete state.fileUpload[f.k];
+    onChange(true);
+    return;
+  }
+  try {
+    const fd = new FormData();
+    fd.append('file', file, file.name);
+    fd.append('field', f.k);
+    fd.append('accept', f.accept || 'any');
+    const r = await fetch(CONFIG.apiBase + '/uploads', {
+      method: 'POST',
+      headers: state.session ? { 'Authorization': 'Bearer ' + state.session } : {},
+      body: fd
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || j.ok === false) throw new Error(j.error || 'upload_failed');
+    scope[f.k + '_key'] = j.key;
+    scope[f.k + '_filename'] = file.name;
+    delete state.fileUpload[f.k];
+  } catch (e) {
+    state.fileUpload[f.k] = 'error';
+  }
+  onChange(true);
 }
 
 /* =============================================================================
@@ -1157,7 +1210,7 @@ function renderForm() {
 /* --- Review ----------------------------------------------------------- */
 function display(f, scope) {
   const v = scope[f.k];
-  if (f.t === 'file') return state.files[f.k]?.name || null;
+  if (f.t === 'file') return state.files[f.k]?.name || scope[f.k + '_filename'] || null;
   if (f.t === 'check') return v ? T('yes') : T('no');
   if (v === undefined || v === null || v === '' || (Array.isArray(v) && !v.length)) return null;
   const lookup = (val) => { const o = optionsFor(f).find(x => x.v === val); return o ? L(o.l) : val; };

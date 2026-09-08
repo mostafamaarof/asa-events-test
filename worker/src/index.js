@@ -18,6 +18,8 @@
      GET  /v1/admin/export.json    full submissions incl. every form field (Bearer ADMIN_TOKEN)
      GET  /v1/admin/invitations    list invitation codes (Bearer ADMIN_TOKEN)
      POST /v1/admin/invitations    generate a new invitation code (Bearer ADMIN_TOKEN)
+     POST /v1/uploads               store one attachment in R2 (Bearer session), returns its key
+     GET  /v1/admin/files?key=...  download a stored attachment (Bearer ADMIN_TOKEN)
    Nothing here trusts the browser: every rule in the form is re-checked.
    ============================================================================= */
 
@@ -26,6 +28,12 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 const FREE_MAIL = ['gmail.com','yahoo.com','hotmail.com','outlook.com','live.com','icloud.com','aol.com','proton.me','protonmail.com','mail.ru','yandex.com','gmx.com'];
 const DISPOSABLE = ['mailinator.com','guerrillamail.com','10minutemail.com','tempmail.com','yopmail.com','trashmail.com','sharklasers.com'];
 const MIN_FILL_SECONDS = 15;
+const UPLOAD_ACCEPT = {
+  any: ['application/pdf', 'image/jpeg', 'image/png'],
+  image: ['image/jpeg', 'image/png'],
+  doc: ['application/pdf', 'application/vnd.openxmlformats-officedocument.presentationml.presentation']
+};
+const UPLOAD_MAX_MB = { any: 10, image: 5, doc: 50 };
 
 /* ---------- small helpers ---------- */
 const now = () => Math.floor(Date.now() / 1000);
@@ -464,6 +472,44 @@ async function adminCreateInvitation(req, env, ch, ipHash) {
   return json({ ok: true, invitation_id: id, code, event_codes: eventCodes }, 201, ch);
 }
 
+async function uploadFile(req, env, ch) {
+  const token = (req.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '');
+  const s = await readSession(env, token);
+  if (!s) return fail('session_expired', 401, ch);
+
+  const form = await req.formData().catch(() => null);
+  const file = form && form.get('file');
+  const field = form ? String(form.get('field') || '').trim() : '';
+  const accept = (form && form.get('accept')) || 'any';
+  if (!file || typeof file === 'string' || !field) return fail('invalid_request', 400, ch);
+
+  const allow = UPLOAD_ACCEPT[accept] || UPLOAD_ACCEPT.any;
+  if (!allow.includes(file.type)) return fail('invalid_file_type', 400, ch);
+  const maxMB = UPLOAD_MAX_MB[accept] || 10;
+  if (file.size > maxMB * 1048576) return fail('file_too_large', 400, ch);
+
+  const safeName = String(file.name || 'file').replace(/[^A-Za-z0-9._-]/g, '_').slice(-80);
+  const key = `regs/${s.iv}/${await sha256(s.e)}/${field}-${crypto.randomUUID()}-${safeName}`;
+  await env.FILES.put(key, file.stream(), { httpMetadata: { contentType: file.type } });
+
+  await audit(env, 'file_uploaded', 'file', key, field, null);
+  return json({ ok: true, key, filename: file.name, size: file.size, mime: file.type }, 201, ch);
+}
+
+async function adminGetFile(req, env, ch) {
+  if (!requireAdmin(req, env)) return fail('unauthorized', 401, ch);
+  const key = new URL(req.url).searchParams.get('key') || '';
+  if (!key.startsWith('regs/')) return fail('invalid_key', 400, ch);
+  const obj = await env.FILES.get(key);
+  if (!obj) return fail('not_found', 404, ch);
+  const filename = key.split('/').pop();
+  return new Response(obj.body, { headers: {
+    'Content-Type': obj.httpMetadata?.contentType || 'application/octet-stream',
+    'Content-Disposition': `attachment; filename="${filename}"`,
+    ...ch
+  } });
+}
+
 /* ---------- router ---------- */
 export default {
   async fetch(req, env) {
@@ -484,6 +530,8 @@ export default {
       if (req.method === 'GET'  && pathname === '/v1/admin/export.json')  return await adminExportFull(req, env, ch);
       if (req.method === 'GET'  && pathname === '/v1/admin/invitations')  return await adminListInvitations(req, env, ch);
       if (req.method === 'POST' && pathname === '/v1/admin/invitations')  return await adminCreateInvitation(req, env, ch, ipHash);
+      if (req.method === 'POST' && pathname === '/v1/uploads')            return await uploadFile(req, env, ch);
+      if (req.method === 'GET'  && pathname === '/v1/admin/files')        return await adminGetFile(req, env, ch);
       if (pathname === '/v1/health') return json({ ok: true, time: new Date().toISOString() }, 200, ch);
       return fail('not_found', 404, ch);
     } catch (e) {
