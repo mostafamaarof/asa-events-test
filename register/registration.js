@@ -489,7 +489,9 @@ const state = {
   startedAt: Date.now(),
   otpEmail: '',
   session: '',
-  results: {}            // event_code -> { reference, already_registered }
+  results: {},            // event_code -> { reference, already_registered }
+  editMode: null,          // { reference, token } when editing an existing submission
+  editRequestSent: false
 };
 
 /* A display-only stand-in event for screens shown before/across a specific
@@ -908,6 +910,15 @@ function mock(path, body) {
       for (const code of body.event_codes || []) results[code] = { ok: true, reference: 'SUB-' + Math.random().toString(36).slice(2, 8).toUpperCase() };
       return res({ ok: true, status: 'under_review', results });
     }
+    if (path === '/registrations/edit-link') return res({ ok: true });
+    if (path === '/registrations/edit-fetch') {
+      return body.token === 'mock-token' ? res({ ok: true, event_code: Object.keys(EVENTS)[0], status: 'under_review', registration: {}, consents: {} })
+                                          : rej(new Error('invalid_edit_link'));
+    }
+    if (path === '/registrations/edit') {
+      return body.token === 'mock-token' ? res({ ok: true, status: 'under_review', reference: body.reference, event_code: Object.keys(EVENTS)[0] })
+                                          : rej(new Error('invalid_edit_link'));
+    }
     res({ ok: true });
   }, 500));
 }
@@ -971,6 +982,52 @@ function renderGate() {
   const btn = el('button', { class: 'btn', onclick: submitGate }, state.lang === 'ar' ? 'إرسال رمز التحقق' : 'Send verification code');
   foot().append(btn, el('span', { class: 'foot-spacer' }),
     el('span', { class: 'savenote' }, `${state.lang === 'ar' ? 'الأمانة' : 'Secretariat'}: ${CONFIG.supportEmail}`));
+  b.append(el('button', {
+    type: 'button', class: 'btn link', style: 'margin-top:20px',
+    onclick: () => { state.screen = 'editRequest'; state.errors = {}; render(); }
+  }, state.lang === 'ar' ? 'مسجَّل بالفعل؟ عدّل بياناتك' : 'Already registered? Modify your information'));
+}
+
+/* --- Edit an existing registration ------------------------------------ */
+function renderEditRequest() {
+  showChrome(false);
+  head(state.lang === 'ar' ? 'تعديل تسجيل' : 'Modify a registration',
+    state.lang === 'ar' ? 'اطلب رابط التعديل' : 'Request your edit link',
+    state.lang === 'ar'
+      ? 'أدخل الرقم المرجعي لطلبك والبريد الذي سجّلت به. إذا تطابقا سنرسل رابطاً شخصياً لمراجعة بياناتك وتعديلها.'
+      : 'Enter your submission reference and the email you registered with. If they match, we send a personal link to review and update your details.');
+  const b = body();
+  const refErr = state.errors.editReference, mailErr = state.errors.editEmail;
+  const ref = el('input', { type: 'text', id: 'editRef', value: state.data.__editRef || '', placeholder: 'SUB-XXXX', style: 'text-transform:uppercase' });
+  ref.addEventListener('input', () => { state.data.__editRef = ref.value.toUpperCase().trim(); });
+  const mail = el('input', { type: 'email', id: 'editMail', value: state.data.__editMail || '' });
+  mail.addEventListener('input', () => { state.data.__editMail = mail.value.trim(); });
+  b.append(el('div', { class: 'grid' },
+    el('div', { class: 'f wide' }, el('label', { for: 'editRef' }, state.lang === 'ar' ? 'الرقم المرجعي' : 'Submission reference', el('span', { class: 'req' }, '*')),
+      ref, refErr ? el('div', { class: 'err' }, refErr) : null),
+    el('div', { class: 'f wide' }, el('label', { for: 'editMail' }, state.lang === 'ar' ? 'البريد الإلكتروني المسجَّل' : 'Registered email', el('span', { class: 'req' }, '*')),
+      mail, mailErr ? el('div', { class: 'err' }, mailErr) : null)));
+  if (state.editRequestSent) b.append(el('div', { class: 'notice', style: 'margin-top:16px' },
+    state.lang === 'ar'
+      ? 'إذا تطابق الرقم المرجعي والبريد مع تسجيل قائم، فسيصلك رابط شخصي إليه. راجع بريدك ومجلد الرسائل غير المرغوبة.'
+      : 'If that reference and email match a registration, a personal link has been sent to it. Check your inbox and spam folder.'));
+  foot().append(
+    el('button', { class: 'btn ghost', onclick: () => { state.screen = 'gate'; state.errors = {}; render(); } }, T('back')),
+    el('button', { class: 'btn', onclick: submitEditRequest }, state.lang === 'ar' ? 'إرسال رابط التعديل' : 'Send edit link'));
+}
+async function submitEditRequest() {
+  const e = {};
+  const ref = (state.data.__editRef || '').trim();
+  const mail = (state.data.__editMail || '').trim();
+  if (!ref) e.editReference = T('errRequired');
+  if (!mail) e.editEmail = T('errRequired'); else if (!RE.email.test(mail)) e.editEmail = T('errEmail');
+  state.errors = e;
+  if (Object.keys(e).length) return renderEditRequest();
+  try {
+    await call('/registrations/edit-link', { reference: ref, email: mail });
+  } catch (e2) { /* the endpoint always answers ok; a network failure is the only real error here */ }
+  state.editRequestSent = true;
+  renderEditRequest();
 }
 
 async function submitGate() {
@@ -1139,7 +1196,8 @@ function renderReview() {
   });
   const ft = foot();
   ft.append(el('button', { class: 'btn ghost', onclick: back }, T('back')));
-  const sub = el('button', { class: 'btn', disabled: bad > 0, onclick: () => doSubmit(sub) }, T('submit'));
+  const submitLabel = state.editMode ? (state.lang === 'ar' ? 'حفظ التعديلات' : 'Save changes') : T('submit');
+  const sub = el('button', { class: 'btn', disabled: bad > 0, onclick: () => doSubmit(sub) }, submitLabel);
   ft.append(sub);
   ft.append(el('span', { class: 'foot-spacer' }));
   if (bad) ft.append(el('span', { class: 'err' }, T('errFix')));
@@ -1149,21 +1207,30 @@ function renderReview() {
 async function doSubmit(btn) {
   btn.disabled = true; btn.textContent = T('sending');
   try {
-    const r = await call('/registrations', buildPayload());
-    state.results = r.results || {};
+    if (state.editMode) {
+      const r = await call('/registrations/edit', buildEditPayload());
+      state.results = { [r.event_code || state.events[0]?.code]: { ok: true, reference: r.reference } };
+    } else {
+      const r = await call('/registrations', buildPayload());
+      state.results = r.results || {};
+    }
     store.del(CONFIG.draftKey);
     state.screen = 'done'; render(); window.scrollTo(0, 0);
   } catch (e) {
-    btn.disabled = false; btn.textContent = T('submit');
+    btn.disabled = false; btn.textContent = state.editMode ? (state.lang === 'ar' ? 'حفظ التعديلات' : 'Save changes') : T('submit');
     const m = String(e.message) === 'session_expired' ? T('errExpired')
+            : String(e.message) === 'invalid_edit_link' ? (state.lang === 'ar' ? 'رابط التعديل غير صالح أو منتهي. اطلب رابطاً جديداً.' : 'This edit link is invalid or has expired. Request a new one.')
             : String(e.message) === 'duplicate_registration' ? T('errDuplicate') : T('netErr');
     foot().append(el('span', { class: 'err' }, m));
   }
 }
-function buildPayload() {
+function buildConsents() {
   const consents = {};
   for (const k of ['consent_processing', 'consent_visa_sharing', 'consent_media', 'consent_delegate_list', 'consent_recording', 'declaration_accuracy'])
     if (k in state.data) consents[k] = { value: !!state.data[k], at: new Date().toISOString(), policy_version: '1.0' };
+  return consents;
+}
+function buildPayload() {
   return {
     event_codes: state.events.map(e => e.code),
     invitation_code: state.data.invitation_code,
@@ -1173,14 +1240,24 @@ function buildPayload() {
     personal_email_permitted: !!state.data.personal_email_permitted,
     attachments: Object.keys(state.files).map(k => ({ field: k, filename: state.files[k].name, size: state.files[k].size, mime: state.files[k].type })),
     registration: state.data,
-    consents
+    consents: buildConsents()
+  };
+}
+function buildEditPayload() {
+  return {
+    reference: state.editMode.reference,
+    token: state.editMode.token,
+    registration: state.data,
+    consents: buildConsents()
   };
 }
 
 /* --- Done ------------------------------------------------------------- */
 function renderDone() {
   showChrome(false);
-  head('', state.lang === 'ar' ? 'استلمنا طلب تسجيلك' : 'Your registration has been received',
+  head('', state.editMode
+    ? (state.lang === 'ar' ? 'تم حفظ تعديلاتك' : 'Your changes have been saved')
+    : (state.lang === 'ar' ? 'استلمنا طلب تسجيلك' : 'Your registration has been received'),
     state.lang === 'ar'
       ? 'طلبك الآن قيد المراجعة لدى المكتب الفني لرئيس الجهاز للعلاقات الدولية.'
       : 'It is now under review by the Technical Office for International Relations.');
@@ -1215,7 +1292,7 @@ function renderClosed() {
 }
 
 function render() {
-  ({ gate: renderGate, otp: renderOtp, events: renderEventsPick, form: renderForm, review: renderReview, done: renderDone, closed: renderClosed }[state.screen])();
+  ({ gate: renderGate, otp: renderOtp, events: renderEventsPick, editRequest: renderEditRequest, form: renderForm, review: renderReview, done: renderDone, closed: renderClosed }[state.screen])();
 }
 
 /* =============================================================================
@@ -1230,4 +1307,26 @@ function render() {
      verified server-side; the gate/otp screens show a generic combined
      masthead (see combinedEvent) until then. */
   setLang(lang);
+
+  const editParam = q.get('edit');
+  if (editParam && editParam.includes('.')) {
+    const i = editParam.indexOf('.');
+    loadForEdit(editParam.slice(0, i).toUpperCase(), editParam.slice(i + 1));
+  }
 })();
+
+async function loadForEdit(reference, token) {
+  try {
+    const r = await call('/registrations/edit-fetch', { reference, token });
+    state.editMode = { reference, token };
+    state.events = [EVENTS[r.event_code]].filter(Boolean);
+    Object.assign(state.data, r.registration);
+    for (const [k, c] of Object.entries(r.consents || {})) state.data[k] = !!c.value;
+    state.screen = 'review'; render(); window.scrollTo(0, 0);
+  } catch (e) {
+    state.screen = 'gate'; state.errors = { invitation_code: state.lang === 'ar'
+      ? 'رابط التعديل غير صالح أو منتهي. استخدم "مسجَّل بالفعل؟" لطلب رابط جديد.'
+      : 'This edit link is invalid or has expired. Use "Already registered?" to request a new one.' };
+    render();
+  }
+}

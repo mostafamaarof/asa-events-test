@@ -9,6 +9,10 @@
                                     (keyed by invitation_id, not event_code)
      POST /v1/registrations        store the submission(s) as under_review,
                                     one per event_code in event_codes[]
+     POST /v1/registrations/edit-link   email a 30-day self-service edit link
+                                    for a (reference, email) pair, if it matches
+     POST /v1/registrations/edit-fetch  return one registration's data (reference + token)
+     POST /v1/registrations/edit        update it in place (reference + token)
      GET  /v1/admin/registrations  read the data back (Bearer ADMIN_TOKEN)
      GET  /v1/admin/export.csv     same data as CSV (summary columns only)
      GET  /v1/admin/export.json    full submissions incl. every form field (Bearer ADMIN_TOKEN)
@@ -63,6 +67,22 @@ async function readSession(env, token) {
   if (!token || !token.includes('.')) return null;
   const [body, sig] = token.split('.');
   if (await hmac(env.SESSION_SECRET, body) !== sig) return null;
+  try {
+    const p = JSON.parse(unb64u(body));
+    return p.exp > now() ? p : null;
+  } catch (e) { return null; }
+}
+
+/* Self-service edit links. Namespaced ('edit:' prefix on the signed text) so
+   an edit token can never be replayed as a login session or vice versa. */
+async function signEditToken(env, registrationId) {
+  const body = b64u(JSON.stringify({ r: registrationId, exp: now() + 60 * 60 * 24 * 30 }));
+  return body + '.' + await hmac(env.SESSION_SECRET, 'edit:' + body);
+}
+async function readEditToken(env, token) {
+  if (!token || !token.includes('.')) return null;
+  const [body, sig] = token.split('.');
+  if (await hmac(env.SESSION_SECRET, 'edit:' + body) !== sig) return null;
   try {
     const p = JSON.parse(unb64u(body));
     return p.exp > now() ? p : null;
@@ -177,6 +197,22 @@ async function verifyOtp(req, env, ch, ipHash) {
   return json({ ok: true, session }, 200, ch);
 }
 
+/* Shared by create and edit: the rules the browser already checked, re-checked here. */
+function requiredFieldErrors(d) {
+  const missing = [];
+  for (const k of ['first_name_passport','family_name_passport','date_of_birth','nationality','mobile',
+                   'organization_name','country','job_title','protocol_level','role_in_delegation',
+                   'attendance_mode',
+                   'consent_processing','declaration_accuracy','signature_typed_name'])
+    if (!d[k]) missing.push(k);
+  if (d.attendance_mode === 'in_person') {
+    for (const k of ['passport_number','passport_type','emergency_contact_name','emergency_contact_phone'])
+      if (!d[k]) missing.push(k);
+    if (d.visa_letter_needed === 'yes' && !d.consent_visa_sharing) missing.push('consent_visa_sharing');
+  }
+  return missing;
+}
+
 async function createRegistration(req, env, ch, ipHash) {
   const token = (req.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '');
   const s = await readSession(env, token);
@@ -201,18 +237,7 @@ async function createRegistration(req, env, ch, ipHash) {
   const targets = requested.filter(c => coveredMap.has(c));
   if (!targets.length) return fail('invalid_event_selection', 400, ch);
 
-  /* Re-check the rules the browser checked. The browser is a convenience, not a control. */
-  const missing = [];
-  for (const k of ['first_name_passport','family_name_passport','date_of_birth','nationality','mobile',
-                   'organization_name','country','job_title','protocol_level','role_in_delegation',
-                   'attendance_mode',
-                   'consent_processing','declaration_accuracy','signature_typed_name'])
-    if (!d[k]) missing.push(k);
-  if (d.attendance_mode === 'in_person') {
-    for (const k of ['passport_number','passport_type','emergency_contact_name','emergency_contact_phone'])
-      if (!d[k]) missing.push(k);
-    if (d.visa_letter_needed === 'yes' && !d.consent_visa_sharing) missing.push('consent_visa_sharing');
-  }
+  const missing = requiredFieldErrors(d);
   if (missing.length) return json({ ok: false, error: 'validation_failed', fields: missing }, 400, ch);
 
   const fullName = [d.first_name_passport, d.middle_name_passport, d.family_name_passport].filter(Boolean).join(' ');
@@ -272,6 +297,81 @@ async function createRegistration(req, env, ch, ipHash) {
   }
 
   return json({ ok: true, status: 'under_review', results }, 201, ch);
+}
+
+async function requestEditLink(req, env, ch, ipHash) {
+  const b = await req.json().catch(() => ({}));
+  const reference = String(b.reference || '').trim().toUpperCase();
+  const email = String(b.email || '').toLowerCase().trim();
+  if (!await allow(env, 'editlink:' + ipHash, 10, 3600)) return fail('rate_limited', 429, ch);
+  if (!reference || !EMAIL_RE.test(email)) return fail('invalid_request', 400, ch);
+
+  const reg = await env.DB.prepare('SELECT registration_id, reference, email, event_code FROM registrations WHERE reference = ? AND email = ?')
+    .bind(reference, email).first();
+  if (reg) {
+    const ev = await env.DB.prepare('SELECT title_en, title_ar FROM events WHERE code = ?').bind(reg.event_code).first();
+    const token = await signEditToken(env, reg.registration_id);
+    const link = `${env.FRONTEND_BASE || ''}/register/?edit=${encodeURIComponent(reg.reference)}.${encodeURIComponent(token)}`;
+    await sendMail(env, reg.email, `Edit link for registration ${reg.reference}`, shell(
+      `<h2 style="font-size:18px;margin:0 0 12px">Edit your registration</h2>
+       <p>Use this link to review or update your submission for <b>${ev ? ev.title_en : reg.event_code}</b> (reference <b>${reg.reference}</b>). It is valid for 30 days.</p>
+       <p><a href="${link}">${link}</a></p>
+       <p style="direction:rtl;text-align:right">استخدم هذا الرابط لمراجعة أو تعديل طلبك في <b>${ev ? ev.title_ar : reg.event_code}</b> (الرقم المرجعي <b>${reg.reference}</b>). صلاحيته 30 يوماً.</p>`));
+    await audit(env, 'edit_link_sent', 'registration', reg.registration_id, reg.reference, ipHash);
+  }
+  /* Same response whether or not a match was found — never confirm which half was wrong. */
+  return json({ ok: true }, 200, ch);
+}
+
+async function fetchForEdit(req, env, ch) {
+  const b = await req.json().catch(() => ({}));
+  const reference = String(b.reference || '').trim().toUpperCase();
+  const t = await readEditToken(env, String(b.token || '').trim());
+  if (!t) return fail('invalid_edit_link', 401, ch);
+  const reg = await env.DB.prepare('SELECT * FROM registrations WHERE reference = ? AND registration_id = ?')
+    .bind(reference, t.r).first();
+  if (!reg) return fail('invalid_edit_link', 401, ch);
+  return json({ ok: true, reference: reg.reference, event_code: reg.event_code, status: reg.status,
+    registration: JSON.parse(reg.data_json || '{}'), consents: JSON.parse(reg.consents_json || '{}') }, 200, ch);
+}
+
+async function updateRegistration(req, env, ch, ipHash) {
+  const b = await req.json().catch(() => ({}));
+  const reference = String(b.reference || '').trim().toUpperCase();
+  const t = await readEditToken(env, String(b.token || '').trim());
+  if (!t) return fail('invalid_edit_link', 401, ch);
+  if (!await allow(env, 'edit:' + ipHash, 10, 3600)) return fail('rate_limited', 429, ch);
+
+  const reg = await env.DB.prepare('SELECT * FROM registrations WHERE reference = ? AND registration_id = ?')
+    .bind(reference, t.r).first();
+  if (!reg) return fail('invalid_edit_link', 401, ch);
+
+  const d = b.registration || {};
+  const missing = requiredFieldErrors(d);
+  if (missing.length) return json({ ok: false, error: 'validation_failed', fields: missing }, 400, ch);
+
+  const inv = reg.invitation_id ? await env.DB.prepare('SELECT organization_name FROM invitations WHERE invitation_id = ?').bind(reg.invitation_id).first() : null;
+  const fullName = [d.first_name_passport, d.middle_name_passport, d.family_name_passport].filter(Boolean).join(' ');
+  const orgMismatch = inv && d.organization_name &&
+    d.organization_name.trim().toLowerCase() !== String(inv.organization_name).trim().toLowerCase();
+
+  await env.DB.prepare(
+    `UPDATE registrations SET full_name=?, organization_name=?, country=?, attendance_mode=?, role_in_delegation=?,
+       visa_letter_needed=?, data_json=?, consents_json=?, flag_org_mismatch=?
+     WHERE registration_id = ?`)
+    .bind(fullName, d.organization_name || null, d.country || null, d.attendance_mode || null,
+      d.role_in_delegation || null, d.visa_letter_needed === 'yes' ? 1 : 0,
+      JSON.stringify(d), JSON.stringify(b.consents || {}), orgMismatch ? 1 : 0, reg.registration_id).run();
+
+  await audit(env, 'registration_updated', 'registration', reg.registration_id, reg.reference, ipHash);
+
+  const ev = await env.DB.prepare('SELECT title_en, title_ar FROM events WHERE code = ?').bind(reg.event_code).first();
+  await sendMail(env, reg.email, `Registration updated — ${reg.reference}`, shell(
+    `<h2 style="font-size:18px;margin:0 0 12px">Your registration has been updated</h2>
+     <p>Reference <b>${reg.reference}</b> for <b>${ev ? ev.title_en : reg.event_code}</b> has been updated and remains under review.</p>
+     <p style="direction:rtl;text-align:right">تم تحديث طلبك بالرقم المرجعي <b>${reg.reference}</b> في <b>${ev ? ev.title_ar : reg.event_code}</b> وهو لا يزال قيد المراجعة.</p>`));
+
+  return json({ ok: true, status: 'under_review', reference: reg.reference }, 200, ch);
 }
 
 async function adminRead(req, env, ch, csv) {
@@ -376,6 +476,9 @@ export default {
       if (req.method === 'POST' && pathname === '/v1/invitations/verify') return await verifyInvitation(req, env, ch, ipHash);
       if (req.method === 'POST' && pathname === '/v1/otp/verify')         return await verifyOtp(req, env, ch, ipHash);
       if (req.method === 'POST' && pathname === '/v1/registrations')      return await createRegistration(req, env, ch, ipHash);
+      if (req.method === 'POST' && pathname === '/v1/registrations/edit-link')  return await requestEditLink(req, env, ch, ipHash);
+      if (req.method === 'POST' && pathname === '/v1/registrations/edit-fetch') return await fetchForEdit(req, env, ch);
+      if (req.method === 'POST' && pathname === '/v1/registrations/edit')       return await updateRegistration(req, env, ch, ipHash);
       if (req.method === 'GET'  && pathname === '/v1/admin/registrations')return await adminRead(req, env, ch, false);
       if (req.method === 'GET'  && pathname === '/v1/admin/export.csv')   return await adminRead(req, env, ch, true);
       if (req.method === 'GET'  && pathname === '/v1/admin/export.json')  return await adminExportFull(req, env, ch);

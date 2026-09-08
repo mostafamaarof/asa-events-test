@@ -11,6 +11,7 @@ database_id = "173ebad5-1462-486f-b086-11620891dafb"
 ALLOWED_ORIGINS = "https://mostafamaarof.com,https://www.mostafamaarof.com,https://events.mostafamaarof.com,https://mostafamaarof.github.io,http://localhost:8000"
 MAIL_FROM = "ASA Events (test) <events@mostafamaarof.com>"
 OTP_TTL_MINUTES = "10"
+FRONTEND_BASE = "https://mostafamaarof.com/asa-events-test"
 
 # Secrets, set with: npx wrangler secret put NAME
 #   RESEND_API_KEY   sending key from resend.com
