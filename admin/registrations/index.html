@@ -235,6 +235,7 @@ function renderTable(rows) {
   const rowsHtml = out.map(r => `
     <tr>
       <td class="ref">${r.reference}</td>
+      <td class="ref">${r.registration_number || ''}</td>
       <td>${(r.created_at || '').replace('T', ' ').slice(0, 16)}</td>
       <td>${r.event_code}</td>
       <td>
@@ -253,7 +254,7 @@ function renderTable(rows) {
       <td><button type="button" class="btn ghost filesBtn" data-ref="${r.reference}" style="height:30px;padding:0 12px;font-size:12px">Files</button></td>
     </tr>`).join('');
   wrap.innerHTML = `<table>
-    <thead><tr><th>Reference</th><th>Date</th><th>Event</th><th>Status</th><th>Name</th><th>Email</th>
+    <thead><tr><th>Reference</th><th>Reg. number</th><th>Date</th><th>Event</th><th>Status</th><th>Name</th><th>Email</th>
       <th>Organization</th><th>Country</th><th>Mode</th><th>Role</th><th>Visa</th><th>Flags</th><th>Files</th></tr></thead>
     <tbody>${rowsHtml}</tbody></table>`;
 }
@@ -266,7 +267,8 @@ wrap0.addEventListener('change', async (e) => {
     const data = await apiFetch('/admin/registrations/status', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reference, status })
     });
-    const row = all.find(r => r.reference === reference); if (row) row.status = data.status;
+    const row = all.find(r => r.reference === reference);
+    if (row) { row.status = data.status; row.registration_number = data.registration_number || row.registration_number; }
     populateStatusFilter(); render();
   } catch (e2) {
     alert('Could not update status: ' + e2.message);

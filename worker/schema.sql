@@ -71,6 +71,7 @@ CREATE TABLE registrations (
   role_in_delegation  TEXT,
   visa_letter_needed  INTEGER DEFAULT 0,
   status              TEXT NOT NULL DEFAULT 'under_review',
+  registration_number TEXT,              -- assigned only on approval, distinct from reference
   data_json           TEXT NOT NULL,     -- full submission
   consents_json       TEXT,
   flag_personal_email INTEGER DEFAULT 0,

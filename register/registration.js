@@ -15,7 +15,7 @@ const CONFIG = {
   draftKey: 'asa_reg_draft_v1',
   minFillSeconds: 15,               // bot heuristic, enforced again server-side
   mockFreeEmailCodes: ['ASA-DEMO-EXP-9K4T'],  // demo only; live this comes from invitations.allow_free_email
-  supportEmail: 'events@mostafamaarof.com'
+  supportEmail: 'asa.eg.events@gmail.com'
 };
 
 /* Event registry. Add an entry per event; nothing else needs to change. */

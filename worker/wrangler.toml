@@ -12,10 +12,11 @@ binding = "FILES"
 bucket_name = "asa-events-files"
 
 [vars]
-ALLOWED_ORIGINS = "https://mostafamaarof.com,https://www.mostafamaarof.com,https://events.mostafamaarof.com,https://mostafamaarof.github.io,http://localhost:8000"
-MAIL_FROM = "ASA Events (test) <events@mostafamaarof.com>"
+ALLOWED_ORIGINS = "https://register.saiegyptevents.com,https://www.saiegyptevents.com,https://saiegyptevents.com,https://mostafamaarof.com,https://www.mostafamaarof.com,https://events.mostafamaarof.com,https://mostafamaarof.github.io,http://localhost:8000"
+MAIL_FROM = "ASA Events <events@mostafamaarof.com>"
+REPLY_TO = "asa.eg.events@gmail.com"
 OTP_TTL_MINUTES = "10"
-FRONTEND_BASE = "https://mostafamaarof.com/asa-events-test"
+FRONTEND_BASE = "https://register.saiegyptevents.com"
 
 # Secrets, set with: npx wrangler secret put NAME
 #   RESEND_API_KEY   sending key from resend.com

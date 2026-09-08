@@ -123,17 +123,18 @@ async function sendMail(env, to, subject, html) {
   const r = await fetch('https://api.resend.com/emails', {
     method: 'POST',
     headers: { 'Authorization': `Bearer ${env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ from: env.MAIL_FROM, to: [to], subject, html })
+    body: JSON.stringify({
+      from: env.MAIL_FROM, to: [to], subject, html,
+      ...(env.REPLY_TO ? { reply_to: env.REPLY_TO } : {})
+    })
   });
   return { ok: r.ok, status: r.status };
 }
 
-const shell = (bodyHtml) => `<div style="font-family:system-ui,Segoe UI,Arial,sans-serif;color:#0B2135;line-height:1.6;max-width:560px">
+const shell = (bodyHtml, env) => `<div style="font-family:system-ui,Segoe UI,Arial,sans-serif;color:#0B2135;line-height:1.6;max-width:560px">
 ${bodyHtml}
 <hr style="border:0;border-top:1px solid #CBD6E0;margin:24px 0">
-<p style="font-size:12px;color:#556A7D">Accountability State Authority — Arab Republic of Egypt<br>
-This is a test environment. Do not submit real personal data.<br>
-هذه بيئة اختبار. لا تُدخل بيانات شخصية حقيقية.</p></div>`;
+<p style="font-size:12px;color:#556A7D">Accountability State Authority — Arab Republic of Egypt${env && env.REPLY_TO ? `<br>${env.REPLY_TO}` : ''}</p></div>`;
 
 /* ---------- endpoints ---------- */
 
@@ -177,7 +178,7 @@ async function verifyInvitation(req, env, ch, ipHash) {
     `<h2 style="font-size:18px;margin:0 0 12px">Your verification code</h2>
      <p style="font-size:32px;letter-spacing:.25em;margin:16px 0">${otp}</p>
      <p>Enter this code to continue your registration for <b>${titleEn}</b>. It expires in ${env.OTP_TTL_MINUTES || 10} minutes.</p>
-     <p style="direction:rtl;text-align:right">أدخل هذا الرمز لمتابعة تسجيلك في <b>${titleAr}</b>. صلاحيته ${env.OTP_TTL_MINUTES || 10} دقائق.</p>`));
+     <p style="direction:rtl;text-align:right">أدخل هذا الرمز لمتابعة تسجيلك في <b>${titleAr}</b>. صلاحيته ${env.OTP_TTL_MINUTES || 10} دقائق.</p>`, env));
 
   await audit(env, 'otp_sent', 'invitation', inv.invitation_id, email, ipHash);
   return json({ ok: true, organization_name: inv.organization_name, country: inv.country,
@@ -303,7 +304,7 @@ async function createRegistration(req, env, ch, ipHash) {
       <p>Under review by the Technical Office for International Relations. No registration number or QR code is issued before approval.</p>
       <p style="direction:rtl;text-align:right">${listAr}</p>
       <p style="direction:rtl;text-align:right">قيد المراجعة لدى المكتب الفني للعلاقات الدولية. ولا يصدر رقم التسجيل ولا رمز QR قبل الاعتماد.</p>`;
-    await sendMail(env, s.e, `Registration received — ${newlyCreated.map(([, r]) => r.reference).join(', ')}`, shell(body));
+    await sendMail(env, s.e, `Registration received — ${newlyCreated.map(([, r]) => r.reference).join(', ')}`, shell(body, env));
   }
 
   return json({ ok: true, status: 'under_review', results }, 201, ch);
@@ -326,7 +327,7 @@ async function requestEditLink(req, env, ch, ipHash) {
       `<h2 style="font-size:18px;margin:0 0 12px">Edit your registration</h2>
        <p>Use this link to review or update your submission for <b>${ev ? ev.title_en : reg.event_code}</b> (reference <b>${reg.reference}</b>). It is valid for 30 days.</p>
        <p><a href="${link}">${link}</a></p>
-       <p style="direction:rtl;text-align:right">استخدم هذا الرابط لمراجعة أو تعديل طلبك في <b>${ev ? ev.title_ar : reg.event_code}</b> (الرقم المرجعي <b>${reg.reference}</b>). صلاحيته 30 يوماً.</p>`));
+       <p style="direction:rtl;text-align:right">استخدم هذا الرابط لمراجعة أو تعديل طلبك في <b>${ev ? ev.title_ar : reg.event_code}</b> (الرقم المرجعي <b>${reg.reference}</b>). صلاحيته 30 يوماً.</p>`, env));
     await audit(env, 'edit_link_sent', 'registration', reg.registration_id, reg.reference, ipHash);
   }
   /* Same response whether or not a match was found — never confirm which half was wrong. */
@@ -379,7 +380,7 @@ async function updateRegistration(req, env, ch, ipHash) {
   await sendMail(env, reg.email, `Registration updated — ${reg.reference}`, shell(
     `<h2 style="font-size:18px;margin:0 0 12px">Your registration has been updated</h2>
      <p>Reference <b>${reg.reference}</b> for <b>${ev ? ev.title_en : reg.event_code}</b> has been updated and remains under review.</p>
-     <p style="direction:rtl;text-align:right">تم تحديث طلبك بالرقم المرجعي <b>${reg.reference}</b> في <b>${ev ? ev.title_ar : reg.event_code}</b> وهو لا يزال قيد المراجعة.</p>`));
+     <p style="direction:rtl;text-align:right">تم تحديث طلبك بالرقم المرجعي <b>${reg.reference}</b> في <b>${ev ? ev.title_ar : reg.event_code}</b> وهو لا يزال قيد المراجعة.</p>`, env));
 
   return json({ ok: true, status: 'under_review', reference: reg.reference }, 200, ch);
 }
@@ -388,7 +389,7 @@ async function adminRead(req, env, ch, csv) {
   const token = (req.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '');
   if (!env.ADMIN_TOKEN || token !== env.ADMIN_TOKEN) return fail('unauthorized', 401, ch);
   const { results } = await env.DB.prepare(
-    `SELECT reference, created_at, status, event_code, full_name, email, organization_name, country,
+    `SELECT reference, registration_number, created_at, status, event_code, full_name, email, organization_name, country,
             attendance_mode, role_in_delegation, visa_letter_needed, flag_personal_email, flag_org_mismatch
      FROM registrations ORDER BY created_at DESC LIMIT 500`).all();
   if (!csv) return json({ ok: true, count: results.length, registrations: results }, 200, ch);
@@ -436,28 +437,42 @@ async function adminSetStatus(req, env, ch, ipHash) {
   const reg = await env.DB.prepare('SELECT * FROM registrations WHERE reference = ?').bind(reference).first();
   if (!reg) return fail('not_found', 404, ch);
 
-  await env.DB.prepare('UPDATE registrations SET status = ? WHERE reference = ?').bind(status, reference).run();
+  /* Assigned once, on first approval — re-approving after a revert keeps the same number. */
+  let regNumber = reg.registration_number;
+  if (status === 'approved' && !regNumber) {
+    const { count } = await env.DB.prepare(
+      'SELECT COUNT(*) AS count FROM registrations WHERE event_code = ? AND registration_number IS NOT NULL')
+      .bind(reg.event_code).first();
+    regNumber = `${reg.event_code}-${String(count + 1).padStart(4, '0')}`;
+  }
+
+  await env.DB.prepare('UPDATE registrations SET status = ?, registration_number = ? WHERE reference = ?')
+    .bind(status, regNumber || null, reference).run();
   await audit(env, 'registration_status_changed', 'registration', reg.registration_id, `${reference}:${status}`, ipHash);
 
   if (status === 'approved' || status === 'rejected') {
     const ev = await env.DB.prepare('SELECT title_en, title_ar FROM events WHERE code = ?').bind(reg.event_code).first();
+    const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(regNumber)}`;
     const body = status === 'approved'
       ? `<h2 style="font-size:18px;margin:0 0 12px">Your registration has been approved</h2>
          <p>Reference <b>${reference}</b> for <b>${ev ? ev.title_en : reg.event_code}</b> has been approved by the Technical Office for International Relations.</p>
-         <p style="direction:rtl;text-align:right">تم اعتماد طلبك بالرقم المرجعي <b>${reference}</b> في <b>${ev ? ev.title_ar : reg.event_code}</b> من المكتب الفني للعلاقات الدولية.</p>`
+         <p>Your registration number is <b style="font-size:20px;letter-spacing:.04em">${regNumber}</b>. Present the QR code below at the accreditation desk.</p>
+         <p><img src="${qrUrl}" width="200" height="200" alt="QR code ${regNumber}" style="border:1px solid #CBD6E0;border-radius:8px;padding:8px"></p>
+         <p style="direction:rtl;text-align:right">تم اعتماد طلبك بالرقم المرجعي <b>${reference}</b> في <b>${ev ? ev.title_ar : reg.event_code}</b> من المكتب الفني للعلاقات الدولية.</p>
+         <p style="direction:rtl;text-align:right">رقم تسجيلك <b style="font-size:20px;letter-spacing:.04em">${regNumber}</b>. أظهر رمز الاستجابة السريعة أعلاه عند مكتب الاعتماد.</p>`
       : `<h2 style="font-size:18px;margin:0 0 12px">Update on your registration</h2>
          <p>Reference <b>${reference}</b> for <b>${ev ? ev.title_en : reg.event_code}</b> was not approved. Contact the secretariat for details.</p>
          <p style="direction:rtl;text-align:right">لم يُعتمد طلبك بالرقم المرجعي <b>${reference}</b> في <b>${ev ? ev.title_ar : reg.event_code}</b>. تواصل مع الأمانة لمزيد من التفاصيل.</p>`;
-    await sendMail(env, reg.email, `${status === 'approved' ? 'Registration approved' : 'Registration update'} — ${reference}`, shell(body));
+    await sendMail(env, reg.email, `${status === 'approved' ? 'Registration approved' : 'Registration update'} — ${reference}`, shell(body, env));
   }
 
-  return json({ ok: true, reference, status }, 200, ch);
+  return json({ ok: true, reference, status, registration_number: regNumber || null }, 200, ch);
 }
 
 async function adminExportFull(req, env, ch) {
   if (!requireAdmin(req, env)) return fail('unauthorized', 401, ch);
   const { results } = await env.DB.prepare(
-    `SELECT registration_id, reference, created_at, status, event_code, invitation_id, email, full_name,
+    `SELECT registration_id, reference, registration_number, created_at, status, event_code, invitation_id, email, full_name,
             organization_name, country, attendance_mode, role_in_delegation, visa_letter_needed,
             flag_personal_email, flag_org_mismatch, fill_seconds, locale, data_json, consents_json
      FROM registrations ORDER BY created_at DESC LIMIT 1000`).all();
