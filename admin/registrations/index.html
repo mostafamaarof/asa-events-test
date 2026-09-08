@@ -147,6 +147,7 @@ tokenInput.value = sessionStorage.getItem('asa_admin_token') || '';
 tokenInput.addEventListener('input', () => sessionStorage.setItem('asa_admin_token', tokenInput.value));
 
 let all = [];
+const wrap0 = $('tableWrap');
 
 function showMsg(el, text, ok) { el.textContent = text; el.className = 'msg ' + (ok ? 'ok' : 'err'); }
 
@@ -154,6 +155,16 @@ function authHeaders() {
   const token = tokenInput.value.trim();
   if (!token) throw new Error('Enter the admin token first.');
   return { 'Authorization': 'Bearer ' + token };
+}
+
+async function apiFetch(path, opts) {
+  const res = await fetch(CONFIG.apiBase + path, {
+    ...opts,
+    headers: { ...authHeaders(), ...(opts && opts.headers) }
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || data.ok === false) throw new Error(data.error || ('HTTP ' + res.status));
+  return data;
 }
 
 async function loadData() {
@@ -220,12 +231,17 @@ function renderTable(rows) {
   $('rowCount').textContent = `${out.length} of ${rows.length} shown`;
 
   if (!out.length) { wrap.innerHTML = '<p class="empty">No matching registrations.</p>'; return; }
+  const statusOpt = (v, cur) => `<option value="${v}"${v === cur ? ' selected' : ''}>${v.replace('_', ' ')}</option>`;
   const rowsHtml = out.map(r => `
     <tr>
       <td class="ref">${r.reference}</td>
       <td>${(r.created_at || '').replace('T', ' ').slice(0, 16)}</td>
       <td>${r.event_code}</td>
-      <td>${r.status}</td>
+      <td>
+        <select class="statusSel" data-ref="${r.reference}">
+          ${statusOpt('under_review', r.status)}${statusOpt('approved', r.status)}${statusOpt('rejected', r.status)}
+        </select>
+      </td>
       <td>${r.full_name || ''}</td>
       <td>${r.email || ''}</td>
       <td>${r.organization_name || ''}</td>
@@ -234,12 +250,47 @@ function renderTable(rows) {
       <td>${r.role_in_delegation || ''}</td>
       <td>${r.visa_letter_needed ? 'yes' : ''}</td>
       <td>${r.flag_personal_email ? '<span class="badge flag">personal email</span>' : ''}${r.flag_org_mismatch ? ' <span class="badge flag">org mismatch</span>' : ''}</td>
+      <td><button type="button" class="btn ghost filesBtn" data-ref="${r.reference}" style="height:30px;padding:0 12px;font-size:12px">Files</button></td>
     </tr>`).join('');
   wrap.innerHTML = `<table>
     <thead><tr><th>Reference</th><th>Date</th><th>Event</th><th>Status</th><th>Name</th><th>Email</th>
-      <th>Organization</th><th>Country</th><th>Mode</th><th>Role</th><th>Visa</th><th>Flags</th></tr></thead>
+      <th>Organization</th><th>Country</th><th>Mode</th><th>Role</th><th>Visa</th><th>Flags</th><th>Files</th></tr></thead>
     <tbody>${rowsHtml}</tbody></table>`;
 }
+
+wrap0.addEventListener('change', async (e) => {
+  const sel = e.target.closest('.statusSel'); if (!sel) return;
+  const reference = sel.dataset.ref, status = sel.value;
+  sel.disabled = true;
+  try {
+    const data = await apiFetch('/admin/registrations/status', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reference, status })
+    });
+    const row = all.find(r => r.reference === reference); if (row) row.status = data.status;
+    populateStatusFilter(); render();
+  } catch (e2) {
+    alert('Could not update status: ' + e2.message);
+    render();
+  }
+});
+
+wrap0.addEventListener('click', async (e) => {
+  const btn = e.target.closest('.filesBtn'); if (!btn) return;
+  const reference = btn.dataset.ref;
+  btn.disabled = true; const orig = btn.textContent; btn.textContent = '...';
+  try {
+    const data = await apiFetch('/admin/attachments?reference=' + encodeURIComponent(reference), { method: 'GET' });
+    if (!data.attachments.length) { alert('No attachments for ' + reference + '.'); return; }
+    for (let i = 0; i < data.attachments.length; i++) {
+      const att = data.attachments[i];
+      setTimeout(() => downloadFileByKey(att.key, att.filename).catch(err => console.error(err)), i * 350);
+    }
+  } catch (e2) {
+    alert('Could not list attachments: ' + e2.message);
+  } finally {
+    btn.disabled = false; btn.textContent = orig;
+  }
+});
 
 function render() {
   const rows = filteredByEvent();
@@ -345,19 +396,23 @@ $('exportJson').addEventListener('click', async () => {
   }
 });
 
+async function downloadFileByKey(key, filename) {
+  const res = await fetch(CONFIG.apiBase + '/admin/files?key=' + encodeURIComponent(key), { headers: authHeaders() });
+  if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || ('HTTP ' + res.status)); }
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename || key.split('/').pop();
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+}
+
 $('downloadFile').addEventListener('click', async () => {
   const msg = $('fileMsg'); msg.className = 'msg';
   const key = $('fileKey').value.trim();
   if (!key) { showMsg(msg, 'Paste a file key first.', false); return; }
   try {
-    const res = await fetch(CONFIG.apiBase + '/admin/files?key=' + encodeURIComponent(key), { headers: authHeaders() });
-    if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || ('HTTP ' + res.status)); }
-    const blob = await res.blob();
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = key.split('/').pop();
-    document.body.appendChild(a); a.click(); a.remove();
-    URL.revokeObjectURL(url);
+    await downloadFileByKey(key);
   } catch (e) {
     showMsg(msg, e.message, false);
   }

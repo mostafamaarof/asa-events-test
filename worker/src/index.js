@@ -20,6 +20,8 @@
      POST /v1/admin/invitations    generate a new invitation code (Bearer ADMIN_TOKEN)
      POST /v1/uploads               store one attachment in R2 (Bearer session), returns its key
      GET  /v1/admin/files?key=...  download a stored attachment (Bearer ADMIN_TOKEN)
+     GET  /v1/admin/attachments?reference=... list one registration's attachments (Bearer ADMIN_TOKEN)
+     POST /v1/admin/registrations/status  set status to under_review/approved/rejected, emails the applicant (Bearer ADMIN_TOKEN)
    Nothing here trusts the browser: every rule in the form is re-checked.
    ============================================================================= */
 
@@ -397,6 +399,61 @@ async function adminRead(req, env, ch, csv) {
     'Content-Disposition': 'attachment; filename="registrations.csv"', ...ch } });
 }
 
+/* Every uploaded file leaves a `<field>_key`/`<field>_filename` pair in
+   data_json, at the top level or inside a repeat row (e.g. accompanying
+   persons). Walk both to build one flat list for the admin UI. */
+function extractAttachments(data) {
+  const out = [];
+  const scan = (obj, prefix) => {
+    for (const [k, v] of Object.entries(obj || {})) {
+      if (k.endsWith('_key') && typeof v === 'string' && v) {
+        const field = k.slice(0, -4);
+        out.push({ field: prefix + field, key: v, filename: obj[field + '_filename'] || v.split('/').pop() });
+      }
+    }
+  };
+  scan(data, '');
+  for (const [k, v] of Object.entries(data || {}))
+    if (Array.isArray(v)) v.forEach((row, i) => { if (row && typeof row === 'object') scan(row, `${k}[${i}].`); });
+  return out;
+}
+
+async function adminAttachments(req, env, ch) {
+  if (!requireAdmin(req, env)) return fail('unauthorized', 401, ch);
+  const reference = (new URL(req.url).searchParams.get('reference') || '').toUpperCase();
+  const reg = await env.DB.prepare('SELECT data_json FROM registrations WHERE reference = ?').bind(reference).first();
+  if (!reg) return fail('not_found', 404, ch);
+  return json({ ok: true, attachments: extractAttachments(JSON.parse(reg.data_json || '{}')) }, 200, ch);
+}
+
+async function adminSetStatus(req, env, ch, ipHash) {
+  if (!requireAdmin(req, env)) return fail('unauthorized', 401, ch);
+  const b = await req.json().catch(() => ({}));
+  const reference = String(b.reference || '').trim().toUpperCase();
+  const status = String(b.status || '').trim();
+  if (!['under_review', 'approved', 'rejected'].includes(status)) return fail('invalid_status', 400, ch);
+
+  const reg = await env.DB.prepare('SELECT * FROM registrations WHERE reference = ?').bind(reference).first();
+  if (!reg) return fail('not_found', 404, ch);
+
+  await env.DB.prepare('UPDATE registrations SET status = ? WHERE reference = ?').bind(status, reference).run();
+  await audit(env, 'registration_status_changed', 'registration', reg.registration_id, `${reference}:${status}`, ipHash);
+
+  if (status === 'approved' || status === 'rejected') {
+    const ev = await env.DB.prepare('SELECT title_en, title_ar FROM events WHERE code = ?').bind(reg.event_code).first();
+    const body = status === 'approved'
+      ? `<h2 style="font-size:18px;margin:0 0 12px">Your registration has been approved</h2>
+         <p>Reference <b>${reference}</b> for <b>${ev ? ev.title_en : reg.event_code}</b> has been approved by the Technical Office for International Relations.</p>
+         <p style="direction:rtl;text-align:right">تم اعتماد طلبك بالرقم المرجعي <b>${reference}</b> في <b>${ev ? ev.title_ar : reg.event_code}</b> من المكتب الفني للعلاقات الدولية.</p>`
+      : `<h2 style="font-size:18px;margin:0 0 12px">Update on your registration</h2>
+         <p>Reference <b>${reference}</b> for <b>${ev ? ev.title_en : reg.event_code}</b> was not approved. Contact the secretariat for details.</p>
+         <p style="direction:rtl;text-align:right">لم يُعتمد طلبك بالرقم المرجعي <b>${reference}</b> في <b>${ev ? ev.title_ar : reg.event_code}</b>. تواصل مع الأمانة لمزيد من التفاصيل.</p>`;
+    await sendMail(env, reg.email, `${status === 'approved' ? 'Registration approved' : 'Registration update'} — ${reference}`, shell(body));
+  }
+
+  return json({ ok: true, reference, status }, 200, ch);
+}
+
 async function adminExportFull(req, env, ch) {
   if (!requireAdmin(req, env)) return fail('unauthorized', 401, ch);
   const { results } = await env.DB.prepare(
@@ -532,6 +589,8 @@ export default {
       if (req.method === 'POST' && pathname === '/v1/admin/invitations')  return await adminCreateInvitation(req, env, ch, ipHash);
       if (req.method === 'POST' && pathname === '/v1/uploads')            return await uploadFile(req, env, ch);
       if (req.method === 'GET'  && pathname === '/v1/admin/files')        return await adminGetFile(req, env, ch);
+      if (req.method === 'GET'  && pathname === '/v1/admin/attachments')  return await adminAttachments(req, env, ch);
+      if (req.method === 'POST' && pathname === '/v1/admin/registrations/status') return await adminSetStatus(req, env, ch, ipHash);
       if (pathname === '/v1/health') return json({ ok: true, time: new Date().toISOString() }, 200, ch);
       return fail('not_found', 404, ch);
     } catch (e) {
