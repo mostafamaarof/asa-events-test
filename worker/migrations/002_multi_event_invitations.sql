@@ -28,7 +28,7 @@ CREATE TABLE otps (
 
 -- One demo code that covers both events, for testing the new flow.
 INSERT OR IGNORE INTO invitations (invitation_id, event_code, code, organization_name, country, org_type, liaison_email, max_uses, allow_free_email, expires_at, is_active) VALUES
- ('inv-demo-3','WGITA-35-2026','ASA-BOTH-TST-7Q2R','Both-events test delegate','EG','sai','liaison@example.org',NULL,0,'2026-12-31',1);
+ ('inv-demo-3','WGITA-35-2026','ASA-BOTH-TST-7Q2R','Both-events test delegate','EG','sai','liaison@example.org',NULL,1,'2026-12-31',1);
 INSERT OR IGNORE INTO invitation_events (invitation_id, event_code) VALUES
  ('inv-demo-3','WGITA-35-2026'),
  ('inv-demo-3','KSC-SC18-2026');

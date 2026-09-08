@@ -107,7 +107,7 @@ INSERT INTO events (code, title_en, title_ar, start_date, end_date, registration
 INSERT INTO invitations (invitation_id, event_code, code, organization_name, country, org_type, liaison_email, max_uses, allow_free_email, expires_at, is_active) VALUES
  ('inv-demo-1','WGITA-35-2026','ASA-WGITA35-TST-4M7K','Test Supreme Audit Institution','EG','sai','liaison@example.org',NULL,0,'2026-12-31',1),
  ('inv-demo-2','WGITA-35-2026','ASA-DEMO-EXP-9K4T','Invited expert (personal email permitted)','EG','expert','liaison@example.org',NULL,1,'2026-12-31',1),
- ('inv-demo-3','WGITA-35-2026','ASA-BOTH-TST-7Q2R','Both-events test delegate','EG','sai','liaison@example.org',NULL,0,'2026-12-31',1);
+ ('inv-demo-3','WGITA-35-2026','ASA-BOTH-TST-7Q2R','Both-events test delegate','EG','sai','liaison@example.org',NULL,1,'2026-12-31',1);
 
 INSERT INTO invitation_events (invitation_id, event_code) VALUES
  ('inv-demo-1','WGITA-35-2026'),
