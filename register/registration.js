@@ -22,25 +22,29 @@ const CONFIG = {
 const EVENTS = {
   'WGITA-35-2026': {
     code: 'WGITA-35-2026',
-    title: { en: '35th WGITA Annual Meeting', ar: 'الاجتماع السنوي الخامس والثلاثون لفريق العمل المعني بتدقيق تكنولوجيا المعلومات' },
+    title: { en: 'INTOSAI Working Group on IT Audit', ar: 'فريق عمل الإنتوساي المعني بتدقيق تكنولوجيا المعلومات' },
     short: { en: 'WGITA 2026', ar: 'WGITA 2026' },
-    dates: { en: '27–29 September 2026', ar: '27 – 29 سبتمبر 2026' },
-    startDate: '2026-09-27', endDate: '2026-09-29',
+    dates: { en: '28–29 September 2026', ar: '28 – 29 سبتمبر 2026' },
+    blurb: {
+      en: '28 September: 35th Annual Meeting of INTOSAI Working Group on IT Audit.\n29 September: INTOSAI WGITA Seminar — Operationalizing & Scaling AI across SAIs – From Pilot to Practice.',
+      ar: '28 سبتمبر: الاجتماع السنوي الخامس والثلاثون لفريق عمل الإنتوساي المعني بتدقيق تكنولوجيا المعلومات.\n29 سبتمبر: ندوة WGITA للإنتوساي — تفعيل وتوسيع نطاق الذكاء الاصطناعي في الأجهزة الرقابية العليا: من التجربة إلى التطبيق.'
+    },
+    startDate: '2026-09-28', endDate: '2026-09-29',
     venue: { en: 'Cairo, Arab Republic of Egypt', ar: 'القاهرة، جمهورية مصر العربية' },
-    hybrid: true,
-    closesAt: '2026-09-21T23:59:00+02:00',
-    hotels: ['Al Masa Hotel, Nasr City', 'Triumph Luxury Hotel, Heliopolis', 'Hilton Cairo Heliopolis']
+    closesAt: '2026-09-21T23:59:00+02:00'
   },
   'KSC-SC18-2026': {
     code: 'KSC-SC18-2026',
-    title: { en: '18th Meeting of the KSC Steering Committee', ar: 'الاجتماع الثامن عشر للجنة التوجيهية للجنة تبادل المعرفة' },
+    title: { en: 'KSC Steering Committee Meeting', ar: 'اجتماع اللجنة التوجيهية لـ KSC' },
     short: { en: 'KSC SC 2026', ar: 'KSC SC 2026' },
     dates: { en: '30 September 2026', ar: '30 سبتمبر 2026' },
+    blurb: {
+      en: '18th KSC Steering Committee Meeting — the KSC meeting takes place as a distinct event on the final day of the Cairo programme.',
+      ar: 'الاجتماع الثامن عشر للجنة التوجيهية لـ KSC — يُعقد اجتماع KSC كحدث مستقل في اليوم الأخير من برنامج القاهرة.'
+    },
     startDate: '2026-09-30', endDate: '2026-09-30',
     venue: { en: 'Cairo, Arab Republic of Egypt', ar: 'القاهرة، جمهورية مصر العربية' },
-    hybrid: true,
-    closesAt: '2026-09-21T23:59:00+02:00',
-    hotels: ['Al Masa Hotel, Nasr City', 'Triumph Luxury Hotel, Heliopolis', 'Hilton Cairo Heliopolis']
+    closesAt: '2026-09-21T23:59:00+02:00'
   }
 };
 
@@ -100,7 +104,7 @@ const UI = {
   errDuplicate:  { en: 'A registration already exists for this email. Contact the secretariat to amend it.', ar: 'يوجد تسجيل بهذا البريد بالفعل. راسل الأمانة لتعديله.' },
   eventsPickKicker: { en: 'Choose your event(s)', ar: 'اختيار الفعاليات' },
   eventsPickTitle:  { en: 'This invitation covers more than one event', ar: 'هذه الدعوة تغطي أكثر من فعالية' },
-  eventsPickDesc:   { en: 'Select the event(s) you will attend. You register once; a separate submission is created for each event you choose.', ar: 'حدد الفعالية أو الفعاليات التي ستحضرها. سجّل مرة واحدة، وسيُنشأ طلب منفصل لكل فعالية تختارها.' },
+  eventsPickDesc:   { en: 'Select the event(s) you will attend. You register once for all of them.', ar: 'حدد الفعالية أو الفعاليات التي ستحضرها. تسجيل واحد يغطيها جميعاً.' },
   errNoEvents:      { en: 'Select at least one event.', ar: 'اختر فعالية واحدة على الأقل.' },
   alreadyRegistered: { en: 'already on file', ar: 'مسجَّل مسبقاً' },
   uploading:        { en: 'Uploading…', ar: 'جارٍ الرفع…' },
@@ -126,9 +130,8 @@ const O = (arr) => arr.map(([v, en, ar]) => ({ v, l: { en, ar } }));
 
 const OPT = {
   salutation: O([
-    ['HE', 'H.E.', 'سعادة'], ['Hon', 'Hon.', 'الأونرابل'], ['Amb', 'Amb.', 'السفير'],
-    ['Prof', 'Prof.', 'أ.د.'], ['Dr', 'Dr', 'د.'], ['Eng', 'Eng.', 'م.'],
-    ['Mr', 'Mr', 'السيد'], ['Ms', 'Ms', 'السيدة']
+    ['HE', 'H.E.', 'سعادة'], ['Dr', 'Dr', 'د.'],
+    ['Mr', 'Mr', 'السيد'], ['Mrs', 'Mrs', 'السيدة'], ['Ms', 'Ms', 'الآنسة']
   ]),
   gender: O([['female', 'Female', 'أنثى'], ['male', 'Male', 'ذكر'], ['na', 'Prefer not to say', 'أفضل عدم الإفصاح']]),
   corrLang: O([['en', 'English', 'English'], ['ar', 'العربية', 'العربية'], ['fr', 'Français', 'Français']]),
@@ -242,13 +245,8 @@ const SCHEMA = [
     { k: 'salutation', t: 'select', req: true, opts: OPT.salutation, l: { en: 'Salutation', ar: 'اللقب' } },
     { k: 'gender', t: 'select', opts: OPT.gender, l: { en: 'Gender', ar: 'النوع' } },
     { k: 'first_name_passport', t: 'text', req: true, min: 2, max: 50, l: { en: 'First name, as in passport', ar: 'الاسم الأول كما في الجواز' } },
-    { k: 'middle_name_passport', t: 'text', max: 60, l: { en: 'Middle name', ar: 'الاسم الأوسط' } },
     { k: 'family_name_passport', t: 'text', req: true, min: 2, max: 50, l: { en: 'Family name, as in passport', ar: 'اسم العائلة كما في الجواز' } },
-    { k: 'full_name_arabic', t: 'text', max: 80, l: { en: 'Full name in Arabic', ar: 'الاسم بالكامل بالعربية' }, hint: { en: 'Used on your badge and in protocol lists.', ar: 'يُستخدم على البادج وفي كشوف البروتوكول.' } },
     { k: 'badge_name_en', t: 'text', min: 3, max: 40, l: { en: 'Name on badge', ar: 'الاسم على البادج' }, hint: { en: 'Filled in from your passport name. Shorten it if you prefer.', ar: 'يُملأ من اسم الجواز. يمكنك اختصاره.' } },
-    { k: 'badge_name_ar', t: 'text', max: 40, l: { en: 'Name on badge in Arabic', ar: 'الاسم على البادج بالعربية' } },
-    { k: 'date_of_birth', t: 'date', req: true, rule: 'dob', l: { en: 'Date of birth', ar: 'تاريخ الميلاد' } },
-    { k: 'place_of_birth', t: 'text', reqIf: (d) => isYes(d.visa_letter_needed), l: { en: 'Place of birth', ar: 'محل الميلاد' }, hint: { en: 'Needed for the visa facilitation letter.', ar: 'مطلوب لخطاب تسهيل التأشيرة.' } },
     { k: 'nationality', t: 'select', req: true, opts: COUNTRIES, l: { en: 'Nationality', ar: 'الجنسية' } },
     { k: 'email', t: 'email', req: true, ro: true, l: { en: 'Email', ar: 'البريد الإلكتروني' }, hint: { en: 'Verified at the start. Contact the secretariat to change it.', ar: 'تم التحقق منه في البداية. راسل الأمانة لتغييره.' } },
     { k: 'alt_email', t: 'email', l: { en: 'Alternative email', ar: 'بريد إلكتروني بديل' } },
@@ -266,20 +264,14 @@ const SCHEMA = [
   desc: { en: 'Your institution and your role in the delegation. The secretariat matches every registration against the nomination received from your institution.', ar: 'جهة عملك وصفتك في الوفد. تطابق الأمانة كل تسجيل مع الترشيح الوارد من جهتك.' },
   fields: [
     { k: 'organization_name', t: 'text', req: true, wide: true, l: { en: 'SAI or organisation', ar: 'الجهة الرقابية أو المؤسسة' } },
-    { k: 'organization_type', t: 'select', req: true, opts: OPT.orgType, l: { en: 'Type of organisation', ar: 'نوع الجهة' } },
     { k: 'regional_group', t: 'select', req: true, opts: OPT.region, l: { en: 'INTOSAI regional group', ar: 'المجموعة الإقليمية' } },
     { k: 'country', t: 'select', req: true, opts: COUNTRIES, l: { en: 'Country', ar: 'الدولة' } },
     { k: 'job_title', t: 'text', req: true, min: 3, max: 100, l: { en: 'Job title', ar: 'المسمى الوظيفي' }, hint: { en: 'Printed on your badge and in the delegates list.', ar: 'يُطبع على البادج وفي كشف المشاركين.' } },
     { k: 'department', t: 'text', max: 100, l: { en: 'Department', ar: 'الإدارة' } },
-    { k: 'protocol_level', t: 'select', req: true, opts: OPT.protocol, l: { en: 'Protocol level', ar: 'المستوى البروتوكولي' }, hint: { en: 'Determines seating, name plates and reception arrangements.', ar: 'يحدد ترتيب الجلوس ولوحات الأسماء والاستقبال.' } },
     { k: 'role_in_delegation', t: 'select', req: true, opts: OPT.delRole, l: { en: 'Role in the delegation', ar: 'الصفة في الوفد' } },
     { k: 'nomination_letter_ref', t: 'text', l: { en: 'Nomination letter reference', ar: 'رقم خطاب الترشيح' } },
-    { k: 'attendance_mode', t: 'radio', req: true, wide: true, opts: OPT.attendance, l: { en: 'How will you attend?', ar: 'كيف ستحضر؟' }, hint: { en: 'Travel, visa and hotel sections appear only for in-person attendance.', ar: 'تظهر أقسام السفر والتأشيرة والفندق للحضور الشخصي فقط.' } },
-    { k: 'interpretation_language', t: 'multi', wide: true, opts: OPT.interp, l: { en: 'Interpretation you will need', ar: 'الترجمة الفورية التي تحتاجها' } },
-    { k: 'has_aide', t: 'check', wide: true, l: { en: 'An aide or assistant is travelling with me', ar: 'يرافقني مساعد' } },
-    { k: 'aide_name', t: 'text', reqIf: (d) => d.has_aide, showIf: (d) => d.has_aide, l: { en: 'Aide name', ar: 'اسم المساعد' }, hint: { en: 'Also register them in the accompanying persons section.', ar: 'سجّله أيضاً في قسم المرافقين.' } },
-    { k: 'has_security_detail', t: 'check', wide: true, showIf: (d) => d.protocol_level === 'head', l: { en: 'A security detail is accompanying me', ar: 'ترافقني حماية أمنية' } },
-    { k: 'security_detail_count', t: 'number', min: 1, max: 6, showIf: (d) => d.protocol_level === 'head' && d.has_security_detail, reqIf: (d) => d.has_security_detail, l: { en: 'Number of security personnel', ar: 'عدد أفراد الحماية' } }
+    { k: 'has_security_detail', t: 'check', wide: true, showIf: (d) => d.role_in_delegation === 'hod', l: { en: 'A security detail is accompanying me', ar: 'ترافقني حماية أمنية' } },
+    { k: 'security_detail_count', t: 'number', min: 1, max: 6, showIf: (d) => d.role_in_delegation === 'hod' && d.has_security_detail, reqIf: (d) => d.has_security_detail, l: { en: 'Number of security personnel', ar: 'عدد أفراد الحماية' } }
   ]
 },
 
@@ -292,11 +284,8 @@ const SCHEMA = [
     { k: 'wants_to_present', t: 'radio', req: true, wide: true, opts: OPT.yesno, l: { en: 'Do you want to request a speaking slot?', ar: 'هل ترغب في طلب فرصة للتحدث؟' } },
     { k: 'presentation_title', t: 'text', wide: true, showIf: (d) => isYes(d.wants_to_present), reqIf: (d) => isYes(d.wants_to_present), min: 10, max: 150, l: { en: 'Presentation title', ar: 'عنوان العرض' } },
     { k: 'presentation_abstract', t: 'textarea', wide: true, showIf: (d) => isYes(d.wants_to_present), reqIf: (d) => isYes(d.wants_to_present), min: 200, max: 1500, count: true, l: { en: 'Abstract', ar: 'ملخص العرض' } },
-    { k: 'presentation_duration', t: 'select', opts: OPT.duration, showIf: (d) => isYes(d.wants_to_present), reqIf: (d) => isYes(d.wants_to_present), l: { en: 'Duration you are requesting', ar: 'المدة المطلوبة' } },
-    { k: 'av_requirements', t: 'multi', wide: true, opts: OPT.av, showIf: (d) => isYes(d.wants_to_present), l: { en: 'Technical requirements', ar: 'المتطلبات الفنية' } },
     { k: 'speaker_bio', t: 'textarea', wide: true, showIf: (d) => isYes(d.wants_to_present), reqIf: (d) => isYes(d.wants_to_present), min: 100, max: 800, count: true, l: { en: 'Short biography', ar: 'سيرة ذاتية مختصرة' }, hint: { en: 'Published on the event page if you consent to publication.', ar: 'تُنشر في صفحة الحدث إذا وافقت على النشر.' } },
     { k: 'speaker_photo', t: 'file', wide: true, accept: 'image', maxMB: 5, showIf: (d) => isYes(d.wants_to_present), l: { en: 'Portrait photo', ar: 'صورة شخصية' } },
-    { k: 'is_prerecorded', t: 'check', wide: true, showIf: (d) => isYes(d.wants_to_present) && online(d), l: { en: 'My presentation will be pre-recorded', ar: 'سيكون عرضي مسجلاً مسبقاً' } },
     { k: 'slides_file', t: 'file', wide: true, accept: 'doc', maxMB: 50, showIf: (d) => isYes(d.wants_to_present), l: { en: 'Presentation slides', ar: 'ملف العرض' }, hint: { en: 'Optional now. You can upload them later using your edit link.', ar: 'اختياري الآن. يمكنك رفعه لاحقاً عبر رابط التعديل.' } }
   ]
 },
@@ -305,16 +294,15 @@ const SCHEMA = [
 {
   id: 'passport',
   title: { en: 'Travel document', ar: 'وثيقة السفر' },
-  desc: { en: 'Enter the details exactly as printed. Your passport number is encrypted and visible only to the accreditation officer.', ar: 'أدخل البيانات كما هي مطبوعة تماماً. رقم الجواز مشفّر ولا يطلع عليه سوى مسؤول الاعتماد.' },
+  desc: { en: 'Optional for now — you can add or correct these details anytime after registering, using your personal edit link.', ar: 'اختيارية الآن — يمكنك إضافة هذه البيانات أو تصحيحها في أي وقت بعد التسجيل عبر رابط التعديل الشخصي.' },
   showIf: inPerson,
   fields: [
-    { k: 'passport_number', t: 'text', req: true, min: 5, max: 15, l: { en: 'Passport number', ar: 'رقم الجواز' } },
-    { k: 'passport_type', t: 'select', req: true, opts: OPT.passportType, l: { en: 'Passport type', ar: 'نوع الجواز' } },
-    { k: 'passport_issuing_country', t: 'select', req: true, opts: COUNTRIES, l: { en: 'Issuing country', ar: 'دولة الإصدار' } },
-    { k: 'passport_place_of_issue', t: 'text', req: true, l: { en: 'Place of issue', ar: 'محل الإصدار' } },
-    { k: 'passport_issue_date', t: 'date', req: true, rule: 'past', l: { en: 'Date of issue', ar: 'تاريخ الإصدار' } },
-    { k: 'passport_expiry_date', t: 'date', req: true, rule: 'expiry', l: { en: 'Date of expiry', ar: 'تاريخ الانتهاء' } },
-    { k: 'passport_copy', t: 'file', wide: true, accept: 'any', maxMB: 10, reqIf: (d) => isYes(d.visa_letter_needed), l: { en: 'Copy of the passport data page', ar: 'صورة صفحة بيانات الجواز' }, hint: { en: 'Required only if you request a visa facilitation letter. Deleted 60 days after the meeting.', ar: 'مطلوبة فقط عند طلب خطاب تسهيل التأشيرة. تُحذف بعد 60 يوماً من الاجتماع.' } }
+    { k: 'passport_number', t: 'text', min: 5, max: 15, l: { en: 'Passport number', ar: 'رقم الجواز' } },
+    { k: 'passport_type', t: 'select', opts: OPT.passportType, l: { en: 'Passport type', ar: 'نوع الجواز' } },
+    { k: 'passport_place_of_issue', t: 'text', l: { en: 'Place of issue', ar: 'محل الإصدار' } },
+    { k: 'passport_issue_date', t: 'date', rule: 'past', l: { en: 'Date of issue', ar: 'تاريخ الإصدار' } },
+    { k: 'passport_expiry_date', t: 'date', rule: 'expiry', l: { en: 'Date of expiry', ar: 'تاريخ الانتهاء' } },
+    { k: 'passport_copy', t: 'file', wide: true, accept: 'any', maxMB: 10, l: { en: 'Copy of the passport data page', ar: 'صورة صفحة بيانات الجواز' }, hint: { en: 'Deleted 60 days after the meeting.', ar: 'تُحذف بعد 60 يوماً من الاجتماع.' } }
   ]
 },
 
@@ -322,15 +310,10 @@ const SCHEMA = [
 {
   id: 'visa',
   title: { en: 'Visa facilitation', ar: 'تسهيل التأشيرة' },
-  desc: { en: 'The letter is issued to the passport details you entered in the previous section. Go back and correct them if anything is wrong.', ar: 'يصدر الخطاب ببيانات الجواز التي أدخلتها في القسم السابق. ارجع وصحّحها إن وُجد خطأ.' },
+  desc: { en: '', ar: '' },
   showIf: inPerson,
   fields: [
-    { k: 'visa_letter_needed', t: 'radio', req: true, wide: true, opts: OPT.yesno, l: { en: 'Do you need a visa facilitation letter?', ar: 'هل تحتاج خطاب تسهيل تأشيرة؟' }, hint: { en: 'Issued within five working days of approval.', ar: 'يصدر خلال خمسة أيام عمل من الاعتماد.' } },
-    { k: 'visa_embassy_location', t: 'text', wide: true, showIf: (d) => isYes(d.visa_letter_needed), reqIf: (d) => isYes(d.visa_letter_needed), l: { en: 'Egyptian mission where you will apply', ar: 'البعثة المصرية التي ستتقدم إليها' }, ph: 'Egyptian Embassy, Nairobi' },
-    { k: 'visa_on_arrival_intent', t: 'check', wide: true, showIf: (d) => isYes(d.visa_letter_needed), l: { en: 'I intend to obtain the visa on arrival at Cairo airport', ar: 'أنوي الحصول على التأشيرة عند الوصول لمطار القاهرة' } },
-    { k: 'has_existing_visa', t: 'check', wide: true, l: { en: 'I already hold a valid Egyptian visa', ar: 'لديّ تأشيرة مصرية سارية' } },
-    { k: 'visa_copy', t: 'file', wide: true, accept: 'any', maxMB: 10, showIf: (d) => d.has_existing_visa, reqIf: (d) => d.has_existing_visa, l: { en: 'Copy of the valid visa', ar: 'صورة التأشيرة السارية' } },
-    { k: 'visa_details_confirmed', t: 'check', wide: true, showIf: (d) => isYes(d.visa_letter_needed), reqIf: (d) => isYes(d.visa_letter_needed), l: { en: 'I confirm that my name and passport number above match my passport exactly', ar: 'أؤكد أن اسمي ورقم جوازي أعلاه مطابقان لجواز سفري تماماً' } }
+    { k: 'visa_letter_needed', t: 'radio', req: true, wide: true, opts: OPT.yesno, l: { en: 'Do you need a visa facilitation letter?', ar: 'هل تحتاج خطاب تسهيل تأشيرة؟' }, hint: { en: 'Issued within five working days of approval.', ar: 'يصدر خلال خمسة أيام عمل من الاعتماد.' } }
   ]
 },
 
@@ -367,12 +350,12 @@ const SCHEMA = [
   desc: { en: 'The official hotels offer a negotiated delegate rate and a shuttle to the venue. If you stay elsewhere, the secretariat still needs the address to plan transport.', ar: 'تقدم الفنادق الرسمية سعراً متفاوضاً عليه للمندوبين وحافلة إلى مقر الاجتماع. إذا أقمت في مكان آخر فالأمانة تحتاج العنوان لتخطيط الانتقالات.' },
   showIf: inPerson,
   fields: [
-    { k: 'accommodation_type', t: 'radio', req: true, wide: true, opts: OPT.accomType, l: { en: 'Where will you stay?', ar: 'أين ستقيم؟' } },
-    { k: 'official_hotel', t: 'select', opts: [], dynamic: 'hotels', showIf: (d) => d.accommodation_type === 'official', reqIf: (d) => d.accommodation_type === 'official', l: { en: 'Official hotel', ar: 'الفندق الرسمي' } },
-    { k: 'room_type', t: 'select', opts: OPT.roomType, showIf: (d) => d.accommodation_type === 'official', reqIf: (d) => d.accommodation_type === 'official', l: { en: 'Room type', ar: 'نوع الغرفة' } },
-    { k: 'own_hotel_name_address', t: 'textarea', wide: true, showIf: (d) => d.accommodation_type === 'own', reqIf: (d) => d.accommodation_type === 'own', l: { en: 'Hotel name and address', ar: 'اسم الفندق وعنوانه' } },
-    { k: 'check_in_date', t: 'date', reqIf: (d) => !!d.accommodation_type, l: { en: 'Check-in', ar: 'تاريخ الوصول للفندق' } },
-    { k: 'check_out_date', t: 'date', rule: 'checkout', reqIf: (d) => !!d.accommodation_type, l: { en: 'Check-out', ar: 'تاريخ المغادرة' } },
+    { k: 'accommodation_type', t: 'radio', wide: true, opts: OPT.accomType, l: { en: 'Where will you stay?', ar: 'أين ستقيم؟' } },
+    { k: 'official_hotel', t: 'text', showIf: (d) => d.accommodation_type === 'official', l: { en: 'Official hotel', ar: 'الفندق الرسمي' } },
+    { k: 'room_type', t: 'select', opts: OPT.roomType, showIf: (d) => d.accommodation_type === 'official', l: { en: 'Room type', ar: 'نوع الغرفة' } },
+    { k: 'own_hotel_name_address', t: 'textarea', wide: true, showIf: (d) => d.accommodation_type === 'own', l: { en: 'Hotel name and address', ar: 'اسم الفندق وعنوانه' } },
+    { k: 'check_in_date', t: 'date', l: { en: 'Check-in', ar: 'تاريخ الوصول للفندق' } },
+    { k: 'check_out_date', t: 'date', rule: 'checkout', l: { en: 'Check-out', ar: 'تاريخ المغادرة' } },
     { k: 'booking_reference', t: 'text', l: { en: 'Booking reference, if already booked', ar: 'رقم الحجز إن وُجد' } }
   ]
 },
@@ -382,20 +365,17 @@ const SCHEMA = [
   id: 'welfare',
   title: { en: 'Emergency contact and requirements', ar: 'جهة الطوارئ والاحتياجات' },
   showIf: inPerson,
-  desc: { en: 'The emergency contact is mandatory. Everything below it is optional, held encrypted, and seen only by the registrar. It is never included in any delegate list or export.', ar: 'جهة الاتصال للطوارئ إلزامية. وما دونها اختياري ويُحفظ مشفراً ولا يطلع عليه سوى مسؤول التسجيل، ولا يظهر في أي كشف أو تصدير.' },
+  desc: { en: 'Optional, held encrypted, and seen only by the registrar. Never included in any delegate list or export.', ar: 'اختيارية وتُحفظ مشفرة ولا يطلع عليها سوى مسؤول التسجيل، ولا تظهر في أي كشف أو تصدير.' },
   fields: [
-    { k: 'emergency_contact_name', t: 'text', req: true, l: { en: 'Emergency contact name', ar: 'اسم جهة الاتصال للطوارئ' } },
-    { k: 'emergency_contact_relation', t: 'text', req: true, l: { en: 'Relationship to you', ar: 'صلته بك' } },
-    { k: 'emergency_contact_phone', t: 'tel', req: true, rule: 'phone', l: { en: 'Emergency contact phone', ar: 'هاتف جهة الطوارئ' } },
+    { k: 'emergency_contact_name', t: 'text', l: { en: 'Emergency contact name', ar: 'اسم جهة الاتصال للطوارئ' } },
+    { k: 'emergency_contact_relation', t: 'text', l: { en: 'Relationship to you', ar: 'صلته بك' } },
+    { k: 'emergency_contact_phone', t: 'tel', rule: 'phone', l: { en: 'Emergency contact phone', ar: 'هاتف جهة الطوارئ' } },
     { k: 'emergency_contact_email', t: 'email', l: { en: 'Emergency contact email', ar: 'بريد جهة الطوارئ' } },
     { k: 'dietary_requirements', t: 'multi', wide: true, opts: OPT.dietary, l: { en: 'Dietary requirements', ar: 'المتطلبات الغذائية' } },
     { k: 'dietary_notes', t: 'textarea', wide: true, max: 300, showIf: (d) => Array.isArray(d.dietary_requirements) && d.dietary_requirements.includes('other'), l: { en: 'Dietary notes', ar: 'ملاحظات غذائية' } },
     { k: 'allergies', t: 'textarea', wide: true, max: 300, l: { en: 'Allergies', ar: 'الحساسية' } },
     { k: 'medical_notes_emergency', t: 'textarea', wide: true, max: 500, l: { en: 'Medical information relevant in an emergency', ar: 'معلومات طبية تهم في حالات الطوارئ' }, hint: { en: 'Only what a first responder in Cairo would need to know.', ar: 'فقط ما يحتاج مسعف في القاهرة معرفته.' } },
-    { k: 'covid_certificate', t: 'select', opts: OPT.covidCert, l: { en: 'COVID / vaccination certificate', ar: 'شهادة كوفيد / التطعيم' } },
-    { k: 'accessibility_needs', t: 'multi', wide: true, opts: OPT.access, l: { en: 'Accessibility needs', ar: 'احتياجات الإتاحة' } },
-    { k: 'accessibility_notes', t: 'textarea', wide: true, max: 300, showIf: (d) => Array.isArray(d.accessibility_needs) && d.accessibility_needs.includes('other'), l: { en: 'Accessibility notes', ar: 'ملاحظات الإتاحة' } },
-    { k: 'travel_insurance', t: 'radio', wide: true, opts: OPT.yesno, showIf: inPerson, l: { en: 'Do you hold valid travel or medical insurance for this trip?', ar: 'هل لديك تأمين سفر أو طبي ساري لهذه الرحلة؟' } }
+    { k: 'covid_certificate', t: 'select', opts: OPT.covidCert, l: { en: 'COVID / vaccination certificate', ar: 'شهادة كوفيد / التطعيم' } }
   ]
 },
 
@@ -403,7 +383,7 @@ const SCHEMA = [
 {
   id: 'accompanying',
   title: { en: 'Accompanying persons', ar: 'المرافقون' },
-  desc: { en: 'Register everyone travelling with you, including aides and security. There is no limit on the number, but each person is approved separately.', ar: 'سجّل كل من يسافر معك، بمن فيهم المساعدون والحماية. لا يوجد حد للعدد، لكن كل شخص يُعتمد على حدة.' },
+  desc: { en: 'Register everyone travelling with you. Only the name is required — the rest can be added later.', ar: 'سجّل كل من يسافر معك. الاسم فقط مطلوب، وما دونه يمكن إضافته لاحقاً.' },
   showIf: inPerson,
   fields: [
     { k: 'is_accompanied', t: 'radio', req: true, wide: true, opts: OPT.yesno, l: { en: 'Is anyone travelling with you?', ar: 'هل يرافقك أحد؟' } },
@@ -413,16 +393,14 @@ const SCHEMA = [
       addLabel: { en: 'Add an accompanying person', ar: 'إضافة مرافق' },
       sub: [
         { k: 'acc_full_name_passport', t: 'text', req: true, l: { en: 'Full name, as in passport', ar: 'الاسم كما في الجواز' } },
-        { k: 'acc_name_on_badge', t: 'text', req: true, l: { en: 'Name on badge', ar: 'الاسم على البادج' } },
-        { k: 'acc_relationship', t: 'select', req: true, opts: OPT.accRel, l: { en: 'Relationship', ar: 'الصفة' } },
-        { k: 'acc_nationality', t: 'select', req: true, opts: COUNTRIES, l: { en: 'Nationality', ar: 'الجنسية' } },
-        { k: 'acc_date_of_birth', t: 'date', req: true, l: { en: 'Date of birth', ar: 'تاريخ الميلاد' } },
-        { k: 'acc_passport_number', t: 'text', req: true, min: 5, max: 15, l: { en: 'Passport number', ar: 'رقم الجواز' } },
-        { k: 'acc_passport_expiry_date', t: 'date', req: true, l: { en: 'Passport expiry', ar: 'انتهاء الجواز' } },
-        { k: 'acc_visa_letter_needed', t: 'radio', req: true, opts: OPT.yesno, l: { en: 'Visa letter needed?', ar: 'هل يحتاج خطاب تأشيرة؟' } },
+        { k: 'acc_relationship', t: 'select', opts: OPT.accRel, l: { en: 'Relationship', ar: 'الصفة' } },
+        { k: 'acc_nationality', t: 'select', opts: COUNTRIES, l: { en: 'Nationality', ar: 'الجنسية' } },
+        { k: 'acc_passport_number', t: 'text', min: 5, max: 15, l: { en: 'Passport number', ar: 'رقم الجواز' } },
+        { k: 'acc_passport_expiry_date', t: 'date', l: { en: 'Passport expiry', ar: 'انتهاء الجواز' } },
+        { k: 'acc_visa_letter_needed', t: 'radio', opts: OPT.yesno, l: { en: 'Visa letter needed?', ar: 'هل يحتاج خطاب تأشيرة؟' } },
         { k: 'acc_passport_copy', t: 'file', accept: 'any', maxMB: 10, l: { en: 'Passport copy', ar: 'صورة الجواز' } },
-        { k: 'acc_attends_sessions', t: 'radio', req: true, opts: OPT.yesno, l: { en: 'Attending the official sessions?', ar: 'هل يحضر الجلسات الرسمية؟' } },
-        { k: 'acc_attends_social', t: 'radio', req: true, opts: OPT.yesno, l: { en: 'Attending the social programme?', ar: 'هل يحضر البرنامج الاجتماعي؟' } },
+        { k: 'acc_attends_sessions', t: 'radio', opts: OPT.yesno, l: { en: 'Attending the official sessions?', ar: 'هل يحضر الجلسات الرسمية؟' } },
+        { k: 'acc_attends_social', t: 'radio', opts: OPT.yesno, l: { en: 'Attending the social programme?', ar: 'هل يحضر البرنامج الاجتماعي؟' } },
         { k: 'acc_dietary', t: 'multi', opts: OPT.dietary, l: { en: 'Dietary requirements', ar: 'المتطلبات الغذائية' } }
       ]
     }
@@ -436,38 +414,16 @@ const SCHEMA = [
   desc: { en: 'Headcounts are given to the venue and the caterer a week in advance, so an accurate answer here matters more than it looks.', ar: 'تُسلَّم الأعداد للمقر ومتعهد الضيافة قبل أسبوع، فدقة الإجابة هنا أهم مما تبدو.' },
   showIf: inPerson,
   fields: [
-    { k: 'social_program_attending', t: 'radio', req: true, wide: true, opts: OPT.yesno, l: { en: 'Will you join the social programme (welcome reception and official dinner)?', ar: 'هل ستحضر البرنامج الاجتماعي (حفل الاستقبال والعشاء الرسمي)؟' } },
-    { k: 'needs_local_sim', t: 'check', wide: true, l: { en: 'I would like help getting a local SIM card', ar: 'أرغب في المساعدة للحصول على شريحة اتصال محلية' } },
-    { k: 'notes_to_secretariat', t: 'textarea', wide: true, max: 1000, count: true, l: { en: 'Anything else the secretariat should know', ar: 'أي شيء آخر ينبغي أن تعرفه الأمانة' } }
+    { k: 'social_program_attending', t: 'radio', req: true, wide: true, opts: OPT.yesno, l: { en: 'Will you join the social programme — the Grand Egyptian Museum visit and the official dinner, on 29 September 2026?', ar: 'هل ستحضر البرنامج الاجتماعي — زيارة المتحف المصري الكبير والعشاء الرسمي، يوم 29 سبتمبر 2026؟' } }
   ]
 },
 
-/* --- 11. Online participation ------------------------------------------ */
-{
-  id: 'online',
-  title: { en: 'Joining online', ar: 'المشاركة عن بُعد' },
-  desc: { en: 'The connection link is sent to your registered email once your registration is approved.', ar: 'يُرسل رابط الاتصال إلى بريدك المسجل بعد اعتماد تسجيلك.' },
-  showIf: online,
-  fields: [
-    { k: 'timezone', t: 'text', req: true, wide: true, l: { en: 'Your time zone', ar: 'منطقتك الزمنية' }, hint: { en: 'Detected automatically. Correct it if it is wrong.', ar: 'تُكتشف تلقائياً. صحّحها إذا كانت خاطئة.' } },
-    { k: 'accessibility_needs', t: 'multi', wide: true, opts: OPT.access, l: { en: 'Accessibility needs', ar: 'احتياجات الإتاحة' }, hint: { en: 'Sign language, captions or large-print materials for the online sessions.', ar: 'ترجمة بلغة الإشارة أو تعليقات نصية أو مواد بخط كبير للجلسات عن بُعد.' } },
-    { k: 'accessibility_notes', t: 'textarea', wide: true, max: 300, showIf: (d) => Array.isArray(d.accessibility_needs) && d.accessibility_needs.includes('other'), l: { en: 'Accessibility notes', ar: 'ملاحظات الإتاحة' } },
-    { k: 'requests_test_session', t: 'check', wide: true, l: { en: 'I would like a connection test before the meeting', ar: 'أرغب في اختبار للاتصال قبل الاجتماع' } },
-    { k: 'consent_recording', t: 'check', wide: true, req: true, l: { en: 'I understand the sessions are recorded and consent to appearing in the recording', ar: 'أعلم أن الجلسات تُسجَّل وأوافق على ظهوري في التسجيل' } }
-  ]
-},
-
-/* --- 12. Consents ------------------------------------------------------ */
+/* --- 11. Consents ------------------------------------------------------ */
 {
   id: 'consents',
   title: { en: 'Consent and declaration', ar: 'الموافقات والإقرار' },
-  desc: { en: 'Each consent is separate and recorded with its timestamp. The two optional ones below change nothing about your registration if you decline them.', ar: 'كل موافقة مستقلة وتُسجَّل بتوقيتها. الموافقتان الاختياريتان أدناه لا تغيّران شيئاً في تسجيلك إذا رفضتهما.' },
   fields: [
-    { k: 'consent_processing', t: 'check', wide: true, req: true, l: { en: 'I consent to the organising secretariat processing this data for accreditation and meeting logistics.', ar: 'أوافق على معالجة أمانة التنظيم لهذه البيانات لأغراض الاعتماد والترتيبات اللوجستية.' } },
-    { k: 'consent_visa_sharing', t: 'check', wide: true, showIf: (d) => isYes(d.visa_letter_needed), reqIf: (d) => isYes(d.visa_letter_needed), l: { en: 'I consent to my passport details being shared with the Egyptian Ministry of Foreign Affairs and immigration authorities for visa facilitation.', ar: 'أوافق على مشاركة بيانات جوازي مع وزارة الخارجية المصرية وجهات الجوازات لتسهيل التأشيرة.' } },
-    { k: 'consent_media', t: 'check', wide: true, l: { en: 'I consent to photographs and video in which I appear being published on the event media page.', ar: 'أوافق على نشر الصور ومقاطع الفيديو التي أظهر فيها على صفحة وسائط الحدث.' }, hint: { en: 'Optional.', ar: 'اختياري.' } },
-    { k: 'consent_delegate_list', t: 'check', wide: true, l: { en: 'I consent to my name, title and organisation appearing in the delegates list circulated to participants.', ar: 'أوافق على إدراج اسمي ووظيفتي وجهتي في كشف المشاركين المتداول.' }, hint: { en: 'Optional.', ar: 'اختياري.' } },
-    { k: 'declaration_accuracy', t: 'check', wide: true, req: true, l: { en: 'I declare that the information given is accurate and matches my official travel documents.', ar: 'أقر بصحة البيانات المقدمة ومطابقتها لوثائق سفري الرسمية.' } },
+    { k: 'consent_processing', t: 'check', wide: true, req: true, l: { en: 'I consent to the organising secretariat processing this data for accreditation and meeting logistics, and I declare that the information given is accurate and matches my official travel documents.', ar: 'أوافق على معالجة أمانة التنظيم لهذه البيانات لأغراض الاعتماد والترتيبات اللوجستية، وأقر بصحة البيانات المقدمة ومطابقتها لوثائق سفري الرسمية.' } },
     { k: 'signature_typed_name', t: 'text', wide: true, req: true, l: { en: 'Type your full name as a signature', ar: 'اكتب اسمك بالكامل كتوقيع' } },
     { k: 'privacy_note', t: 'note', wide: true, body: { en: 'Passport and visa files are deleted 60 days after the meeting. Health and dietary information is deleted after 30 days. The core registration record is kept for five years as an institutional archive. To exercise your data rights, write to the secretariat.', ar: 'تُحذف ملفات الجواز والتأشيرة بعد 60 يوماً من الاجتماع، والبيانات الصحية والغذائية بعد 30 يوماً. ويُحتفظ بسجل التسجيل الأساسي خمس سنوات كأرشيف مؤسسي. لممارسة حقوقك على بياناتك راسل الأمانة.' } }
   ]
@@ -494,7 +450,8 @@ const state = {
   startedAt: Date.now(),
   otpEmail: '',
   session: '',
-  results: {},            // event_code -> { reference, already_registered }
+  reference: '',           // the single submission reference, once created or updated
+  confirmedEvents: [],     // event codes covered by that one reference
   editMode: null,          // { reference, token } when editing an existing submission
   editRequestSent: false
 };
@@ -925,17 +882,15 @@ function mock(path, body) {
       return body.otp === '123456' ? res({ ok: true, session: 'mock-session' }) : rej(new Error('bad_otp'));
     }
     if (path === '/registrations') {
-      const results = {};
-      for (const code of body.event_codes || []) results[code] = { ok: true, reference: 'SUB-' + Math.random().toString(36).slice(2, 8).toUpperCase() };
-      return res({ ok: true, status: 'under_review', results });
+      return res({ ok: true, status: 'under_review', reference: 'SUB-' + Math.random().toString(36).slice(2, 8).toUpperCase(), event_codes: body.event_codes || [] });
     }
     if (path === '/registrations/edit-link') return res({ ok: true });
     if (path === '/registrations/edit-fetch') {
-      return body.token === 'mock-token' ? res({ ok: true, event_code: Object.keys(EVENTS)[0], status: 'under_review', registration: {}, consents: {} })
+      return body.token === 'mock-token' ? res({ ok: true, event_codes: [Object.keys(EVENTS)[0]], status: 'under_review', registration: {}, consents: {} })
                                           : rej(new Error('invalid_edit_link'));
     }
     if (path === '/registrations/edit') {
-      return body.token === 'mock-token' ? res({ ok: true, status: 'under_review', reference: body.reference, event_code: Object.keys(EVENTS)[0] })
+      return body.token === 'mock-token' ? res({ ok: true, status: 'under_review', reference: body.reference, event_codes: [Object.keys(EVENTS)[0]] })
                                           : rej(new Error('invalid_edit_link'));
     }
     res({ ok: true });
@@ -1167,9 +1122,11 @@ function renderEventsPick() {
         : state.selectedEventCodes.filter(c => c !== code);
       renderEventsPick();
     });
+    const lines = L(ev.blurb || {}).split('\n').filter(Boolean);
     wrap.append(el('label', { class: 'choice' + (checked ? ' on' : '') }, cb,
       el('div', {}, el('span', { class: 't' }, L(ev.title)),
-        el('span', { class: 'd' }, `${L(ev.dates)} · ${L(ev.venue)}`))));
+        el('span', { class: 'd', style: 'display:block' }, `${L(ev.dates)} · ${L(ev.venue)}`),
+        ...lines.map(line => el('span', { class: 'd', style: 'display:block;margin-top:2px' }, line)))));
   });
   b.append(wrap);
   if (err) b.append(el('div', { class: 'err', style: 'margin-top:10px' }, err));
@@ -1262,10 +1219,12 @@ async function doSubmit(btn) {
   try {
     if (state.editMode) {
       const r = await call('/registrations/edit', buildEditPayload());
-      state.results = { [r.event_code || state.events[0]?.code]: { ok: true, reference: r.reference } };
+      state.reference = r.reference;
+      state.confirmedEvents = r.event_codes || (r.event_code ? [r.event_code] : state.events.map(e => e.code));
     } else {
       const r = await call('/registrations', buildPayload());
-      state.results = r.results || {};
+      state.reference = r.reference;
+      state.confirmedEvents = r.event_codes || state.events.map(e => e.code);
     }
     store.del(CONFIG.draftKey);
     state.screen = 'done'; render(); window.scrollTo(0, 0);
@@ -1279,7 +1238,7 @@ async function doSubmit(btn) {
 }
 function buildConsents() {
   const consents = {};
-  for (const k of ['consent_processing', 'consent_visa_sharing', 'consent_media', 'consent_delegate_list', 'consent_recording', 'declaration_accuracy'])
+  for (const k of ['consent_processing'])
     if (k in state.data) consents[k] = { value: !!state.data[k], at: new Date().toISOString(), policy_version: '1.0' };
   return consents;
 }
@@ -1316,23 +1275,12 @@ function renderDone() {
       : 'It is now under review by the Technical Office for International Relations.');
   const b = body();
   b.append(el('div', { class: 'stamp' }, state.lang === 'ar' ? 'قيد المراجعة' : 'Under review'));
-  const refRows = Object.entries(state.results).filter(([, r]) => r.ok);
-  if (refRows.length) {
-    const dl = el('dl', { class: 'dl', style: 'margin-top:20px' });
-    for (const [code, r] of refRows) {
-      const ev = EVENTS[code];
-      dl.append(el('dt', {}, ev ? L(ev.short) : code));
-      dl.append(el('dd', {}, el('b', {}, r.reference), r.already_registered ? ` (${T('alreadyRegistered')})` : ''));
-    }
-    b.append(dl);
+  if (state.reference) {
+    const eventNames = (state.confirmedEvents || []).map(c => EVENTS[c] ? L(EVENTS[c].short) : c).join(state.lang === 'ar' ? '، ' : ', ');
+    b.append(el('p', { style: 'margin-top:20px' },
+      (state.lang === 'ar' ? 'الرقم المرجعي: ' : 'Reference: '), el('b', {}, state.reference),
+      eventNames ? ` (${eventNames})` : ''));
   }
-  b.append(el('div', { class: 'notice', style: 'margin-top:20px' },
-    el('div', {}, state.lang === 'ar' ? 'ما يحدث بعد ذلك:' : 'What happens next:'),
-    el('ul', {},
-      el('li', {}, state.lang === 'ar' ? 'تطابق الأمانة طلبك مع خطاب الترشيح الوارد من جهازك.' : 'The secretariat matches your submission against the nomination received from your institution.'),
-      el('li', {}, state.lang === 'ar' ? 'عند الاعتماد يصلك رقم التسجيل ورمز QR ورابط تعديل شخصي على بريدك المسجل.' : 'On approval you receive your registration number, QR code and a personal edit link by email.'),
-      el('li', {}, state.lang === 'ar' ? 'يصدر خطاب تسهيل التأشيرة، عند طلبه، خلال خمسة أيام عمل من الاعتماد.' : 'The visa facilitation letter, where requested, is issued within five working days of approval.'),
-      el('li', {}, state.lang === 'ar' ? 'رقم التسجيل ورمز QR لا يصدران قبل الاعتماد.' : 'No registration number or QR code is issued before approval.'))));
   b.append(el('p', { style: 'margin-top:20px' }, (state.lang === 'ar' ? 'للاستفسار: ' : 'Questions: '), CONFIG.supportEmail));
   foot();
 }
@@ -1372,7 +1320,7 @@ async function loadForEdit(reference, token) {
   try {
     const r = await call('/registrations/edit-fetch', { reference, token });
     state.editMode = { reference, token };
-    state.events = [EVENTS[r.event_code]].filter(Boolean);
+    state.events = (r.event_codes || []).map(c => EVENTS[c]).filter(Boolean);
     Object.assign(state.data, r.registration);
     for (const [k, c] of Object.entries(r.consents || {})) state.data[k] = !!c.value;
     state.screen = 'review'; render(); window.scrollTo(0, 0);

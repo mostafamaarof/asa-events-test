@@ -58,12 +58,15 @@ CREATE TABLE otps (
   PRIMARY KEY (email, invitation_id)
 );
 
+-- One row per person, even when they attend more than one event: event_codes
+-- is a comma-joined list (e.g. "WGITA-35-2026,KSC-SC18-2026"), not a foreign
+-- key, since a registration can span several. A person registers once.
 CREATE TABLE registrations (
   registration_id     TEXT PRIMARY KEY,
   reference           TEXT NOT NULL UNIQUE,
-  event_code          TEXT NOT NULL REFERENCES events(code),
+  event_codes         TEXT NOT NULL,
   invitation_id       TEXT REFERENCES invitations(invitation_id),
-  email               TEXT NOT NULL,
+  email               TEXT NOT NULL UNIQUE,
   full_name           TEXT,
   organization_name   TEXT,
   country             TEXT,
@@ -81,8 +84,7 @@ CREATE TABLE registrations (
   locale              TEXT,
   created_at          TEXT NOT NULL
 );
-CREATE UNIQUE INDEX ux_reg_event_email ON registrations(event_code, email);
-CREATE INDEX ix_reg_status ON registrations(event_code, status);
+CREATE INDEX ix_reg_status ON registrations(status);
 
 CREATE TABLE throttle (
   k        TEXT PRIMARY KEY,
@@ -101,8 +103,8 @@ CREATE TABLE audit_log (
 );
 
 INSERT INTO events (code, title_en, title_ar, start_date, end_date, registration_closes_at) VALUES
- ('WGITA-35-2026','35th WGITA Annual Meeting','الاجتماع السنوي الخامس والثلاثون لفريق WGITA','2026-09-27','2026-09-29','2026-12-31T23:59:00+02:00'),
- ('KSC-SC18-2026','18th Meeting of the KSC Steering Committee','الاجتماع الثامن عشر للجنة التوجيهية لـ KSC','2026-09-30','2026-09-30','2026-12-31T23:59:00+02:00');
+ ('WGITA-35-2026','INTOSAI Working Group on IT Audit','فريق عمل الإنتوساي المعني بتدقيق تكنولوجيا المعلومات','2026-09-28','2026-09-29','2026-12-31T23:59:00+02:00'),
+ ('KSC-SC18-2026','KSC Steering Committee Meeting','اجتماع اللجنة التوجيهية لـ KSC','2026-09-30','2026-09-30','2026-12-31T23:59:00+02:00');
 
 -- Three invitations so the public test link works out of the box.
 INSERT INTO invitations (invitation_id, event_code, code, organization_name, country, org_type, liaison_email, max_uses, allow_free_email, expires_at, is_active) VALUES

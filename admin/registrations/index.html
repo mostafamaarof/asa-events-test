@@ -193,7 +193,7 @@ function populateStatusFilter() {
 
 function filteredByEvent() {
   const ev = $('fEvent').value;
-  return ev ? all.filter(r => r.event_code === ev) : all;
+  return ev ? all.filter(r => (r.event_codes || '').split(',').includes(ev)) : all;
 }
 
 function renderTiles(rows) {
@@ -237,7 +237,7 @@ function renderTable(rows) {
       <td class="ref">${r.reference}</td>
       <td class="ref">${r.registration_number || ''}</td>
       <td>${(r.created_at || '').replace('T', ' ').slice(0, 16)}</td>
-      <td>${r.event_code}</td>
+      <td>${(r.event_codes || '').split(',').join(' + ')}</td>
       <td>
         <select class="statusSel" data-ref="${r.reference}">
           ${statusOpt('under_review', r.status)}${statusOpt('approved', r.status)}${statusOpt('rejected', r.status)}
@@ -321,7 +321,7 @@ $('exportCsv').addEventListener('click', async () => {
   }
 });
 
-const SUMMARY_COLS = ['reference', 'created_at', 'status', 'event_code', 'full_name', 'email',
+const SUMMARY_COLS = ['reference', 'registration_number', 'created_at', 'status', 'event_codes', 'full_name', 'email',
   'organization_name', 'country', 'attendance_mode', 'role_in_delegation', 'visa_letter_needed',
   'flag_personal_email', 'flag_org_mismatch', 'fill_seconds', 'locale', 'invitation_id', 'registration_id'];
 

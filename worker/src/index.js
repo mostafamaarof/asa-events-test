@@ -7,8 +7,9 @@
                                     unlocks, not tied to a single event)
      POST /v1/otp/verify           check the OTP, return a session token
                                     (keyed by invitation_id, not event_code)
-     POST /v1/registrations        store the submission(s) as under_review,
-                                    one per event_code in event_codes[]
+     POST /v1/registrations        store the submission as under_review — one
+                                    row per person, covering every event_code
+                                    in event_codes[] they selected
      POST /v1/registrations/edit-link   email a 30-day self-service edit link
                                     for a (reference, email) pair, if it matches
      POST /v1/registrations/edit-fetch  return one registration's data (reference + token)
@@ -211,18 +212,13 @@ async function verifyOtp(req, env, ch, ipHash) {
 /* Shared by create and edit: the rules the browser already checked, re-checked here. */
 function requiredFieldErrors(d) {
   const missing = [];
-  for (const k of ['first_name_passport','family_name_passport','date_of_birth','nationality','mobile',
-                   'organization_name','country','job_title','protocol_level','role_in_delegation',
-                   'attendance_mode',
-                   'consent_processing','declaration_accuracy','signature_typed_name'])
+  for (const k of ['first_name_passport','family_name_passport','nationality','mobile',
+                   'organization_name','country','job_title','role_in_delegation',
+                   'consent_processing','signature_typed_name'])
     if (!d[k]) missing.push(k);
-  if (d.attendance_mode === 'in_person') {
-    for (const k of ['passport_number','passport_type','emergency_contact_name','emergency_contact_phone'])
-      if (!d[k]) missing.push(k);
-    if (d.visa_letter_needed === 'yes' && !d.consent_visa_sharing) missing.push('consent_visa_sharing');
-  }
   return missing;
 }
+const fullNameOf = (d) => [d.first_name_passport, d.family_name_passport].filter(Boolean).join(' ');
 
 async function createRegistration(req, env, ch, ipHash) {
   const token = (req.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '');
@@ -248,66 +244,51 @@ async function createRegistration(req, env, ch, ipHash) {
   const targets = requested.filter(c => coveredMap.has(c));
   if (!targets.length) return fail('invalid_event_selection', 400, ch);
 
+  const openTargets = targets.filter(c => {
+    const ev = coveredMap.get(c);
+    return !ev.registration_closes_at || Date.parse(ev.registration_closes_at) >= Date.now();
+  });
+  if (!openTargets.length) return fail('registration_closed', 410, ch);
+
   const missing = requiredFieldErrors(d);
   if (missing.length) return json({ ok: false, error: 'validation_failed', fields: missing }, 400, ch);
 
-  const fullName = [d.first_name_passport, d.middle_name_passport, d.family_name_passport].filter(Boolean).join(' ');
+  /* One person, one row — even when the invitation covers more than one event. */
+  const dup = await env.DB.prepare('SELECT reference FROM registrations WHERE email = ?').bind(s.e).first();
+  if (dup) return json({ ok: false, error: 'duplicate_registration', reference: dup.reference }, 409, ch);
+
+  const fullName = fullNameOf(d);
   const orgMismatch = d.organization_name &&
     d.organization_name.trim().toLowerCase() !== String(inv.organization_name).trim().toLowerCase();
 
-  const results = {};
-  let createdCount = 0;
-  for (const eventCode of targets) {
-    const ev = coveredMap.get(eventCode);
-    if (ev.registration_closes_at && Date.parse(ev.registration_closes_at) < Date.now()) {
-      results[eventCode] = { ok: false, error: 'registration_closed' };
-      continue;
-    }
-    const dup = await env.DB.prepare('SELECT reference FROM registrations WHERE event_code = ? AND email = ?')
-      .bind(eventCode, s.e).first();
-    if (dup) { results[eventCode] = { ok: true, reference: dup.reference, already_registered: true }; continue; }
+  const id = crypto.randomUUID();
+  const ref = 'SUB-' + [...crypto.getRandomValues(new Uint8Array(4))]
+    .map(x => 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'[x % 31]).join('');
 
-    const id = crypto.randomUUID();
-    const ref = 'SUB-' + [...crypto.getRandomValues(new Uint8Array(4))]
-      .map(x => 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'[x % 31]).join('');
+  await env.DB.prepare(
+    `INSERT INTO registrations (registration_id, reference, event_codes, invitation_id, email, full_name,
+      organization_name, country, attendance_mode, role_in_delegation, visa_letter_needed, status,
+      data_json, consents_json, flag_personal_email, flag_org_mismatch, source_ip_hash, fill_seconds, locale, created_at)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?, 'under_review', ?,?,?,?,?,?,?,?)`)
+    .bind(id, ref, openTargets.join(','), s.iv, s.e, fullName, d.organization_name || null, d.country || null,
+      'in_person', d.role_in_delegation || null, d.visa_letter_needed === 'yes' ? 1 : 0,
+      JSON.stringify(d), JSON.stringify(b.consents || {}),
+      b.personal_email ? 1 : 0, orgMismatch ? 1 : 0, ipHash, b.fill_seconds || null,
+      b.locale || 'en', new Date().toISOString()).run();
 
-    await env.DB.prepare(
-      `INSERT INTO registrations (registration_id, reference, event_code, invitation_id, email, full_name,
-        organization_name, country, attendance_mode, role_in_delegation, visa_letter_needed, status,
-        data_json, consents_json, flag_personal_email, flag_org_mismatch, source_ip_hash, fill_seconds, locale, created_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?, 'under_review', ?,?,?,?,?,?,?,?)`)
-      .bind(id, ref, eventCode, s.iv, s.e, fullName, d.organization_name || null, d.country || null,
-        d.attendance_mode || null, d.role_in_delegation || null, d.visa_letter_needed === 'yes' ? 1 : 0,
-        JSON.stringify(d), JSON.stringify(b.consents || {}),
-        b.personal_email ? 1 : 0, orgMismatch ? 1 : 0, ipHash, b.fill_seconds || null,
-        b.locale || 'en', new Date().toISOString()).run();
+  await env.DB.prepare('UPDATE invitations SET used_count = used_count + 1 WHERE invitation_id = ?').bind(s.iv).run();
+  await audit(env, 'registration_submitted', 'registration', id, ref, ipHash);
 
-    results[eventCode] = { ok: true, reference: ref, title_en: ev.title_en, title_ar: ev.title_ar };
-    createdCount++;
-    await audit(env, 'registration_submitted', 'registration', id, ref, ipHash);
-  }
+  const titlesEn = openTargets.map(c => coveredMap.get(c).title_en).join(' & ');
+  const titlesAr = openTargets.map(c => coveredMap.get(c).title_ar).join(' و');
+  const body = `<h2 style="font-size:18px;margin:0 0 12px">Your registration has been received</h2>
+    <p>Reference <b>${ref}</b> for <b>${titlesEn}</b>.</p>
+    <p>Under review by the Technical Office for International Relations. No registration number or QR code is issued before approval.</p>
+    <p style="direction:rtl;text-align:right">الرقم المرجعي <b>${ref}</b> في <b>${titlesAr}</b>.</p>
+    <p style="direction:rtl;text-align:right">قيد المراجعة لدى المكتب الفني للعلاقات الدولية. ولا يصدر رقم التسجيل ولا رمز QR قبل الاعتماد.</p>`;
+  await sendMail(env, s.e, `Registration received — ${ref}`, shell(body, env));
 
-  if (createdCount > 0) {
-    /* One code redemption per submission, however many events it covers. */
-    await env.DB.prepare('UPDATE invitations SET used_count = used_count + 1 WHERE invitation_id = ?').bind(s.iv).run();
-  }
-
-  const anyOk = Object.values(results).some(r => r.ok);
-  if (!anyOk) return json({ ok: false, error: 'registration_failed', results }, 409, ch);
-
-  const newlyCreated = Object.entries(results).filter(([, r]) => r.ok && !r.already_registered);
-  if (newlyCreated.length) {
-    const listEn = newlyCreated.map(([, r]) => `${r.title_en} — reference <b>${r.reference}</b>`).join('<br>');
-    const listAr = newlyCreated.map(([, r]) => `${r.title_ar} — الرقم المرجعي <b>${r.reference}</b>`).join('<br>');
-    const body = `<h2 style="font-size:18px;margin:0 0 12px">Your registration has been received</h2>
-      <p>${listEn}</p>
-      <p>Under review by the Technical Office for International Relations. No registration number or QR code is issued before approval.</p>
-      <p style="direction:rtl;text-align:right">${listAr}</p>
-      <p style="direction:rtl;text-align:right">قيد المراجعة لدى المكتب الفني للعلاقات الدولية. ولا يصدر رقم التسجيل ولا رمز QR قبل الاعتماد.</p>`;
-    await sendMail(env, s.e, `Registration received — ${newlyCreated.map(([, r]) => r.reference).join(', ')}`, shell(body, env));
-  }
-
-  return json({ ok: true, status: 'under_review', results }, 201, ch);
+  return json({ ok: true, status: 'under_review', reference: ref, event_codes: openTargets }, 201, ch);
 }
 
 async function requestEditLink(req, env, ch, ipHash) {
@@ -317,21 +298,31 @@ async function requestEditLink(req, env, ch, ipHash) {
   if (!await allow(env, 'editlink:' + ipHash, 10, 3600)) return fail('rate_limited', 429, ch);
   if (!reference || !EMAIL_RE.test(email)) return fail('invalid_request', 400, ch);
 
-  const reg = await env.DB.prepare('SELECT registration_id, reference, email, event_code FROM registrations WHERE reference = ? AND email = ?')
+  const reg = await env.DB.prepare('SELECT registration_id, reference, email, event_codes FROM registrations WHERE reference = ? AND email = ?')
     .bind(reference, email).first();
   if (reg) {
-    const ev = await env.DB.prepare('SELECT title_en, title_ar FROM events WHERE code = ?').bind(reg.event_code).first();
+    const { titlesEn, titlesAr } = await eventTitles(env, reg.event_codes);
     const token = await signEditToken(env, reg.registration_id);
     const link = `${env.FRONTEND_BASE || ''}/register/?edit=${encodeURIComponent(reg.reference)}.${encodeURIComponent(token)}`;
     await sendMail(env, reg.email, `Edit link for registration ${reg.reference}`, shell(
       `<h2 style="font-size:18px;margin:0 0 12px">Edit your registration</h2>
-       <p>Use this link to review or update your submission for <b>${ev ? ev.title_en : reg.event_code}</b> (reference <b>${reg.reference}</b>). It is valid for 30 days.</p>
+       <p>Use this link to review or update your submission for <b>${titlesEn}</b> (reference <b>${reg.reference}</b>). It is valid for 30 days.</p>
        <p><a href="${link}">${link}</a></p>
-       <p style="direction:rtl;text-align:right">استخدم هذا الرابط لمراجعة أو تعديل طلبك في <b>${ev ? ev.title_ar : reg.event_code}</b> (الرقم المرجعي <b>${reg.reference}</b>). صلاحيته 30 يوماً.</p>`, env));
+       <p style="direction:rtl;text-align:right">استخدم هذا الرابط لمراجعة أو تعديل طلبك في <b>${titlesAr}</b> (الرقم المرجعي <b>${reg.reference}</b>). صلاحيته 30 يوماً.</p>`, env));
     await audit(env, 'edit_link_sent', 'registration', reg.registration_id, reg.reference, ipHash);
   }
   /* Same response whether or not a match was found — never confirm which half was wrong. */
   return json({ ok: true }, 200, ch);
+}
+
+/* event_codes is a comma-joined list — one registration row can cover more than one event. */
+async function eventTitles(env, eventCodesStr) {
+  const codes = (eventCodesStr || '').split(',').filter(Boolean);
+  if (!codes.length) return { codes, titlesEn: '', titlesAr: '' };
+  const { results } = await env.DB.prepare(
+    `SELECT code, title_en, title_ar FROM events WHERE code IN (${codes.map(() => '?').join(',')})`).bind(...codes).all();
+  return { codes, titlesEn: results.map(e => e.title_en).join(' & ') || codes.join(', '),
+    titlesAr: results.map(e => e.title_ar).join(' و') || codes.join('، ') };
 }
 
 async function fetchForEdit(req, env, ch) {
@@ -342,7 +333,7 @@ async function fetchForEdit(req, env, ch) {
   const reg = await env.DB.prepare('SELECT * FROM registrations WHERE reference = ? AND registration_id = ?')
     .bind(reference, t.r).first();
   if (!reg) return fail('invalid_edit_link', 401, ch);
-  return json({ ok: true, reference: reg.reference, event_code: reg.event_code, status: reg.status,
+  return json({ ok: true, reference: reg.reference, event_codes: (reg.event_codes || '').split(',').filter(Boolean), status: reg.status,
     registration: JSON.parse(reg.data_json || '{}'), consents: JSON.parse(reg.consents_json || '{}') }, 200, ch);
 }
 
@@ -362,34 +353,34 @@ async function updateRegistration(req, env, ch, ipHash) {
   if (missing.length) return json({ ok: false, error: 'validation_failed', fields: missing }, 400, ch);
 
   const inv = reg.invitation_id ? await env.DB.prepare('SELECT organization_name FROM invitations WHERE invitation_id = ?').bind(reg.invitation_id).first() : null;
-  const fullName = [d.first_name_passport, d.middle_name_passport, d.family_name_passport].filter(Boolean).join(' ');
+  const fullName = fullNameOf(d);
   const orgMismatch = inv && d.organization_name &&
     d.organization_name.trim().toLowerCase() !== String(inv.organization_name).trim().toLowerCase();
 
   await env.DB.prepare(
-    `UPDATE registrations SET full_name=?, organization_name=?, country=?, attendance_mode=?, role_in_delegation=?,
+    `UPDATE registrations SET full_name=?, organization_name=?, country=?, role_in_delegation=?,
        visa_letter_needed=?, data_json=?, consents_json=?, flag_org_mismatch=?
      WHERE registration_id = ?`)
-    .bind(fullName, d.organization_name || null, d.country || null, d.attendance_mode || null,
+    .bind(fullName, d.organization_name || null, d.country || null,
       d.role_in_delegation || null, d.visa_letter_needed === 'yes' ? 1 : 0,
       JSON.stringify(d), JSON.stringify(b.consents || {}), orgMismatch ? 1 : 0, reg.registration_id).run();
 
   await audit(env, 'registration_updated', 'registration', reg.registration_id, reg.reference, ipHash);
 
-  const ev = await env.DB.prepare('SELECT title_en, title_ar FROM events WHERE code = ?').bind(reg.event_code).first();
+  const { codes, titlesEn, titlesAr } = await eventTitles(env, reg.event_codes);
   await sendMail(env, reg.email, `Registration updated — ${reg.reference}`, shell(
     `<h2 style="font-size:18px;margin:0 0 12px">Your registration has been updated</h2>
-     <p>Reference <b>${reg.reference}</b> for <b>${ev ? ev.title_en : reg.event_code}</b> has been updated and remains under review.</p>
-     <p style="direction:rtl;text-align:right">تم تحديث طلبك بالرقم المرجعي <b>${reg.reference}</b> في <b>${ev ? ev.title_ar : reg.event_code}</b> وهو لا يزال قيد المراجعة.</p>`, env));
+     <p>Reference <b>${reg.reference}</b> for <b>${titlesEn}</b> has been updated and remains under review.</p>
+     <p style="direction:rtl;text-align:right">تم تحديث طلبك بالرقم المرجعي <b>${reg.reference}</b> في <b>${titlesAr}</b> وهو لا يزال قيد المراجعة.</p>`, env));
 
-  return json({ ok: true, status: 'under_review', reference: reg.reference }, 200, ch);
+  return json({ ok: true, status: 'under_review', reference: reg.reference, event_codes: codes }, 200, ch);
 }
 
 async function adminRead(req, env, ch, csv) {
   const token = (req.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '');
   if (!env.ADMIN_TOKEN || token !== env.ADMIN_TOKEN) return fail('unauthorized', 401, ch);
   const { results } = await env.DB.prepare(
-    `SELECT reference, registration_number, created_at, status, event_code, full_name, email, organization_name, country,
+    `SELECT reference, registration_number, created_at, status, event_codes, full_name, email, organization_name, country,
             attendance_mode, role_in_delegation, visa_letter_needed, flag_personal_email, flag_org_mismatch
      FROM registrations ORDER BY created_at DESC LIMIT 500`).all();
   if (!csv) return json({ ok: true, count: results.length, registrations: results }, 200, ch);
@@ -437,13 +428,14 @@ async function adminSetStatus(req, env, ch, ipHash) {
   const reg = await env.DB.prepare('SELECT * FROM registrations WHERE reference = ?').bind(reference).first();
   if (!reg) return fail('not_found', 404, ch);
 
-  /* Assigned once, on first approval — re-approving after a revert keeps the same number. */
+  /* Assigned once, on first approval — re-approving after a revert keeps the same number.
+     Numbered off a global running count, prefixed by whichever event is primary for this person. */
   let regNumber = reg.registration_number;
+  const primaryEvent = (reg.event_codes || '').split(',')[0] || 'REG';
   if (status === 'approved' && !regNumber) {
     const { count } = await env.DB.prepare(
-      'SELECT COUNT(*) AS count FROM registrations WHERE event_code = ? AND registration_number IS NOT NULL')
-      .bind(reg.event_code).first();
-    regNumber = `${reg.event_code}-${String(count + 1).padStart(4, '0')}`;
+      'SELECT COUNT(*) AS count FROM registrations WHERE registration_number IS NOT NULL').first();
+    regNumber = `${primaryEvent}-${String(count + 1).padStart(4, '0')}`;
   }
 
   await env.DB.prepare('UPDATE registrations SET status = ?, registration_number = ? WHERE reference = ?')
@@ -451,18 +443,18 @@ async function adminSetStatus(req, env, ch, ipHash) {
   await audit(env, 'registration_status_changed', 'registration', reg.registration_id, `${reference}:${status}`, ipHash);
 
   if (status === 'approved' || status === 'rejected') {
-    const ev = await env.DB.prepare('SELECT title_en, title_ar FROM events WHERE code = ?').bind(reg.event_code).first();
+    const { titlesEn, titlesAr } = await eventTitles(env, reg.event_codes);
     const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(regNumber)}`;
     const body = status === 'approved'
       ? `<h2 style="font-size:18px;margin:0 0 12px">Your registration has been approved</h2>
-         <p>Reference <b>${reference}</b> for <b>${ev ? ev.title_en : reg.event_code}</b> has been approved by the Technical Office for International Relations.</p>
+         <p>Reference <b>${reference}</b> for <b>${titlesEn}</b> has been approved by the Technical Office for International Relations.</p>
          <p>Your registration number is <b style="font-size:20px;letter-spacing:.04em">${regNumber}</b>. Present the QR code below at the accreditation desk.</p>
          <p><img src="${qrUrl}" width="200" height="200" alt="QR code ${regNumber}" style="border:1px solid #CBD6E0;border-radius:8px;padding:8px"></p>
-         <p style="direction:rtl;text-align:right">تم اعتماد طلبك بالرقم المرجعي <b>${reference}</b> في <b>${ev ? ev.title_ar : reg.event_code}</b> من المكتب الفني للعلاقات الدولية.</p>
+         <p style="direction:rtl;text-align:right">تم اعتماد طلبك بالرقم المرجعي <b>${reference}</b> في <b>${titlesAr}</b> من المكتب الفني للعلاقات الدولية.</p>
          <p style="direction:rtl;text-align:right">رقم تسجيلك <b style="font-size:20px;letter-spacing:.04em">${regNumber}</b>. أظهر رمز الاستجابة السريعة أعلاه عند مكتب الاعتماد.</p>`
       : `<h2 style="font-size:18px;margin:0 0 12px">Update on your registration</h2>
-         <p>Reference <b>${reference}</b> for <b>${ev ? ev.title_en : reg.event_code}</b> was not approved. Contact the secretariat for details.</p>
-         <p style="direction:rtl;text-align:right">لم يُعتمد طلبك بالرقم المرجعي <b>${reference}</b> في <b>${ev ? ev.title_ar : reg.event_code}</b>. تواصل مع الأمانة لمزيد من التفاصيل.</p>`;
+         <p>Reference <b>${reference}</b> for <b>${titlesEn}</b> was not approved. Contact the secretariat for details.</p>
+         <p style="direction:rtl;text-align:right">لم يُعتمد طلبك بالرقم المرجعي <b>${reference}</b> في <b>${titlesAr}</b>. تواصل مع الأمانة لمزيد من التفاصيل.</p>`;
     await sendMail(env, reg.email, `${status === 'approved' ? 'Registration approved' : 'Registration update'} — ${reference}`, shell(body, env));
   }
 
@@ -472,7 +464,7 @@ async function adminSetStatus(req, env, ch, ipHash) {
 async function adminExportFull(req, env, ch) {
   if (!requireAdmin(req, env)) return fail('unauthorized', 401, ch);
   const { results } = await env.DB.prepare(
-    `SELECT registration_id, reference, registration_number, created_at, status, event_code, invitation_id, email, full_name,
+    `SELECT registration_id, reference, registration_number, created_at, status, event_codes, invitation_id, email, full_name,
             organization_name, country, attendance_mode, role_in_delegation, visa_letter_needed,
             flag_personal_email, flag_org_mismatch, fill_seconds, locale, data_json, consents_json
      FROM registrations ORDER BY created_at DESC LIMIT 1000`).all();
