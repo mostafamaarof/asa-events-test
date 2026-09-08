@@ -451,6 +451,7 @@ const state = {
   otpEmail: '',
   session: '',
   reference: '',           // the single submission reference, once created or updated
+  registrationNumber: '',  // assigned immediately on submission (registrations are auto-confirmed)
   confirmedEvents: [],     // event codes covered by that one reference
   editMode: null,          // { reference, token } when editing an existing submission
   editRequestSent: false
@@ -882,7 +883,8 @@ function mock(path, body) {
       return body.otp === '123456' ? res({ ok: true, session: 'mock-session' }) : rej(new Error('bad_otp'));
     }
     if (path === '/registrations') {
-      return res({ ok: true, status: 'under_review', reference: 'SUB-' + Math.random().toString(36).slice(2, 8).toUpperCase(), event_codes: body.event_codes || [] });
+      return res({ ok: true, status: 'approved', reference: 'SUB-' + Math.random().toString(36).slice(2, 8).toUpperCase(),
+        registration_number: (body.event_codes || [])[0] + '-0001', event_codes: body.event_codes || [] });
     }
     if (path === '/registrations/edit-link') return res({ ok: true });
     if (path === '/registrations/edit-fetch') {
@@ -1217,10 +1219,12 @@ async function doSubmit(btn) {
     if (state.editMode) {
       const r = await call('/registrations/edit', buildEditPayload());
       state.reference = r.reference;
+      state.registrationNumber = r.registration_number || '';
       state.confirmedEvents = r.event_codes || (r.event_code ? [r.event_code] : state.events.map(e => e.code));
     } else {
       const r = await call('/registrations', buildPayload());
       state.reference = r.reference;
+      state.registrationNumber = r.registration_number || '';
       state.confirmedEvents = r.event_codes || state.events.map(e => e.code);
     }
     store.del(CONFIG.draftKey);
@@ -1266,18 +1270,17 @@ function renderDone() {
   showChrome(false);
   head('', state.editMode
     ? (state.lang === 'ar' ? 'تم حفظ تعديلاتك' : 'Your changes have been saved')
-    : (state.lang === 'ar' ? 'استلمنا طلب تسجيلك' : 'Your registration has been received'),
+    : (state.lang === 'ar' ? 'تم تأكيد التسجيل' : 'Registration confirmed'),
     state.lang === 'ar'
-      ? 'طلبك الآن قيد المراجعة لدى المكتب الفني لرئيس الجهاز للعلاقات الدولية.'
-      : 'It is now under review by the Technical Office for International Relations.');
+      ? 'وصل تأكيد بالبريد الإلكتروني يتضمن رقم التسجيل.'
+      : 'A confirmation with your registration number has been sent to your email.');
   const b = body();
-  b.append(el('div', { class: 'stamp' }, state.lang === 'ar' ? 'قيد المراجعة' : 'Under review'));
-  if (state.reference) {
-    const eventNames = (state.confirmedEvents || []).map(c => EVENTS[c] ? L(EVENTS[c].short) : c).join(state.lang === 'ar' ? '، ' : ', ');
-    b.append(el('p', { style: 'margin-top:20px' },
-      (state.lang === 'ar' ? 'الرقم المرجعي: ' : 'Reference: '), el('b', {}, state.reference),
-      eventNames ? ` (${eventNames})` : ''));
-  }
+  b.append(el('div', { class: 'stamp' }, state.lang === 'ar' ? 'مؤكَّد' : 'Confirmed'));
+  const eventNames = (state.confirmedEvents || []).map(c => EVENTS[c] ? L(EVENTS[c].short) : c).join(state.lang === 'ar' ? '، ' : ', ');
+  if (state.registrationNumber) b.append(el('p', { style: 'margin-top:20px;font-size:20px;font-weight:600;letter-spacing:.04em' }, state.registrationNumber));
+  if (state.reference) b.append(el('p', { style: 'margin-top:8px' },
+    (state.lang === 'ar' ? 'الرقم المرجعي: ' : 'Reference: '), el('b', {}, state.reference),
+    eventNames ? ` (${eventNames})` : ''));
   b.append(el('p', { style: 'margin-top:20px' }, (state.lang === 'ar' ? 'للاستفسار: ' : 'Questions: '), CONFIG.supportEmail));
   foot();
 }

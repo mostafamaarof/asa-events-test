@@ -73,8 +73,8 @@ CREATE TABLE registrations (
   attendance_mode     TEXT,
   role_in_delegation  TEXT,
   visa_letter_needed  INTEGER DEFAULT 0,
-  status              TEXT NOT NULL DEFAULT 'under_review',
-  registration_number TEXT,              -- assigned only on approval, distinct from reference
+  status              TEXT NOT NULL DEFAULT 'approved', -- auto-confirmed on submission; admin can still revert/reject
+  registration_number TEXT,              -- assigned immediately on submission, distinct from reference
   data_json           TEXT NOT NULL,     -- full submission
   consents_json       TEXT,
   flag_personal_email INTEGER DEFAULT 0,

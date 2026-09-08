@@ -12,13 +12,15 @@ binding = "FILES"
 bucket_name = "asa-events-files"
 
 [vars]
-ALLOWED_ORIGINS = "https://register.saiegyptevents.com,http://register.saiegyptevents.com,https://www.saiegyptevents.com,https://saiegyptevents.com,https://mostafamaarof.com,https://www.mostafamaarof.com,https://events.mostafamaarof.com,https://mostafamaarof.github.io,http://localhost:8000"
+ALLOWED_ORIGINS = "https://register.saiegyptevents.com,https://www.saiegyptevents.com,https://saiegyptevents.com,https://mostafamaarof.com,https://www.mostafamaarof.com,https://events.mostafamaarof.com,https://mostafamaarof.github.io,http://localhost:8000"
 MAIL_FROM = "ASA Events <events@mostafamaarof.com>"
 REPLY_TO = "asa.eg.events@gmail.com"
+GMAIL_ADDRESS = "asa.eg.events@gmail.com"
 OTP_TTL_MINUTES = "10"
 FRONTEND_BASE = "https://register.saiegyptevents.com"
 
 # Secrets, set with: npx wrangler secret put NAME
-#   RESEND_API_KEY   sending key from resend.com
-#   SESSION_SECRET   any long random string
-#   ADMIN_TOKEN      long random string, used to read the data back
+#   RESEND_API_KEY     sending key from resend.com (fallback sender while GMAIL_APP_PASSWORD is unset)
+#   GMAIL_APP_PASSWORD  App Password for GMAIL_ADDRESS — once set, mail sends via Gmail SMTP instead of Resend
+#   SESSION_SECRET     any long random string
+#   ADMIN_TOKEN        long random string, used to read the data back
