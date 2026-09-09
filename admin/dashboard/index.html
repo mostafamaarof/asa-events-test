@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow, noarchive">
+<title>Leadership Dashboard — ASA Events Admin</title>
+<style>
+:root{
+  --ink:#0B2135; --ink-soft:#1C3A56; --surface:#EEF2F6; --sheet:#FFFFFF;
+  --rule:#CBD6E0; --rule-strong:#93A6B8; --muted:#556A7D;
+  --brass:#A8842C; --brass-tint:#F3EBD8;
+  --ok:#1D6B4C; --ok-tint:#E9F4EE; --err:#A02226; --err-tint:#FAECEC; --warn-tint:#FBF3DF; --warn:#8A6100;
+  --f-body:"IBM Plex Sans",system-ui,sans-serif; --f-num:ui-monospace,Consolas,monospace;
+  /* ---- validated dataviz palette (see dataviz skill; light mode only, matches this tool's other pages) ---- */
+  --viz-surface:#fcfcfb; --viz-text-primary:#0b0b0b; --viz-text-secondary:#52514e; --viz-text-muted:#898781;
+  --viz-grid:#e1e0d9; --viz-baseline:#c3c2b7;
+  --viz-seq: #2a78d6;          /* single-hue bars: magnitude per category */
+  --viz-seq-wash: rgba(42,120,214,.10);
+  --viz-cat-1: #2a78d6;        /* categorical slot 1 — WGITA */
+  --viz-cat-2: #eb6834;        /* categorical slot 2 — KSC */
+}
+*,*::before,*::after{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{font-family:var(--f-body);font-size:15px;line-height:1.55;color:var(--ink);background:var(--surface)}
+header{background:var(--ink);color:#fff;padding:16px 24px}
+header h1{margin:0;font-size:18px;font-weight:500}
+header p{margin:4px 0 0;font-size:13px;color:#A9BDD0}
+main{max-width:1100px;margin:0 auto;padding:24px 20px 64px;display:grid;gap:20px}
+.card{background:var(--sheet);border:1px solid var(--rule);padding:20px 24px}
+.card h2{font-size:16px;margin:0 0 4px}
+.card .cap{font-size:13px;color:var(--muted);margin:0 0 16px}
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px 20px}
+@media (max-width:640px){.grid{grid-template-columns:1fr}}
+.f{display:flex;flex-direction:column;gap:5px}
+label{font-size:13px;font-weight:500}
+input{font:inherit;font-size:14px;padding:8px 10px;border:1px solid var(--rule-strong);border-radius:2px;background:#fff;color:var(--ink)}
+.hint{font-size:12px;color:var(--muted);margin-top:2px}
+.actions{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+button{font:inherit;font-size:14px;font-weight:500;padding:10px 20px;border-radius:2px;border:1px solid transparent;background:var(--ink);color:#fff;cursor:pointer}
+button:hover{background:var(--ink-soft)}
+button.ghost{background:transparent;color:var(--ink);border-color:var(--rule-strong)}
+button.ghost:hover{background:#F1F5F8}
+.msg{font-size:13px;padding:10px 12px;border-radius:2px;display:none}
+.msg.ok{display:block;background:var(--ok-tint);color:var(--ok)}
+.msg.err{display:block;background:var(--err-tint);color:var(--err)}
+.empty{color:var(--muted);font-size:13px;padding:8px 0}
+
+/* KPI row */
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1px;background:var(--rule);border:1px solid var(--rule)}
+.kpi{background:var(--sheet);padding:16px 18px}
+.kpi .v{font-family:var(--f-body);font-size:28px;font-weight:600;color:var(--viz-text-primary);line-height:1.1}
+.kpi .l{font-size:12.5px;color:var(--muted);margin-top:6px}
+
+/* Bar chart (horizontal) */
+.barchart{display:grid;gap:10px}
+.barrow{display:grid;grid-template-columns:150px 1fr 46px;align-items:center;gap:10px}
+.barrow .lbl{font-size:13px;color:var(--viz-text-secondary);text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.barrow .track{background:var(--surface);height:24px;border-radius:4px;position:relative}
+.barrow .fill{height:24px;border-radius:4px;background:var(--viz-seq);min-width:4px}
+.barrow .val{font-family:var(--f-num);font-size:13px;color:var(--viz-text-secondary);font-variant-numeric:tabular-nums}
+@media (max-width:560px){.barrow{grid-template-columns:96px 1fr 38px}}
+
+/* Legend */
+.legend{display:flex;gap:18px;flex-wrap:wrap;margin-bottom:10px;font-size:13px;color:var(--viz-text-secondary)}
+.legend .sw{display:inline-flex;align-items:center;gap:6px}
+.legend .dot{width:10px;height:10px;border-radius:50%;display:inline-block}
+
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+@media (max-width:720px){.two-col{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>ASA Events — Leadership Dashboard</h1>
+  <p>Internal tool. Not linked from the public site. Requires an access token.</p>
+</header>
+
+<main>
+  <div class="card">
+    <h2>Access token</h2>
+    <div class="grid">
+      <div class="f" style="grid-column:1/-1">
+        <label for="token">Access token <span style="color:var(--brass)">*</span></label>
+        <input type="password" id="token" autocomplete="off" placeholder="paste your token">
+        <span class="hint">Kept only in this browser tab (sessionStorage). Same token as the Full Report page.</span>
+      </div>
+    </div>
+    <div class="actions" style="margin-top:14px">
+      <button id="load">Load dashboard</button>
+      <span id="topMsg" class="msg"></span>
+    </div>
+  </div>
+
+  <div id="content"></div>
+</main>
+
+<script>
+const CONFIG = { apiBase: 'https://asa-events-api.mostafamaarof.workers.dev/v1' };
+const $ = (id) => document.getElementById(id);
+const tokenInput = $('token');
+tokenInput.value = sessionStorage.getItem('asa_report_token') || '';
+tokenInput.addEventListener('input', () => sessionStorage.setItem('asa_report_token', tokenInput.value));
+
+function showMsg(el, text, ok) { el.textContent = text; el.className = 'msg ' + (ok ? 'ok' : 'err'); }
+function authHeaders() {
+  const token = tokenInput.value.trim();
+  if (!token) throw new Error('Enter the access token first.');
+  return { 'Authorization': 'Bearer ' + token };
+}
+
+const EVENT_NAMES = { 'WGITA-35-2026': '35th Annual Meeting of INTOSAI Working Group on IT Audit', 'KSC-SC18-2026': '18th KSC Steering Committee Meeting' };
+const REGION_NAMES = { 'ARABOSAI':'ARABOSAI','AFROSAI':'AFROSAI','AFROSAI-E':'AFROSAI-E','ASOSAI':'ASOSAI','CAROSAI':'CAROSAI','EUROSAI':'EUROSAI','OLACEFS':'OLACEFS','PASAI':'PASAI','na':'Not applicable' };
+const ROLE_NAMES = { hod:'Head of delegation', delegate:'Delegate', observer:'Observer', speaker:'Speaker', moderator:'Moderator', secretariat:'Secretariat', interpreter:'Interpreter', accompanying:'Accompanying official' };
+const DIET_NAMES = { none:'No special requirement', vegetarian:'Vegetarian', vegan:'Vegan', halal:'Halal only', gluten:'Gluten free', diabetic:'Diabetic', other:'Other' };
+const COUNTRIES_RAW = "AF:Afghanistan|AL:Albania|DZ:Algeria|AS:American Samoa|AD:Andorra|AO:Angola|AI:Anguilla|AQ:Antarctica|AG:Antigua and Barbuda|AR:Argentina|AM:Armenia|AW:Aruba|AU:Australia|AT:Austria|AZ:Azerbaijan|BS:Bahamas|BH:Bahrain|BD:Bangladesh|BB:Barbados|BY:Belarus|BE:Belgium|BZ:Belize|BJ:Benin|BM:Bermuda|BT:Bhutan|BO:Bolivia|BQ:Bonaire, Sint Eustatius and Saba|BA:Bosnia and Herzegovina|BW:Botswana|BV:Bouvet Island|BR:Brazil|IO:British Indian Ocean Territory|BN:Brunei Darussalam|BG:Bulgaria|BF:Burkina Faso|BI:Burundi|CV:Cabo Verde|KH:Cambodia|CM:Cameroon|CA:Canada|KY:Cayman Islands|CF:Central African Republic|TD:Chad|CL:Chile|CN:China|CX:Christmas Island|CC:Cocos (Keeling) Islands|CO:Colombia|KM:Comoros|CG:Congo|CD:Congo, The Democratic Republic of the|CK:Cook Islands|CR:Costa Rica|HR:Croatia|CU:Cuba|CW:Curaçao|CY:Cyprus|CZ:Czechia|CI:Côte d'Ivoire|DK:Denmark|DJ:Djibouti|DM:Dominica|DO:Dominican Republic|EC:Ecuador|EG:Egypt|SV:El Salvador|GQ:Equatorial Guinea|ER:Eritrea|EE:Estonia|SZ:Eswatini|ET:Ethiopia|FK:Falkland Islands (Malvinas)|FO:Faroe Islands|FJ:Fiji|FI:Finland|FR:France|GF:French Guiana|PF:French Polynesia|TF:French Southern Territories|GA:Gabon|GM:Gambia|GE:Georgia|DE:Germany|GH:Ghana|GI:Gibraltar|GR:Greece|GL:Greenland|GD:Grenada|GP:Guadeloupe|GU:Guam|GT:Guatemala|GG:Guernsey|GN:Guinea|GW:Guinea-Bissau|GY:Guyana|HT:Haiti|HM:Heard Island and McDonald Islands|VA:Holy See (Vatican City State)|HN:Honduras|HK:Hong Kong|HU:Hungary|IS:Iceland|IN:India|ID:Indonesia|IR:Iran|IQ:Iraq|IE:Ireland|IM:Isle of Man|IL:Israel|IT:Italy|JM:Jamaica|JP:Japan|JE:Jersey|JO:Jordan|KZ:Kazakhstan|KE:Kenya|KI:Kiribati|KP:North Korea|KR:South Korea|KW:Kuwait|KG:Kyrgyzstan|LA:Laos|LV:Latvia|LB:Lebanon|LS:Lesotho|LR:Liberia|LY:Libya|LI:Liechtenstein|LT:Lithuania|LU:Luxembourg|MO:Macao|MG:Madagascar|MW:Malawi|MY:Malaysia|MV:Maldives|ML:Mali|MT:Malta|MH:Marshall Islands|MQ:Martinique|MR:Mauritania|MU:Mauritius|YT:Mayotte|MX:Mexico|FM:Micronesia, Federated States of|MD:Moldova|MC:Monaco|MN:Mongolia|ME:Montenegro|MS:Montserrat|MA:Morocco|MZ:Mozambique|MM:Myanmar|NA:Namibia|NR:Nauru|NP:Nepal|NL:Netherlands|NC:New Caledonia|NZ:New Zealand|NI:Nicaragua|NE:Niger|NG:Nigeria|NU:Niue|NF:Norfolk Island|MK:North Macedonia|MP:Northern Mariana Islands|NO:Norway|OM:Oman|PK:Pakistan|PW:Palau|PS:Palestine, State of|PA:Panama|PG:Papua New Guinea|PY:Paraguay|PE:Peru|PH:Philippines|PN:Pitcairn|PL:Poland|PT:Portugal|PR:Puerto Rico|QA:Qatar|RO:Romania|RU:Russian Federation|RW:Rwanda|RE:Réunion|BL:Saint Barthélemy|SH:Saint Helena, Ascension and Tristan da Cunha|KN:Saint Kitts and Nevis|LC:Saint Lucia|MF:Saint Martin (French part)|PM:Saint Pierre and Miquelon|VC:Saint Vincent and the Grenadines|WS:Samoa|SM:San Marino|ST:Sao Tome and Principe|SA:Saudi Arabia|SN:Senegal|RS:Serbia|SC:Seychelles|SL:Sierra Leone|SG:Singapore|SX:Sint Maarten (Dutch part)|SK:Slovakia|SI:Slovenia|SB:Solomon Islands|SO:Somalia|ZA:South Africa|GS:South Georgia and the South Sandwich Islands|SS:South Sudan|ES:Spain|LK:Sri Lanka|SD:Sudan|SR:Suriname|SJ:Svalbard and Jan Mayen|SE:Sweden|CH:Switzerland|SY:Syria|TW:Taiwan|TJ:Tajikistan|TZ:Tanzania|TH:Thailand|TL:Timor-Leste|TG:Togo|TK:Tokelau|TO:Tonga|TT:Trinidad and Tobago|TN:Tunisia|TM:Turkmenistan|TC:Turks and Caicos Islands|TV:Tuvalu|TR:Türkiye|UG:Uganda|UA:Ukraine|AE:United Arab Emirates|GB:United Kingdom|US:United States|UM:United States Minor Outlying Islands|UY:Uruguay|UZ:Uzbekistan|VU:Vanuatu|VE:Venezuela|VN:Vietnam|VG:Virgin Islands, British|VI:Virgin Islands, U.S.|WF:Wallis and Futuna|EH:Western Sahara|YE:Yemen|ZM:Zambia|ZW:Zimbabwe|AX:Åland Islands";
+const COUNTRY_NAMES = Object.fromEntries(COUNTRIES_RAW.split('|').map(s => { const i = s.indexOf(':'); return [s.slice(0,i), s.slice(i+1)]; }));
+
+/* ---------- small chart builders (plain SVG, per the dataviz skill) ---------- */
+function kpiTile(value, label) {
+  return `<div class="kpi"><div class="v">${value}</div><div class="l">${label}</div></div>`;
+}
+/* Horizontal bar chart: one sequential hue, 24px bars, 4px rounded end, direct value label. */
+function barChart(rows, opts) {
+  opts = opts || {};
+  const max = Math.max(1, ...rows.map(r => r.value));
+  const items = rows.slice(0, opts.limit || rows.length);
+  const bars = items.map(r => {
+    const pct = Math.max(2, Math.round((r.value / max) * 100));
+    return `<div class="barrow">
+      <div class="lbl" title="${r.label}">${r.label}</div>
+      <div class="track"><div class="fill" style="width:${pct}%" title="${r.label}: ${r.value}"></div></div>
+      <div class="val">${r.value}</div>
+    </div>`;
+  }).join('');
+  return `<div class="barchart">${bars}</div>`;
+}
+/* Two-series line chart with soft area fill, legend, and direct end-labels. */
+function lineChart(dates, seriesA, seriesB, labelA, labelB) {
+  const w = 640, h = 220, padL = 36, padR = 16, padT = 12, padB = 24;
+  const innerW = w - padL - padR, innerH = h - padT - padB;
+  const maxY = Math.max(1, ...seriesA, ...seriesB);
+  const n = dates.length;
+  const x = (i) => padL + (n <= 1 ? 0 : (i / (n - 1)) * innerW);
+  const y = (v) => padT + innerH - (v / maxY) * innerH;
+  const pathFor = (series) => series.map((v, i) => `${i === 0 ? 'M' : 'L'} ${x(i).toFixed(1)} ${y(v).toFixed(1)}`).join(' ');
+  const areaFor = (series, color) => `<path d="${pathFor(series)} L ${x(n - 1).toFixed(1)} ${(padT + innerH).toFixed(1)} L ${x(0).toFixed(1)} ${(padT + innerH).toFixed(1)} Z" fill="${color}" opacity="0.10"></path>`;
+  const gridY = [0, 0.5, 1].map(f => padT + innerH * (1 - f));
+  const gridLines = gridY.map(gy => `<line x1="${padL}" y1="${gy.toFixed(1)}" x2="${w - padR}" y2="${gy.toFixed(1)}" stroke="var(--viz-grid)" stroke-width="1"></line>`).join('');
+  const dotsFor = (series, color) => series.map((v, i) => `<circle cx="${x(i).toFixed(1)}" cy="${y(v).toFixed(1)}" r="4" fill="${color}" stroke="var(--viz-surface)" stroke-width="2"><title>${dates[i]}: ${v}</title></circle>`).join('');
+  const lastA = seriesA[n - 1] ?? 0, lastB = seriesB[n - 1] ?? 0;
+  return `
+    <div class="legend">
+      <span class="sw"><span class="dot" style="background:var(--viz-cat-1)"></span>${labelA}</span>
+      <span class="sw"><span class="dot" style="background:var(--viz-cat-2)"></span>${labelB}</span>
+    </div>
+    <svg viewBox="0 0 ${w} ${h}" style="width:100%;height:auto;overflow:visible" role="img" aria-label="Cumulative registrations over time">
+      ${gridLines}
+      <line x1="${padL}" y1="${padT + innerH}" x2="${w - padR}" y2="${padT + innerH}" stroke="var(--viz-baseline)" stroke-width="1"></line>
+      ${areaFor(seriesA, 'var(--viz-cat-1)')}
+      ${areaFor(seriesB, 'var(--viz-cat-2)')}
+      <path d="${pathFor(seriesA)}" fill="none" stroke="var(--viz-cat-1)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"></path>
+      <path d="${pathFor(seriesB)}" fill="none" stroke="var(--viz-cat-2)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"></path>
+      ${dotsFor(seriesA, 'var(--viz-cat-1)')}
+      ${dotsFor(seriesB, 'var(--viz-cat-2)')}
+      <text x="${x(n-1).toFixed(1)}" y="${(y(lastA)-8).toFixed(1)}" font-size="12" fill="var(--viz-text-secondary)" text-anchor="end">${lastA}</text>
+      <text x="${x(n-1).toFixed(1)}" y="${(y(lastB)+16).toFixed(1)}" font-size="12" fill="var(--viz-text-secondary)" text-anchor="end">${lastB}</text>
+    </svg>`;
+}
+
+function groupCount(rows, keyFn, nameMap) {
+  const counts = {};
+  rows.forEach(r => {
+    const raw = keyFn(r);
+    const vals = Array.isArray(raw) ? raw : [raw];
+    vals.forEach(v => { if (!v) return; counts[v] = (counts[v] || 0) + 1; });
+  });
+  return Object.entries(counts)
+    .map(([k, v]) => ({ label: (nameMap && nameMap[k]) || k, value: v }))
+    .sort((a, b) => b.value - a.value);
+}
+function topWithOther(rows, limit) {
+  if (rows.length <= limit) return rows;
+  const head = rows.slice(0, limit);
+  const otherTotal = rows.slice(limit).reduce((s, r) => s + r.value, 0);
+  return [...head, { label: 'Other', value: otherTotal }];
+}
+
+async function loadDashboard() {
+  const msg = $('topMsg'); msg.className = 'msg';
+  try {
+    const res = await fetch(CONFIG.apiBase + '/admin/export.json', { headers: authHeaders() });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || data.ok === false) throw new Error(data.error || ('HTTP ' + res.status));
+    const rows = (data.registrations || []).filter(r => r.status === 'approved');
+    showMsg(msg, `Loaded ${rows.length} approved registration(s).`, true);
+    renderDashboard(rows);
+  } catch (e) {
+    showMsg(msg, e.message, false);
+  }
+}
+
+function renderDashboard(rows) {
+  const content = $('content');
+  if (!rows.length) { content.innerHTML = '<p class="empty">No approved registrations yet.</p>'; return; }
+
+  const dset = (r) => (r.data || {});
+  const events = (r) => (r.event_codes || '').split(',').filter(Boolean);
+  const bothCount = rows.filter(r => events(r).length > 1).length;
+  const wgitaOnly = rows.filter(r => { const e = events(r); return e.length === 1 && e[0] === 'WGITA-35-2026'; }).length;
+  const kscOnly = rows.filter(r => { const e = events(r); return e.length === 1 && e[0] === 'KSC-SC18-2026'; }).length;
+  const countries = new Set(rows.map(r => r.country).filter(Boolean));
+  const orgs = new Set(rows.map(r => r.organization_name).filter(Boolean));
+  const speaking = rows.filter(r => dset(r).wants_to_present === 'yes').length;
+  const visa = rows.filter(r => r.visa_letter_needed).length;
+  const social = rows.filter(r => dset(r).social_program_attending === 'yes').length;
+  const official = rows.filter(r => dset(r).accommodation_type === 'official').length;
+  const own = rows.filter(r => dset(r).accommodation_type === 'own').length;
+
+  const byRegion = groupCount(rows, r => dset(r).regional_group, REGION_NAMES);
+  const byRole = groupCount(rows, r => r.role_in_delegation, ROLE_NAMES);
+  const byCountry = topWithOther(groupCount(rows, r => r.country, COUNTRY_NAMES), 10);
+  const byDiet = groupCount(rows, r => dset(r).dietary_requirements, DIET_NAMES);
+
+  // Cumulative registrations over time, split by event.
+  const byDate = {};
+  rows.forEach(r => {
+    const day = (r.created_at || '').slice(0, 10);
+    if (!day) return;
+    if (!byDate[day]) byDate[day] = { wgita: 0, ksc: 0 };
+    if (events(r).includes('WGITA-35-2026')) byDate[day].wgita++;
+    if (events(r).includes('KSC-SC18-2026')) byDate[day].ksc++;
+  });
+  const dates = Object.keys(byDate).sort();
+  let cw = 0, ck = 0;
+  const cumWgita = [], cumKsc = [];
+  dates.forEach(d => { cw += byDate[d].wgita; ck += byDate[d].ksc; cumWgita.push(cw); cumKsc.push(ck); });
+
+  content.innerHTML = `
+    <div class="card">
+      <h2>At a glance</h2>
+      <p class="cap">Confirmed (approved) registrations only.</p>
+      <div class="kpis">
+        ${kpiTile(rows.length, 'Total confirmed registrations')}
+        ${kpiTile(countries.size, 'Countries represented')}
+        ${kpiTile(orgs.size, 'Organisations represented')}
+        ${kpiTile(speaking, 'Requesting to speak')}
+        ${kpiTile(visa, 'Need a visa facilitation letter')}
+        ${kpiTile(social, 'Joining the social programme')}
+      </div>
+    </div>
+
+    <div class="two-col">
+      <div class="card">
+        <h2>Registrations by event</h2>
+        <p class="cap">One person attending both events is counted once, under "Both".</p>
+        ${barChart([
+          { label: 'WGITA only', value: wgitaOnly },
+          { label: 'KSC only', value: kscOnly },
+          { label: 'Both', value: bothCount }
+        ])}
+      </div>
+      <div class="card">
+        <h2>Accommodation</h2>
+        <p class="cap">Where confirmed participants are staying.</p>
+        <div class="kpis" style="grid-template-columns:1fr 1fr">
+          ${kpiTile(official, 'Official hotel')}
+          ${kpiTile(own, 'Own arrangement')}
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Registrations over time</h2>
+      <p class="cap">Cumulative confirmed registrations by day, per event.</p>
+      ${dates.length ? lineChart(dates, cumWgita, cumKsc, 'WGITA', 'KSC') : '<p class="empty">Not enough dated data yet.</p>'}
+    </div>
+
+    <div class="two-col">
+      <div class="card">
+        <h2>INTOSAI regional group</h2>
+        <p class="cap">Confirmed participants by region.</p>
+        ${byRegion.length ? barChart(byRegion) : '<p class="empty">No data.</p>'}
+      </div>
+      <div class="card">
+        <h2>Role in the delegation</h2>
+        <p class="cap">Confirmed participants by protocol role.</p>
+        ${byRole.length ? barChart(byRole) : '<p class="empty">No data.</p>'}
+      </div>
+    </div>
+
+    <div class="two-col">
+      <div class="card">
+        <h2>Top countries</h2>
+        <p class="cap">Confirmed participants by country (top 10).</p>
+        ${byCountry.length ? barChart(byCountry) : '<p class="empty">No data.</p>'}
+      </div>
+      <div class="card">
+        <h2>Dietary requirements</h2>
+        <p class="cap">For catering planning.</p>
+        ${byDiet.length ? barChart(byDiet) : '<p class="empty">No data.</p>'}
+      </div>
+    </div>
+  `;
+}
+
+$('load').addEventListener('click', loadDashboard);
+if (tokenInput.value) loadDashboard();
+</script>
+</body>
+</html>
