@@ -37,7 +37,7 @@ const UPLOAD_ACCEPT = {
   image: ['image/jpeg', 'image/png'],
   doc: ['application/pdf', 'application/vnd.openxmlformats-officedocument.presentationml.presentation']
 };
-const UPLOAD_MAX_MB = { any: 10, image: 5, doc: 50 };
+const UPLOAD_MAX_MB = { any: 15, image: 10, doc: 50 };
 
 /* ---------- small helpers ---------- */
 const now = () => Math.floor(Date.now() / 1000);
@@ -267,7 +267,10 @@ async function verifyInvitation(req, env, ch, ipHash) {
 
   /* No email-ownership check: a valid invitation code plus a plausible email
      address is enough to unlock the form, and issues a session immediately. */
-  const session = await signSession(env, { e: email, iv: inv.invitation_id, exp: now() + 7200 });
+  /* 24h, not the usual short session window: this form is long enough (passport,
+     travel, accommodation, uploads...) that a real applicant filling it in one
+     unhurried sitting can plausibly take a couple of hours. */
+  const session = await signSession(env, { e: email, iv: inv.invitation_id, exp: now() + 86400 });
   await audit(env, 'invitation_verified', 'invitation', inv.invitation_id, email, ipHash);
   return json({ ok: true, organization_name: inv.organization_name, country: inv.country,
                 allow_free_email: !!inv.allow_free_email, session,
@@ -623,7 +626,7 @@ async function uploadFile(req, env, ch) {
 
   const allow = UPLOAD_ACCEPT[accept] || UPLOAD_ACCEPT.any;
   if (!allow.includes(file.type)) return fail('invalid_file_type', 400, ch);
-  const maxMB = UPLOAD_MAX_MB[accept] || 10;
+  const maxMB = UPLOAD_MAX_MB[accept] || 15;
   if (file.size > maxMB * 1048576) return fail('file_too_large', 400, ch);
 
   const safeName = String(file.name || 'file').replace(/[^A-Za-z0-9._-]/g, '_').slice(-80);

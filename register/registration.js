@@ -101,7 +101,7 @@ const UI = {
   reviewDesc:    { en: 'Check every section once. You can still edit anything before submitting.', ar: 'راجع كل قسم مرة أخيرة. يمكنك تعديل أي بيان قبل الإرسال.' },
   sending:       { en: 'Sending…', ar: 'جارٍ الإرسال…' },
   netErr:        { en: 'The request could not be completed. Check your connection and try again.', ar: 'تعذّر إتمام الطلب. تحقق من الاتصال وحاول مجدداً.' },
-  errExpired:    { en: 'Your session has expired. Reload the page and verify your email again — your draft is kept.', ar: 'انتهت صلاحية الجلسة. أعد تحميل الصفحة وتحقق من بريدك مجدداً، ومسودتك محفوظة.' },
+  errExpired:    { en: 'Your session has expired. Reload the page and enter your invitation code and email again — your draft is kept.', ar: 'انتهت صلاحية الجلسة. أعد تحميل الصفحة وأدخل رمز الدعوة وبريدك مجدداً، ومسودتك محفوظة.' },
   errDuplicate:  { en: 'A registration already exists for this email. Contact the secretariat to amend it.', ar: 'يوجد تسجيل بهذا البريد بالفعل. راسل الأمانة لتعديله.' },
   eventsPickKicker: { en: 'Choose your event(s)', ar: 'اختيار الفعاليات' },
   eventsPickTitle:  { en: 'This invitation covers more than one event', ar: 'هذه الدعوة تغطي أكثر من فعالية' },
@@ -285,7 +285,7 @@ const SCHEMA = [
     { k: 'presentation_title', t: 'text', wide: true, showIf: (d) => isYes(d.wants_to_present), reqIf: (d) => isYes(d.wants_to_present), min: 10, max: 150, l: { en: 'Presentation title', ar: 'عنوان العرض' } },
     { k: 'presentation_abstract', t: 'textarea', wide: true, showIf: (d) => isYes(d.wants_to_present), reqIf: (d) => isYes(d.wants_to_present), min: 200, max: 1500, count: true, l: { en: 'Abstract', ar: 'ملخص العرض' } },
     { k: 'speaker_bio', t: 'textarea', wide: true, showIf: (d) => isYes(d.wants_to_present), reqIf: (d) => isYes(d.wants_to_present), min: 100, max: 800, count: true, l: { en: 'Short biography', ar: 'سيرة ذاتية مختصرة' }, hint: { en: 'Published on the event page if you consent to publication.', ar: 'تُنشر في صفحة الحدث إذا وافقت على النشر.' } },
-    { k: 'speaker_photo', t: 'file', wide: true, accept: 'image', maxMB: 5, showIf: (d) => isYes(d.wants_to_present), l: { en: 'Portrait photo', ar: 'صورة شخصية' } },
+    { k: 'speaker_photo', t: 'file', wide: true, accept: 'image', maxMB: 10, showIf: (d) => isYes(d.wants_to_present), l: { en: 'Portrait photo', ar: 'صورة شخصية' } },
     { k: 'slides_file', t: 'file', wide: true, accept: 'doc', maxMB: 50, showIf: (d) => isYes(d.wants_to_present), l: { en: 'Presentation slides', ar: 'ملف العرض' }, hint: { en: 'Optional now. You can upload them later using your edit link.', ar: 'اختياري الآن. يمكنك رفعه لاحقاً عبر رابط التعديل.' } }
   ]
 },
@@ -302,7 +302,7 @@ const SCHEMA = [
     { k: 'passport_place_of_issue', t: 'text', l: { en: 'Place of issue', ar: 'محل الإصدار' } },
     { k: 'passport_issue_date', t: 'date', rule: 'past', l: { en: 'Date of issue', ar: 'تاريخ الإصدار' } },
     { k: 'passport_expiry_date', t: 'date', rule: 'expiry', l: { en: 'Date of expiry', ar: 'تاريخ الانتهاء' } },
-    { k: 'passport_copy', t: 'file', wide: true, accept: 'any', maxMB: 10, l: { en: 'Copy of the passport data page', ar: 'صورة صفحة بيانات الجواز' }, hint: { en: 'Deleted 60 days after the meeting.', ar: 'تُحذف بعد 60 يوماً من الاجتماع.' } }
+    { k: 'passport_copy', t: 'file', wide: true, accept: 'any', maxMB: 15, l: { en: 'Copy of the passport data page', ar: 'صورة صفحة بيانات الجواز' }, hint: { en: 'Deleted 60 days after the meeting.', ar: 'تُحذف بعد 60 يوماً من الاجتماع.' } }
   ]
 },
 
@@ -339,7 +339,7 @@ const SCHEMA = [
     { k: 'departure_date', t: 'date', l: { en: 'Departure date', ar: 'تاريخ المغادرة' } },
     { k: 'departure_time', t: 'time', l: { en: 'Departure time', ar: 'وقت المغادرة' } },
     { k: 'departure_terminal', t: 'select', opts: OPT.terminal, wide: true, l: { en: 'Departure terminal', ar: 'صالة المغادرة' } },
-    { k: 'ticket_file', t: 'file', wide: true, accept: 'any', maxMB: 10, l: { en: 'Flight itinerary', ar: 'خط سير الرحلة' } }
+    { k: 'ticket_file', t: 'file', wide: true, accept: 'any', maxMB: 15, l: { en: 'Flight itinerary', ar: 'خط سير الرحلة' } }
   ]
 },
 
@@ -398,7 +398,7 @@ const SCHEMA = [
         { k: 'acc_passport_number', t: 'text', min: 5, max: 15, l: { en: 'Passport number', ar: 'رقم الجواز' } },
         { k: 'acc_passport_expiry_date', t: 'date', l: { en: 'Passport expiry', ar: 'انتهاء الجواز' } },
         { k: 'acc_visa_letter_needed', t: 'radio', opts: OPT.yesno, l: { en: 'Visa letter needed?', ar: 'هل يحتاج خطاب تأشيرة؟' } },
-        { k: 'acc_passport_copy', t: 'file', accept: 'any', maxMB: 10, l: { en: 'Passport copy', ar: 'صورة الجواز' } },
+        { k: 'acc_passport_copy', t: 'file', accept: 'any', maxMB: 15, l: { en: 'Passport copy', ar: 'صورة الجواز' } },
         { k: 'acc_attends_sessions', t: 'radio', opts: OPT.yesno, l: { en: 'Attending the official sessions?', ar: 'هل يحضر الجلسات الرسمية؟' } },
         { k: 'acc_attends_social', t: 'radio', opts: OPT.yesno, l: { en: 'Attending the social programme?', ar: 'هل يحضر البرنامج الاجتماعي؟' } },
         { k: 'acc_dietary', t: 'multi', opts: OPT.dietary, l: { en: 'Dietary requirements', ar: 'المتطلبات الغذائية' } }
@@ -526,6 +526,15 @@ const ACCEPT = {
   image: ['image/jpeg', 'image/png'],
   doc: ['application/pdf', 'application/vnd.openxmlformats-officedocument.presentationml.presentation']
 };
+/* state.fileUpload[key] is 'uploading', absent/undefined (idle or done), or
+   one of these specific failure reasons — never a bare generic 'error', so
+   the message shown actually explains what to do differently. */
+const isUploadErr = (status) => !!status && status !== 'uploading';
+const uploadErrMsg = (reason) => ({
+  file_too_large: T('errFileSize'),
+  invalid_file_type: T('errFileType'),
+  session_expired: T('errExpired')
+}[reason] || T('errUploadFailed'));
 
 function isRequired(f, d) { return !!(f.req || (f.reqIf && f.reqIf(d))); }
 function isVisible(f, d) { return !f.showIf || f.showIf(d); }
@@ -539,9 +548,9 @@ function validateField(f, d, scope) {
     if (!file) return req && !scope[f.k + '_key'] ? T('errRequired') : null;
     const allow = ACCEPT[f.accept || 'any'];
     if (allow && !allow.includes(file.type)) return T('errFileType');
-    if (file.size > (f.maxMB || 10) * 1048576) return T('errFileSize');
+    if (file.size > (f.maxMB || 15) * 1048576) return T('errFileSize');
     if (state.fileUpload[f.k] === 'uploading') return T('errUploadPending');
-    if (state.fileUpload[f.k] === 'error') return T('errUploadFailed');
+    if (isUploadErr(state.fileUpload[f.k])) return uploadErrMsg(state.fileUpload[f.k]);
     if (req && !scope[f.k + '_key']) return T('errRequired');
     return null;
   }
@@ -676,7 +685,7 @@ function renderField(f, scope, path) {
       : file ? file.name
       : key ? (scope[f.k + '_filename'] || T('onFile'))
       : T('noFile');
-    const name = el('span', { class: 'name' + ((file || key) && status !== 'error' ? ' set' : '') }, label);
+    const name = el('span', { class: 'name' + ((file || key) && !isUploadErr(status) ? ' set' : '') }, label);
     const inp = el('input', { type: 'file', id, class: 'sr', accept: (ACCEPT[f.accept || 'any'] || []).join(',') });
     inp.addEventListener('change', () => {
       const chosen = inp.files[0]; if (!chosen) return;
@@ -895,6 +904,13 @@ function mock(path, body) {
 /* Files upload immediately on selection (multipart, not the JSON `call()`
    above), so the final submit only ever carries small R2 object keys. */
 async function startUpload(f, file, scope) {
+  // Check type/size up front: catching it here (rather than only after a
+  // round trip to the server) means the message can say exactly what's
+  // wrong, and never invites retrying the same file forever.
+  const allow = ACCEPT[f.accept || 'any'];
+  if (allow && !allow.includes(file.type)) { state.fileUpload[f.k] = 'invalid_file_type'; state.touched = true; onChange(true); return; }
+  if (file.size > (f.maxMB || 15) * 1048576) { state.fileUpload[f.k] = 'file_too_large'; state.touched = true; onChange(true); return; }
+
   state.fileUpload[f.k] = 'uploading';
   onChange(true);
   if (CONFIG.MOCK) {
@@ -921,7 +937,12 @@ async function startUpload(f, file, scope) {
     scope[f.k + '_filename'] = file.name;
     delete state.fileUpload[f.k];
   } catch (e) {
-    state.fileUpload[f.k] = 'error';
+    // Surface the server's actual reason where we recognize it; anything
+    // else (network blip, CORS, etc.) falls back to the generic message.
+    const reason = String((e && e.message) || e);
+    state.fileUpload[f.k] = ['session_expired', 'file_too_large', 'invalid_file_type'].includes(reason)
+      ? reason : 'upload_failed';
+    state.touched = true;
   }
   onChange(true);
 }
