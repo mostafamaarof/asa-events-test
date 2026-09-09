@@ -969,7 +969,7 @@ function renderGate() {
       code, codeErr ? el('div', { class: 'err' }, codeErr) : null),
     el('div', { class: 'f wide' }, el('label', { for: 'gmail' }, state.lang === 'ar' ? 'البريد الإلكتروني' : 'Email', el('span', { class: 'req' }, '*')),
       mail, mailErr ? el('div', { class: 'err' }, mailErr) : null),
-    el('input', { type: 'text', name: 'company_url', class: 'sr', tabindex: '-1', autocomplete: 'off', id: 'hp' })
+    el('input', { type: 'text', name: 'asa_hp_9k2x', class: 'sr', tabindex: '-1', autocomplete: 'off', id: 'hp' })
   );
   b.append(g);
   b.append(el('div', { class: 'notice', style: 'margin-top:24px' },
@@ -1042,7 +1042,13 @@ async function submitGate() {
   else if (DISPOSABLE.includes(domainOf(m))) e.institutional_email = T('errDisposable');
   // A personal address is not rejected here. Only the invitation record knows
   // whether one is permitted, so the decision belongs to the server.
-  if (document.getElementById('hp')?.value) return;           // honeypot
+  // Honeypot: a real bot fills every field it can see in the markup, since it
+  // doesn't render CSS. Browser autofill can occasionally reach this field
+  // too (seen with Chrome and a name like "company_url") — clearing it and
+  // continuing is safer than silently blocking a real applicant with no
+  // feedback at all.
+  const hp = document.getElementById('hp');
+  if (hp && hp.value) hp.value = '';
   if ((Date.now() - state.startedAt) / 1000 < CONFIG.minFillSeconds && !CONFIG.MOCK) return;
   state.errors = e;
   if (Object.keys(e).length) return renderGate();
