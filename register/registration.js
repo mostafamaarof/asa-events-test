@@ -1054,8 +1054,6 @@ async function submitGate() {
     const r = await call('/invitations/verify', { invitation_code: c, email: m });
     state.data.personal_email = FREE_MAIL.includes(domainOf(m));
     state.data.personal_email_permitted = !!r.allow_free_email;
-    if (r.organization_name && !state.data.organization_name) state.data.organization_name = r.organization_name;
-    if (r.country && !state.data.country) state.data.country = r.country;
     state.data.email = m;
     state.otpEmail = m;
     state.invitationId = r.invitation_id || '';
