@@ -298,8 +298,10 @@ async function loadReport() {
     const res = await fetch(CONFIG.apiBase + '/admin/export.json', { headers: authHeaders() });
     const data = await res.json().catch(() => ({}));
     if (!res.ok || data.ok === false) throw new Error(data.error || ('HTTP ' + res.status));
-    all = data.registrations || [];
-    showMsg(msg, `Loaded ${all.length} registration(s).`, true);
+    // This report is for confirmed participants only -- rejected and
+    // still-under-review submissions don't belong in it.
+    all = (data.registrations || []).filter(r => r.status === 'approved');
+    showMsg(msg, `Loaded ${all.length} approved registration(s).`, true);
     render();
   } catch (e) {
     showMsg(msg, e.message, false);
