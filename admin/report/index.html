@@ -252,6 +252,22 @@ function withFileNames(data) {
   }
   return out;
 }
+function countAttachments(data) {
+  let n = 0;
+  for (const k of Object.keys(data || {})) if (k.endsWith('_key') && data[k]) n++;
+  for (const p of (data && data.accompanying) || []) for (const k of Object.keys(p || {})) if (k.endsWith('_key') && p[k]) n++;
+  return n;
+}
+async function downloadFileByKey(key, filename) {
+  const res = await fetch(CONFIG.apiBase + '/admin/files?key=' + encodeURIComponent(key), { headers: authHeaders() });
+  if (!res.ok) return;
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename || key.split('/').pop();
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+}
 
 let all = [];
 
@@ -334,6 +350,7 @@ function render() {
       accHtml = `<div class="psec"><h3>Accompanying persons</h3>${people}</div>`;
     }
 
+    const attCount = countAttachments(r.data || {});
     return `<div class="pcard">
       <div class="phead">
         <div>
@@ -344,6 +361,7 @@ function render() {
           <div><span class="badge ${r.status}">${(r.status || '').replace('_',' ')}</span></div>
           <div class="ref" style="margin-top:6px">${r.reference}${r.registration_number ? ' · ' + r.registration_number : ''}</div>
           <div class="sub" style="margin-top:2px">${events}</div>
+          ${attCount ? `<button type="button" class="ghost attBtn" data-ref="${r.reference}" style="height:30px;padding:0 12px;font-size:12px;margin-top:8px">Download attachments (${attCount})</button>` : ''}
         </div>
       </div>
       ${sections}${accHtml}
@@ -356,6 +374,24 @@ $('printBtn').addEventListener('click', () => window.print());
 $('fEvent').addEventListener('change', render);
 $('fSearch').addEventListener('input', render);
 $('fEmpty').addEventListener('change', render);
+
+$('list').addEventListener('click', async (e) => {
+  const btn = e.target.closest('.attBtn'); if (!btn) return;
+  const reference = btn.dataset.ref;
+  btn.disabled = true; const orig = btn.textContent; btn.textContent = '...';
+  try {
+    const res = await fetch(CONFIG.apiBase + '/admin/attachments?reference=' + encodeURIComponent(reference), { headers: authHeaders() });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || data.ok === false) throw new Error(data.error || ('HTTP ' + res.status));
+    if (!data.attachments.length) { alert('No attachments found for ' + reference + '.'); return; }
+    data.attachments.forEach((att, i) => setTimeout(() => downloadFileByKey(att.key, att.filename).catch(() => {}), i * 350));
+  } catch (e2) {
+    alert('Could not download attachments: ' + e2.message);
+  } finally {
+    btn.disabled = false; btn.textContent = orig;
+  }
+});
+
 if (tokenInput.value) loadReport();
 </script>
 </body>
