@@ -353,6 +353,7 @@ async function createRegistration(req, env, ch, ipHash) {
   const combinedLabel = targetEvents.length > 1 ? 'WGITA & KSC Annual Meetings' : targetEvents[0].title_en;
   const dateRange = formatDateRange(targetEvents);
   const eventList = targetEvents.map(e => `<li>${e.title_en}</li>`).join('');
+  const editLink = `${env.FRONTEND_BASE || ''}/register/?edit=${encodeURIComponent(ref)}.${encodeURIComponent(await signEditToken(env, id))}`;
   const body = `<h2 style="font-size:18px;margin:0 0 4px">Registration confirmed</h2>
     <p>Dear ${greetingName(d)},</p>
     <p>Your registration for the ${combinedLabel} in Cairo, ${dateRange} has been received successfully.</p>
@@ -360,7 +361,11 @@ async function createRegistration(req, env, ch, ipHash) {
     <p style="font-weight:600;margin:0 0 4px">Events</p>
     <ul style="margin:0 0 12px;padding-inline-start:20px">${eventList}</ul>
     <p>Venue: ${VENUE}<br>Dates: ${dateRange}</p>
-    <p style="margin-top:16px">We look forward to welcoming you in Cairo.</p>`;
+    <p style="margin-top:16px">We look forward to welcoming you in Cairo.</p>
+    <hr style="border:0;border-top:1px solid #CBD6E0;margin:20px 0">
+    <p style="font-size:13px;color:#556A7D">Submission reference <b>${ref}</b>. Need to review or change something?
+       Use <a href="${editLink}">this link</a> (valid 30 days), or request a fresh one from the registration page with this
+       reference and the email you registered with.</p>`;
   await sendMail(env, s.e, `Registration confirmed — ${regNumber}`, shell(body));
 
   return json({ ok: true, status: 'approved', reference: ref, registration_number: regNumber, event_codes: openTargets }, 201, ch);
@@ -370,7 +375,7 @@ async function requestEditLink(req, env, ch, ipHash) {
   const b = await req.json().catch(() => ({}));
   const reference = String(b.reference || '').trim().toUpperCase();
   const email = String(b.email || '').toLowerCase().trim();
-  if (!await allow(env, 'editlink:' + ipHash, 10, 3600)) return fail('rate_limited', 429, ch);
+  if (!await allow(env, 'editlink:' + ipHash, 20, 3600)) return fail('rate_limited', 429, ch);
   if (!reference || !EMAIL_RE.test(email)) return fail('invalid_request', 400, ch);
 
   const reg = await env.DB.prepare('SELECT registration_id, reference, email, event_codes FROM registrations WHERE reference = ? AND email = ?')
