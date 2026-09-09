@@ -243,7 +243,7 @@ async function verifyInvitation(req, env, ch, ipHash) {
   const code = String(b.invitation_code || '').toUpperCase().trim();
   const email = String(b.email || '').toLowerCase().trim();
 
-  if (!await allow(env, 'inv:' + ipHash, 10, 3600)) return fail('rate_limited', 429, ch);
+  if (!await allow(env, 'inv:' + ipHash, 30, 3600)) return fail('rate_limited', 429, ch);
   if (!EMAIL_RE.test(email)) return fail('invalid_email', 400, ch);
   if (DISPOSABLE.includes(domainOf(email))) return fail('disposable_email', 403, ch);
   if (!CODE_RE.test(code)) return fail('invalid_code', 400, ch);

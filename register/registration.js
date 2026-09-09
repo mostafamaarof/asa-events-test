@@ -85,6 +85,7 @@ const UI = {
   errDisposable: { en: 'Temporary and disposable addresses are not accepted.', ar: 'لا تُقبل العناوين المؤقتة أو المُستهلكة.' },
   errPhone:      { en: 'Include the country code, for example +20 100 000 0000.', ar: 'أدرج رمز الدولة، مثال ‎+20 100 000 0000.' },
   errCode:       { en: 'Invalid or expired invitation code.', ar: 'رمز الدعوة غير صحيح أو منتهي الصلاحية.' },
+  errRateLimited: { en: 'Too many attempts from this connection. Wait a few minutes and try again — your code is likely fine.', ar: 'محاولات كثيرة من هذا الاتصال. انتظر بضع دقائق وحاول مجدداً — الرمز على الأرجح صحيح.' },
   errOtp:        { en: 'That code did not match. Check your inbox and try again.', ar: 'الرمز غير مطابق. راجع بريدك وحاول مجدداً.' },
   errMinLen:     { en: 'Too short.', ar: 'النص قصير جداً.' },
   errMaxLen:     { en: 'Too long.', ar: 'النص طويل جداً.' },
@@ -1069,8 +1070,9 @@ async function submitGate() {
     }
   } catch (err) {
     if (String(err.message) === 'registration_closed') { state.screen = 'closed'; render(); return; }
-    state.errors = String(err.message) === 'free_email_not_allowed'
-      ? { institutional_email: T('errFreeEmail') }
+    const msg = String(err.message);
+    state.errors = msg === 'free_email_not_allowed' ? { institutional_email: T('errFreeEmail') }
+      : msg === 'rate_limited' ? { invitation_code: T('errRateLimited') }
       : { invitation_code: T('errCode') };
     renderGate();
   }
