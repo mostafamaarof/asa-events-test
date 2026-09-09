@@ -187,8 +187,14 @@ async function sendMailGmail(env, to, subject, html) {
 
 async function sendMail(env, to, subject, html) {
   if (env.GMAIL_ADDRESS && env.GMAIL_APP_PASSWORD) {
-    try { return await sendMailGmail(env, to, subject, html); }
-    catch (e) { return { ok: false, error: String((e && e.message) || e) }; }
+    try {
+      const r = await sendMailGmail(env, to, subject, html);
+      console.log('gmail_send_ok', to, subject);
+      return r;
+    } catch (e) {
+      console.error('gmail_send_failed', to, subject, String((e && e.message) || e));
+      return { ok: false, error: String((e && e.message) || e) };
+    }
   }
   if (!env.RESEND_API_KEY) return { skipped: true };
   const r = await fetch('https://api.resend.com/emails', {
