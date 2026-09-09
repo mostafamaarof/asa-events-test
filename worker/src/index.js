@@ -3,12 +3,11 @@ import { connect } from 'cloudflare:sockets';
 /* =============================================================================
    ASA Events - registration API (Cloudflare Worker + D1)
    Endpoints:
-     POST /v1/invitations/verify   check the invitation code, email the OTP
-                                    (an invitation may cover more than one
-                                    event; returns event_codes it currently
-                                    unlocks, not tied to a single event)
-     POST /v1/otp/verify           check the OTP, return a session token
-                                    (keyed by invitation_id, not event_code)
+     POST /v1/invitations/verify   check the invitation code, return a session
+                                    token immediately — no email-ownership
+                                    check (an invitation may cover more than
+                                    one event; returns event_codes it
+                                    currently unlocks, not tied to one event)
      POST /v1/registrations        store the submission as under_review — one
                                     row per person, covering every event_code
                                     in event_codes[] they selected
@@ -260,45 +259,13 @@ async function verifyInvitation(req, env, ch, ipHash) {
   if (FREE_MAIL.includes(domainOf(email)) && !inv.allow_free_email)
     return fail('free_email_not_allowed', 403, ch);
 
-  const otp = String(crypto.getRandomValues(new Uint32Array(1))[0] % 1000000).padStart(6, '0');
-  const ttl = (parseInt(env.OTP_TTL_MINUTES || '10', 10)) * 60;
-  await env.DB.prepare(
-    `INSERT INTO otps (email,invitation_id,otp_hash,expires_at,attempts) VALUES (?,?,?,?,0)
-     ON CONFLICT(email,invitation_id) DO UPDATE SET otp_hash=excluded.otp_hash, expires_at=excluded.expires_at, attempts=0`)
-    .bind(email, inv.invitation_id, await sha256(otp + env.SESSION_SECRET), now() + ttl).run();
-
-  const titleEn = openEvents.map(e => e.title_en).join(' & ');
-  await sendMail(env, email, `Verification code ${otp} — ${titleEn}`, shell(
-    `<h2 style="font-size:18px;margin:0 0 12px">Your verification code</h2>
-     <p style="font-size:32px;letter-spacing:.25em;margin:16px 0">${otp}</p>
-     <p>Enter this code to continue your registration for <b>${titleEn}</b>. It expires in ${env.OTP_TTL_MINUTES || 10} minutes.</p>`));
-
-  await audit(env, 'otp_sent', 'invitation', inv.invitation_id, email, ipHash);
+  /* No email-ownership check: a valid invitation code plus a plausible email
+     address is enough to unlock the form, and issues a session immediately. */
+  const session = await signSession(env, { e: email, iv: inv.invitation_id, exp: now() + 7200 });
+  await audit(env, 'invitation_verified', 'invitation', inv.invitation_id, email, ipHash);
   return json({ ok: true, organization_name: inv.organization_name, country: inv.country,
-                allow_free_email: !!inv.allow_free_email, otp_sent: true,
+                allow_free_email: !!inv.allow_free_email, session,
                 invitation_id: inv.invitation_id, event_codes: openEvents.map(e => e.code) }, 200, ch);
-}
-
-async function verifyOtp(req, env, ch, ipHash) {
-  const b = await req.json().catch(() => ({}));
-  const email = String(b.email || '').toLowerCase().trim();
-  const invitationId = String(b.invitation_id || '').trim();
-  const otp = String(b.otp || '').trim();
-
-  if (!await allow(env, 'otp:' + ipHash, 20, 3600)) return fail('rate_limited', 429, ch);
-  const row = await env.DB.prepare('SELECT * FROM otps WHERE email = ? AND invitation_id = ?').bind(email, invitationId).first();
-  if (!row) return fail('bad_otp', 400, ch);
-  if (row.expires_at < now()) return fail('bad_otp', 400, ch);
-  if (row.attempts >= 5) return fail('too_many_attempts', 429, ch);
-
-  if (await sha256(otp + env.SESSION_SECRET) !== row.otp_hash) {
-    await env.DB.prepare('UPDATE otps SET attempts = attempts + 1 WHERE email = ? AND invitation_id = ?').bind(email, invitationId).run();
-    return fail('bad_otp', 400, ch);
-  }
-  await env.DB.prepare('DELETE FROM otps WHERE email = ? AND invitation_id = ?').bind(email, invitationId).run();
-  const session = await signSession(env, { e: email, iv: invitationId, exp: now() + 7200 });
-  await audit(env, 'otp_verified', 'email', email, invitationId, ipHash);
-  return json({ ok: true, session }, 200, ch);
 }
 
 /* Shared by create and edit: the rules the browser already checked, re-checked here. */
@@ -680,7 +647,6 @@ export default {
 
     try {
       if (req.method === 'POST' && pathname === '/v1/invitations/verify') return await verifyInvitation(req, env, ch, ipHash);
-      if (req.method === 'POST' && pathname === '/v1/otp/verify')         return await verifyOtp(req, env, ch, ipHash);
       if (req.method === 'POST' && pathname === '/v1/registrations')      return await createRegistration(req, env, ch, ipHash);
       if (req.method === 'POST' && pathname === '/v1/registrations/edit-link')  return await requestEditLink(req, env, ch, ipHash);
       if (req.method === 'POST' && pathname === '/v1/registrations/edit-fetch') return await fetchForEdit(req, env, ch);

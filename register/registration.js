@@ -440,7 +440,7 @@ const state = {
   coveredEvents: [],      // event codes this invitation currently unlocks (from the server, before picking)
   selectedEventCodes: [], // checkbox state on the events-picker screen
   invitationId: '',
-  screen: 'gate',        // gate | otp | events | form | review | done | closed
+  screen: 'gate',        // gate | events | form | review | done | closed
   idx: 0,
   data: {},
   files: {},             // key -> File (never persisted to the device draft)
@@ -448,7 +448,6 @@ const state = {
   errors: {},
   touched: false,
   startedAt: Date.now(),
-  otpEmail: '',
   session: '',
   reference: '',           // the single submission reference, once created or updated
   registrationNumber: '',  // assigned immediately on submission (registrations are auto-confirmed)
@@ -877,10 +876,7 @@ function mock(path, body) {
       if (FREE_MAIL.includes(domainOf(body.email)) && !allowFree) return rej(new Error('free_email_not_allowed'));
       const eventCodes = body.invitation_code.includes('BOTH') ? Object.keys(EVENTS) : [Object.keys(EVENTS)[0]];
       return res({ ok: true, organization_name: 'Office of the Auditor-General', country: 'KE',
-                   allow_free_email: allowFree, otp_sent: true, invitation_id: 'mock-inv', event_codes: eventCodes });
-    }
-    if (path === '/otp/verify') {
-      return body.otp === '123456' ? res({ ok: true, session: 'mock-session' }) : rej(new Error('bad_otp'));
+                   allow_free_email: allowFree, session: 'mock-session', invitation_id: 'mock-inv', event_codes: eventCodes });
     }
     if (path === '/registrations') {
       return res({ ok: true, status: 'approved', reference: 'SUB-' + Math.random().toString(36).slice(2, 8).toUpperCase(),
@@ -983,10 +979,10 @@ function renderGate() {
       el('li', {}, state.lang === 'ar' ? 'خط سير الرحلة ورقم حجز الفندق إن وُجدا' : 'Your flight itinerary and hotel booking reference, if you have them'),
       el('li', {}, state.lang === 'ar' ? 'نسخة رقمية من الجواز إذا كنت ستطلب خطاب تأشيرة' : 'A digital copy of your passport if you will request a visa letter'))));
   if (CONFIG.MOCK) b.append(el('div', { class: 'warnbox' }, state.lang === 'ar'
-    ? 'نسخة تجريبية: أي رمز بالصيغة ASA-XXXX-XX-XXXX يُقبل، ورمز التحقق هو 123456. لتجربة قبول بريد شخصي استخدم الرمز ASA-DEMO-EXP-9K4T. لا تُرسل أي بيانات إلى خادم.'
-    : 'Demo build: any code shaped ASA-XXXX-XX-XXXX is accepted and the verification code is 123456. To test a personal address, use code ASA-DEMO-EXP-9K4T. Nothing is sent to a server.'));
+    ? 'نسخة تجريبية: أي رمز بالصيغة ASA-XXXX-XX-XXXX يُقبل. لتجربة قبول بريد شخصي استخدم الرمز ASA-DEMO-EXP-9K4T. لا تُرسل أي بيانات إلى خادم.'
+    : 'Demo build: any code shaped ASA-XXXX-XX-XXXX is accepted. To test a personal address, use code ASA-DEMO-EXP-9K4T. Nothing is sent to a server.'));
 
-  const btn = el('button', { class: 'btn', onclick: submitGate }, state.lang === 'ar' ? 'إرسال رمز التحقق' : 'Send verification code');
+  const btn = el('button', { class: 'btn', onclick: submitGate }, state.lang === 'ar' ? 'متابعة' : 'Continue');
   foot().append(btn, el('span', { class: 'foot-spacer' }),
     el('span', { class: 'savenote' }, `${state.lang === 'ar' ? 'الأمانة' : 'Secretariat'}: ${CONFIG.supportEmail}`));
   b.append(el('button', {
@@ -1055,11 +1051,16 @@ async function submitGate() {
     state.data.personal_email = FREE_MAIL.includes(domainOf(m));
     state.data.personal_email_permitted = !!r.allow_free_email;
     state.data.email = m;
-    state.otpEmail = m;
+    state.session = r.session || '';
     state.invitationId = r.invitation_id || '';
     state.coveredEvents = r.event_codes || [];
     state.selectedEventCodes = [...state.coveredEvents];
-    state.screen = 'otp'; state.errors = {}; render();
+    if (state.coveredEvents.length > 1) {
+      state.screen = 'events'; state.errors = {}; render(); window.scrollTo(0, 0);
+    } else {
+      state.events = state.coveredEvents.map(c => EVENTS[c]).filter(Boolean);
+      proceedToForm();
+    }
   } catch (err) {
     if (String(err.message) === 'registration_closed') { state.screen = 'closed'; render(); return; }
     state.errors = String(err.message) === 'free_email_not_allowed'
@@ -1067,39 +1068,6 @@ async function submitGate() {
       : { invitation_code: T('errCode') };
     renderGate();
   }
-}
-
-/* --- OTP -------------------------------------------------------------- */
-function renderOtp() {
-  showChrome(false);
-  head(state.lang === 'ar' ? 'تأكيد البريد' : 'Email verification',
-    state.lang === 'ar' ? 'أدخل الرمز المرسل إليك' : 'Enter the code we sent you',
-    (state.lang === 'ar' ? 'أرسلنا رمزاً من ست خانات إلى ' : 'A six-digit code was sent to ') + state.otpEmail +
-    (state.lang === 'ar' ? '. صلاحيته عشر دقائق.' : '. It is valid for ten minutes.'));
-  const b = body();
-  const err = state.errors.otp;
-  const inp = el('input', { type: 'text', inputmode: 'numeric', maxlength: '6', id: 'otp', style: 'letter-spacing:.5em;font-size:22px;text-align:center;max-width:220px', 'aria-invalid': err ? 'true' : null });
-  inp.addEventListener('input', () => { inp.value = inp.value.replace(/\D/g, ''); });
-  b.append(el('div', { class: 'f' }, el('label', { for: 'otp' }, state.lang === 'ar' ? 'رمز التحقق' : 'Verification code'), inp,
-    err ? el('div', { class: 'err' }, err) : null));
-  b.append(el('button', { class: 'btn link', style: 'margin-top:16px', onclick: submitGate },
-    state.lang === 'ar' ? 'إعادة إرسال الرمز' : 'Send the code again'));
-  foot().append(
-    el('button', { class: 'btn ghost', onclick: () => { state.screen = 'gate'; state.errors = {}; render(); } }, T('back')),
-    el('button', { class: 'btn', onclick: verifyOtp }, T('next')));
-}
-async function verifyOtp() {
-  const v = document.getElementById('otp').value;
-  try {
-    const r = await call('/otp/verify', { email: state.otpEmail, otp: v, invitation_id: state.invitationId });
-    state.session = r.session || '';
-    if (state.coveredEvents.length > 1) {
-      state.screen = 'events'; state.errors = {}; render(); window.scrollTo(0, 0);
-    } else {
-      state.events = state.coveredEvents.map(c => EVENTS[c]).filter(Boolean);
-      proceedToForm();
-    }
-  } catch (e) { state.errors = { otp: T('errOtp') }; renderOtp(); }
 }
 
 /* --- Events picker (only when the invitation covers more than one) ---- */
@@ -1291,7 +1259,7 @@ function renderClosed() {
 }
 
 function render() {
-  ({ gate: renderGate, otp: renderOtp, events: renderEventsPick, editRequest: renderEditRequest, form: renderForm, review: renderReview, done: renderDone, closed: renderClosed }[state.screen])();
+  ({ gate: renderGate, events: renderEventsPick, editRequest: renderEditRequest, form: renderForm, review: renderReview, done: renderDone, closed: renderClosed }[state.screen])();
 }
 
 /* =============================================================================
@@ -1303,7 +1271,7 @@ function render() {
   const lang = q.get('lang') === 'ar' ? 'ar' : 'en';
   document.getElementById('langToggle').addEventListener('click', () => setLang(state.lang === 'ar' ? 'en' : 'ar'));
   /* Which event(s) are open isn't known until the invitation code is
-     verified server-side; the gate/otp screens show a generic combined
+     verified server-side; the gate screen shows a generic combined
      masthead (see combinedEvent) until then. */
   setLang(lang);
 
