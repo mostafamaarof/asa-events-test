@@ -270,7 +270,6 @@ const SCHEMA = [
     { k: 'job_title', t: 'text', req: true, min: 3, max: 100, l: { en: 'Job title', ar: 'المسمى الوظيفي' }, hint: { en: 'Printed on your badge and in the delegates list.', ar: 'يُطبع على البادج وفي كشف المشاركين.' } },
     { k: 'department', t: 'text', max: 100, l: { en: 'Department', ar: 'الإدارة' } },
     { k: 'role_in_delegation', t: 'select', req: true, opts: OPT.delRole, l: { en: 'Role in the delegation', ar: 'الصفة في الوفد' } },
-    { k: 'nomination_letter_ref', t: 'text', l: { en: 'Nomination letter reference', ar: 'رقم خطاب الترشيح' } },
     { k: 'has_security_detail', t: 'check', wide: true, showIf: (d) => d.role_in_delegation === 'hod', l: { en: 'A security detail is accompanying me', ar: 'ترافقني حماية أمنية' } },
     { k: 'security_detail_count', t: 'number', min: 1, max: 6, showIf: (d) => d.role_in_delegation === 'hod' && d.has_security_detail, reqIf: (d) => d.has_security_detail, l: { en: 'Number of security personnel', ar: 'عدد أفراد الحماية' } }
   ]
