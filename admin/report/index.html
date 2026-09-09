@@ -120,6 +120,10 @@ button.ghost:hover{background:#F1F5F8}
       </div>
       <span class="count" id="rowCount"></span>
     </div>
+    <div class="f" style="margin-top:16px;margin-bottom:0">
+      <label>Sections to show</label>
+      <div id="sectionToggles" style="display:flex;flex-wrap:wrap;gap:6px 16px;margin-top:4px"></div>
+    </div>
   </div>
 
   <div id="list"></div>
@@ -164,7 +168,7 @@ OPT.country = O(COUNTRIES_RAW.split('|').map(s => { const i = s.indexOf(':'); re
 
 /* ---------- report field schema, grouped exactly like the form ---------- */
 const SECTIONS = [
-  { title: 'Personal information', fields: [
+  { id: 'personal', title: 'Personal information', fields: [
     ['salutation','Salutation','salutation'], ['gender','Gender','gender'],
     ['first_name_passport','First name, as in passport'], ['family_name_passport','Family name, as in passport'],
     ['badge_name_en','Name on badge'], ['nationality','Nationality','country'],
@@ -172,26 +176,26 @@ const SECTIONS = [
     ['whatsapp_same','Also on WhatsApp?','bool'], ['whatsapp_number','WhatsApp number'],
     ['correspondence_language','Language for correspondence','corrLang']
   ]},
-  { title: 'Institution and delegation', fields: [
+  { id: 'institution', title: 'Institution and delegation', fields: [
     ['organization_name','SAI or organisation'], ['regional_group','INTOSAI regional group','region'],
     ['country','Country','country'], ['job_title','Job title'], ['department','Department'],
     ['role_in_delegation','Role in the delegation','delRole'],
     ['has_security_detail','Security detail accompanying','bool'], ['security_detail_count','Security personnel count']
   ]},
-  { title: 'Speaking and contribution', fields: [
+  { id: 'contribution', title: 'Speaking and contribution', fields: [
     ['wants_to_present','Requested a speaking slot?','yesno'],
     ['presentation_title','Presentation title'], ['presentation_abstract','Abstract'],
     ['speaker_bio','Short biography'], ['speaker_photo_filename','Portrait photo'], ['slides_file_filename','Presentation slides']
   ]},
-  { title: 'Travel document', fields: [
+  { id: 'passport', title: 'Travel document', fields: [
     ['passport_number','Passport number'], ['passport_type','Passport type','passportType'],
     ['passport_place_of_issue','Place of issue'], ['passport_issue_date','Date of issue'],
     ['passport_expiry_date','Date of expiry'], ['passport_copy_filename','Passport copy']
   ]},
-  { title: 'Visa facilitation', fields: [
+  { id: 'visa', title: 'Visa facilitation', fields: [
     ['visa_letter_needed','Needs a visa facilitation letter?','yesno']
   ]},
-  { title: 'Flights and transfers', fields: [
+  { id: 'flights', title: 'Flights and transfers', fields: [
     ['arrival_airline','Arrival airline'], ['arrival_flight_no','Arrival flight number'],
     ['arrival_date','Arrival date'], ['arrival_time','Arrival time'], ['arrival_terminal','Arrival terminal','terminal'],
     ['has_connecting_flight','Connecting flight on arrival?','bool'],
@@ -201,24 +205,26 @@ const SECTIONS = [
     ['departure_date','Departure date'], ['departure_time','Departure time'], ['departure_terminal','Departure terminal','terminal'],
     ['ticket_file_filename','Flight itinerary file']
   ]},
-  { title: 'Accommodation', fields: [
+  { id: 'accommodation', title: 'Accommodation', fields: [
     ['accommodation_type','Where will they stay?','accomType'], ['official_hotel','Official hotel'],
     ['room_type','Room type','roomType'], ['own_hotel_name_address','Own hotel name and address'],
     ['check_in_date','Check-in'], ['check_out_date','Check-out'], ['booking_reference','Booking reference']
   ]},
-  { title: 'Emergency contact and requirements', fields: [
+  { id: 'welfare', title: 'Emergency contact and requirements', fields: [
     ['emergency_contact_name','Emergency contact name'], ['emergency_contact_relation','Relationship'],
     ['emergency_contact_phone','Emergency contact phone'], ['emergency_contact_email','Emergency contact email'],
     ['dietary_requirements','Dietary requirements','dietaryList'], ['dietary_notes','Dietary notes'],
     ['allergies','Allergies'], ['medical_notes_emergency','Medical information'], ['covid_certificate','COVID / vaccination certificate','covidCert']
   ]},
-  { title: 'Social programme', fields: [
+  { id: 'programme', title: 'Social programme', fields: [
     ['social_program_attending','Joining the social programme?','yesno']
   ]},
-  { title: 'Consent and declaration', fields: [
+  { id: 'consents', title: 'Consent and declaration', fields: [
     ['consent_processing','Consented to data processing?','bool'], ['signature_typed_name','Signed as']
   ]}
 ];
+const ACC_SECTION = { id: 'accompanying', title: 'Accompanying persons' };
+const ALL_SECTIONS_FOR_TOGGLE = [...SECTIONS, ACC_SECTION];
 const ACC_FIELDS = [
   ['acc_full_name_passport','Full name'], ['acc_relationship','Relationship','accRel'],
   ['acc_nationality','Nationality','country'], ['acc_passport_number','Passport number'],
@@ -248,6 +254,27 @@ function withFileNames(data) {
 }
 
 let all = [];
+
+/* Which sections to render, persisted across visits. */
+const HIDDEN_KEY = 'asa_report_hidden_sections';
+let hiddenSections = new Set();
+try { hiddenSections = new Set(JSON.parse(localStorage.getItem(HIDDEN_KEY) || '[]')); } catch (e) { }
+function saveHiddenSections() {
+  try { localStorage.setItem(HIDDEN_KEY, JSON.stringify([...hiddenSections])); } catch (e) { }
+}
+function buildSectionToggles() {
+  const wrap = $('sectionToggles');
+  wrap.innerHTML = ALL_SECTIONS_FOR_TOGGLE.map(sec => `
+    <label style="font-weight:400;display:flex;gap:6px;align-items:center;font-size:13px;cursor:pointer">
+      <input type="checkbox" data-sec="${sec.id}" ${hiddenSections.has(sec.id) ? '' : 'checked'}>${sec.title}
+    </label>`).join('');
+  wrap.querySelectorAll('input[data-sec]').forEach(cb => cb.addEventListener('change', () => {
+    if (cb.checked) hiddenSections.delete(cb.dataset.sec); else hiddenSections.add(cb.dataset.sec);
+    saveHiddenSections();
+    render();
+  }));
+}
+buildSectionToggles();
 
 async function loadReport() {
   const msg = $('topMsg'); msg.className = 'msg';
@@ -283,7 +310,7 @@ function render() {
   list.innerHTML = rows.map(r => {
     const d = withFileNames(r.data || {});
     const events = (r.event_codes || '').split(',').filter(Boolean).map(c => EVENT_NAMES[c] || c).join(' & ');
-    const sections = SECTIONS.map(sec => {
+    const sections = SECTIONS.filter(sec => !hiddenSections.has(sec.id)).map(sec => {
       const cells = sec.fields.map(([key, label, kind]) => {
         const val = fmt(d[key], kind);
         if (!val && !showEmpty) return '';
@@ -294,7 +321,7 @@ function render() {
     }).join('');
 
     let accHtml = '';
-    if (d.is_accompanied === 'yes' && Array.isArray(d.accompanying) && d.accompanying.length) {
+    if (!hiddenSections.has('accompanying') && d.is_accompanied === 'yes' && Array.isArray(d.accompanying) && d.accompanying.length) {
       const people = d.accompanying.map((p, i) => {
         const pf = withFileNames(p);
         const cells = ACC_FIELDS.map(([key, label, kind]) => {
@@ -307,9 +334,6 @@ function render() {
       accHtml = `<div class="psec"><h3>Accompanying persons</h3>${people}</div>`;
     }
 
-    const flags = (r.flag_personal_email ? '<span class="badge flag">personal email</span>' : '') +
-      (r.flag_org_mismatch ? '<span class="badge flag">org mismatch</span>' : '');
-
     return `<div class="pcard">
       <div class="phead">
         <div>
@@ -317,7 +341,7 @@ function render() {
           <div class="sub">${r.job_title_line || r.organization_name || ''}${r.country ? ' · ' + (OPT.country[r.country] || r.country) : ''}</div>
         </div>
         <div class="meta">
-          <div><span class="badge ${r.status}">${(r.status || '').replace('_',' ')}</span>${flags}</div>
+          <div><span class="badge ${r.status}">${(r.status || '').replace('_',' ')}</span></div>
           <div class="ref" style="margin-top:6px">${r.reference}${r.registration_number ? ' · ' + r.registration_number : ''}</div>
           <div class="sub" style="margin-top:2px">${events}</div>
         </div>
