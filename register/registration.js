@@ -22,7 +22,7 @@ const CONFIG = {
 const EVENTS = {
   'WGITA-35-2026': {
     code: 'WGITA-35-2026',
-    title: { en: 'INTOSAI Working Group on IT Audit', ar: 'فريق عمل الإنتوساي المعني بتدقيق تكنولوجيا المعلومات' },
+    title: { en: '35th Annual Meeting of INTOSAI Working Group on IT Audit', ar: 'الاجتماع السنوي الخامس والثلاثون لفريق عمل الإنتوساي المعني بتدقيق تكنولوجيا المعلومات' },
     short: { en: 'WGITA 2026', ar: 'WGITA 2026' },
     dates: { en: '28–29 September 2026', ar: '28 – 29 سبتمبر 2026' },
     blurb: {
@@ -35,7 +35,7 @@ const EVENTS = {
   },
   'KSC-SC18-2026': {
     code: 'KSC-SC18-2026',
-    title: { en: 'KSC Steering Committee Meeting', ar: 'اجتماع اللجنة التوجيهية لـ KSC' },
+    title: { en: '18th KSC Steering Committee Meeting', ar: 'الاجتماع الثامن عشر للجنة التوجيهية لـ KSC' },
     short: { en: 'KSC SC 2026', ar: 'KSC SC 2026' },
     dates: { en: '30 September 2026', ar: '30 سبتمبر 2026' },
     blurb: {
@@ -464,7 +464,7 @@ function combinedEvent(list) {
   if (items.length === 1) return items[0];
   return {
     code: items.map(e => e.code).join('+'),
-    title: { en: items.map(e => e.short.en).join(' & '), ar: items.map(e => e.short.ar).join(' و') },
+    title: { en: items.map(e => e.title.en).join(' & '), ar: items.map(e => e.title.ar).join(' و') },
     short: { en: items.map(e => e.short.en).join(' & '), ar: items.map(e => e.short.ar).join(' و') },
     dates: { en: items.map(e => e.dates.en).join(' · '), ar: items.map(e => e.dates.ar).join(' · ') },
     venue: items[0].venue,
@@ -811,7 +811,7 @@ function renderChrome() {
   document.getElementById('ev-org').textContent = state.lang === 'ar'
     ? 'الجهاز المركزي للمحاسبات — جمهورية مصر العربية'
     : 'Accountability State Authority — Arab Republic of Egypt';
-  document.getElementById('dr-event').innerHTML = `<b>${ev.code}</b>`;
+  document.getElementById('dr-event').innerHTML = `<b>${L(ev.title)}</b>`;
   document.getElementById('dr-dates').textContent = `${L(ev.dates)}, ${L(ev.venue)}`;
 }
 
