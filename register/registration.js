@@ -926,9 +926,12 @@ async function startUpload(f, file, scope) {
     fd.append('file', file, file.name);
     fd.append('field', f.k);
     fd.append('accept', f.accept || 'any');
+    // Editing an existing registration authorizes with the edit token, not
+    // a session — there never was an invitation-verify step in that flow.
+    const authToken = state.editMode ? state.editMode.token : state.session;
     const r = await fetch(CONFIG.apiBase + '/uploads', {
       method: 'POST',
-      headers: state.session ? { 'Authorization': 'Bearer ' + state.session } : {},
+      headers: authToken ? { 'Authorization': 'Bearer ' + authToken } : {},
       body: fd
     });
     const j = await r.json().catch(() => ({}));

@@ -614,9 +614,13 @@ async function adminCreateInvitation(req, env, ch, ipHash) {
 }
 
 async function uploadFile(req, env, ch) {
+  // Two distinct callers hit this: a fresh registration (session token, from
+  // invitation-verify) and someone editing an existing one via their edit
+  // link (edit token, namespaced separately). Accept either.
   const token = (req.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '');
   const s = await readSession(env, token);
-  if (!s) return fail('session_expired', 401, ch);
+  const t = s ? null : await readEditToken(env, token);
+  if (!s && !t) return fail('session_expired', 401, ch);
 
   const form = await req.formData().catch(() => null);
   const file = form && form.get('file');
@@ -630,7 +634,8 @@ async function uploadFile(req, env, ch) {
   if (file.size > maxMB * 1048576) return fail('file_too_large', 400, ch);
 
   const safeName = String(file.name || 'file').replace(/[^A-Za-z0-9._-]/g, '_').slice(-80);
-  const key = `regs/${s.iv}/${await sha256(s.e)}/${field}-${crypto.randomUUID()}-${safeName}`;
+  const keyPrefix = s ? `regs/${s.iv}/${await sha256(s.e)}` : `regs/edit/${t.r}`;
+  const key = `${keyPrefix}/${field}-${crypto.randomUUID()}-${safeName}`;
   await env.FILES.put(key, file.stream(), { httpMetadata: { contentType: file.type } });
 
   await audit(env, 'file_uploaded', 'file', key, field, null);
