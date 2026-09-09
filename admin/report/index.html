@@ -78,24 +78,24 @@ button.ghost:hover{background:#F1F5F8}
 <header>
   <div>
     <h1>ASA Events — Full Report</h1>
-    <p>Internal tool. Not linked from the public site. Requires the admin token.</p>
+    <p>Internal tool. Not linked from the public site. Requires an access token.</p>
   </div>
-  <nav><a href="../">Invitation codes</a><a href="../registrations/">Registrations &amp; reports</a></nav>
 </header>
 
 <main>
   <div class="card controls">
-    <h2>Admin token</h2>
+    <h2>Access token</h2>
     <div class="grid">
       <div class="f" style="grid-column:1/-1">
-        <label for="token">Admin token <span style="color:var(--brass)">*</span></label>
-        <input type="password" id="token" autocomplete="off" placeholder="paste ADMIN_TOKEN">
-        <span class="hint">Kept only in this browser tab (sessionStorage), shared with the other admin pages.</span>
+        <label for="token">Access token <span style="color:var(--brass)">*</span></label>
+        <input type="password" id="token" autocomplete="off" placeholder="paste your token">
+        <span class="hint">Kept only in this browser tab (sessionStorage). Separate from the other admin pages — a token that works here won't unlock those.</span>
       </div>
     </div>
     <div class="actions" style="margin-top:14px">
       <button id="load">Load report</button>
       <button class="ghost" id="printBtn">Print / Save as PDF</button>
+      <button class="ghost" id="excelBtn">Export to Excel</button>
       <span id="topMsg" class="msg"></span>
     </div>
     <div class="filters" style="margin-top:16px;margin-bottom:0">
@@ -133,8 +133,8 @@ button.ghost:hover{background:#F1F5F8}
 const CONFIG = { apiBase: 'https://asa-events-api.mostafamaarof.workers.dev/v1' };
 const $ = (id) => document.getElementById(id);
 const tokenInput = $('token');
-tokenInput.value = sessionStorage.getItem('asa_admin_token') || '';
-tokenInput.addEventListener('input', () => sessionStorage.setItem('asa_admin_token', tokenInput.value));
+tokenInput.value = sessionStorage.getItem('asa_report_token') || '';
+tokenInput.addEventListener('input', () => sessionStorage.setItem('asa_report_token', tokenInput.value));
 
 function showMsg(el, text, ok) { el.textContent = text; el.className = 'msg ' + (ok ? 'ok' : 'err'); }
 function authHeaders() {
@@ -308,22 +308,27 @@ async function loadReport() {
   }
 }
 
-function render() {
+const EVENT_NAMES = { 'WGITA-35-2026': '35th Annual Meeting of INTOSAI Working Group on IT Audit', 'KSC-SC18-2026': '18th KSC Steering Committee Meeting' };
+
+function filteredRows() {
   const evFilter = $('fEvent').value;
   const search = $('fSearch').value.trim().toLowerCase();
-  const showEmpty = $('fEmpty').value === 'show';
   let rows = all;
   if (evFilter) rows = rows.filter(r => (r.event_codes || '').split(',').includes(evFilter));
   if (search) rows = rows.filter(r =>
     (r.full_name || '').toLowerCase().includes(search) ||
     (r.email || '').toLowerCase().includes(search) ||
     (r.organization_name || '').toLowerCase().includes(search));
+  return rows;
+}
+
+function render() {
+  const showEmpty = $('fEmpty').value === 'show';
+  const rows = filteredRows();
 
   $('rowCount').textContent = `${rows.length} of ${all.length} shown`;
   const list = $('list');
   if (!rows.length) { list.innerHTML = '<p class="empty">No matching registrations. Load the report and adjust filters.</p>'; return; }
-
-  const EVENT_NAMES = { 'WGITA-35-2026': '35th Annual Meeting of INTOSAI Working Group on IT Audit', 'KSC-SC18-2026': '18th KSC Steering Committee Meeting' };
 
   list.innerHTML = rows.map(r => {
     const d = withFileNames(r.data || {});
@@ -371,7 +376,47 @@ function render() {
   }).join('');
 }
 
+/* One row per registration, columns matching whatever sections are
+   currently shown -- hidden sections stay out of the export too. */
+function exportToExcel() {
+  const rows = filteredRows();
+  if (!rows.length) { alert('Load the report first.'); return; }
+  const visibleSections = SECTIONS.filter(sec => !hiddenSections.has(sec.id));
+  const showAccompanying = !hiddenSections.has('accompanying');
+
+  const header = ['Reference', 'Registration number', 'Status', 'Event(s)'];
+  visibleSections.forEach(sec => sec.fields.forEach(([, label]) => header.push(label)));
+  if (showAccompanying) header.push('Accompanying persons');
+
+  const esc = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+  const lines = [header.map(esc).join(',')];
+
+  rows.forEach(r => {
+    const d = withFileNames(r.data || {});
+    const events = (r.event_codes || '').split(',').filter(Boolean).map(c => EVENT_NAMES[c] || c).join(' & ');
+    const cells = [r.reference, r.registration_number || '', r.status, events];
+    visibleSections.forEach(sec => sec.fields.forEach(([key, , kind]) => cells.push(fmt(d[key], kind))));
+    if (showAccompanying) {
+      const people = (d.is_accompanied === 'yes' && Array.isArray(d.accompanying)) ? d.accompanying : [];
+      cells.push(people.map(p => {
+        const name = fmt(p.acc_full_name_passport);
+        const rel = fmt(p.acc_relationship, 'accRel');
+        return rel ? `${name} (${rel})` : name;
+      }).filter(Boolean).join('; '));
+    }
+    lines.push(cells.map(esc).join(','));
+  });
+
+  const blob = new Blob(['﻿' + lines.join('\n')], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'asa-events-report.csv';
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+}
+
 $('load').addEventListener('click', loadReport);
+$('excelBtn').addEventListener('click', exportToExcel);
 $('printBtn').addEventListener('click', () => window.print());
 $('fEvent').addEventListener('change', render);
 $('fSearch').addEventListener('input', render);

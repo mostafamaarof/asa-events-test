@@ -17,12 +17,12 @@ import { connect } from 'cloudflare:sockets';
      POST /v1/registrations/edit        update it in place (reference + token)
      GET  /v1/admin/registrations  read the data back (Bearer ADMIN_TOKEN)
      GET  /v1/admin/export.csv     same data as CSV (summary columns only)
-     GET  /v1/admin/export.json    full submissions incl. every form field (Bearer ADMIN_TOKEN)
+     GET  /v1/admin/export.json    full submissions incl. every form field (Bearer ADMIN_TOKEN or VIEWER_TOKEN)
      GET  /v1/admin/invitations    list invitation codes (Bearer ADMIN_TOKEN)
      POST /v1/admin/invitations    generate a new invitation code (Bearer ADMIN_TOKEN)
      POST /v1/uploads               store one attachment in R2 (Bearer session), returns its key
-     GET  /v1/admin/files?key=...  download a stored attachment (Bearer ADMIN_TOKEN)
-     GET  /v1/admin/attachments?reference=... list one registration's attachments (Bearer ADMIN_TOKEN)
+     GET  /v1/admin/files?key=...  download a stored attachment (Bearer ADMIN_TOKEN or VIEWER_TOKEN)
+     GET  /v1/admin/attachments?reference=... list one registration's attachments (Bearer ADMIN_TOKEN or VIEWER_TOKEN)
      POST /v1/admin/registrations/status  set status to under_review/approved/rejected, emails the applicant (Bearer ADMIN_TOKEN)
    Nothing here trusts the browser: every rule in the form is re-checked.
    ============================================================================= */
@@ -491,7 +491,7 @@ function extractAttachments(data) {
 }
 
 async function adminAttachments(req, env, ch) {
-  if (!requireAdmin(req, env)) return fail('unauthorized', 401, ch);
+  if (!requireAdminOrViewer(req, env)) return fail('unauthorized', 401, ch);
   const reference = (new URL(req.url).searchParams.get('reference') || '').toUpperCase();
   const reg = await env.DB.prepare('SELECT data_json FROM registrations WHERE reference = ?').bind(reference).first();
   if (!reg) return fail('not_found', 404, ch);
@@ -539,7 +539,7 @@ async function adminSetStatus(req, env, ch, ipHash) {
 }
 
 async function adminExportFull(req, env, ch) {
-  if (!requireAdmin(req, env)) return fail('unauthorized', 401, ch);
+  if (!requireAdminOrViewer(req, env)) return fail('unauthorized', 401, ch);
   const { results } = await env.DB.prepare(
     `SELECT registration_id, reference, registration_number, created_at, status, event_codes, invitation_id, email, full_name,
             organization_name, country, attendance_mode, role_in_delegation, visa_letter_needed,
@@ -557,6 +557,15 @@ async function adminExportFull(req, env, ch) {
 function requireAdmin(req, env) {
   const token = (req.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '');
   return !!env.ADMIN_TOKEN && token === env.ADMIN_TOKEN;
+}
+/* A second, deliberately narrower token: valid only for the read-only report
+   endpoints (full data, attachment listing/download), never for generating
+   invitation codes or changing a registration's status. Meant to be handed
+   to someone who should see the report and nothing else in the admin tools. */
+function requireAdminOrViewer(req, env) {
+  if (requireAdmin(req, env)) return true;
+  const token = (req.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '');
+  return !!env.VIEWER_TOKEN && token === env.VIEWER_TOKEN;
 }
 
 async function adminListInvitations(req, env, ch) {
@@ -643,7 +652,7 @@ async function uploadFile(req, env, ch) {
 }
 
 async function adminGetFile(req, env, ch) {
-  if (!requireAdmin(req, env)) return fail('unauthorized', 401, ch);
+  if (!requireAdminOrViewer(req, env)) return fail('unauthorized', 401, ch);
   const key = new URL(req.url).searchParams.get('key') || '';
   if (!key.startsWith('regs/')) return fail('invalid_key', 400, ch);
   const obj = await env.FILES.get(key);
