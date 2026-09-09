@@ -805,9 +805,6 @@ function renderChrome() {
     : 'Accountability State Authority — Arab Republic of Egypt';
   document.getElementById('dr-event').innerHTML = `<b>${ev.code}</b>`;
   document.getElementById('dr-dates').textContent = `${L(ev.dates)}, ${L(ev.venue)}`;
-  document.getElementById('dr-status').textContent = state.lang === 'ar'
-    ? 'كل تسجيل يخضع لاعتماد المكتب الفني للعلاقات الدولية'
-    : 'Every registration is subject to approval by the Technical Office for International Relations';
 }
 
 function renderLedger() {
@@ -983,9 +980,9 @@ function renderGate() {
     ? 'نسخة تجريبية: أي رمز بالصيغة ASA-XXXX-XX-XXXX يُقبل. لتجربة قبول بريد شخصي استخدم الرمز ASA-DEMO-EXP-9K4T. لا تُرسل أي بيانات إلى خادم.'
     : 'Demo build: any code shaped ASA-XXXX-XX-XXXX is accepted. To test a personal address, use code ASA-DEMO-EXP-9K4T. Nothing is sent to a server.'));
 
-  const btn = el('button', { class: 'btn', onclick: submitGate }, state.lang === 'ar' ? 'متابعة' : 'Continue');
+  const btn = el('button', { class: 'btn', id: 'gateBtn', onclick: () => submitGate(btn) }, state.lang === 'ar' ? 'متابعة' : 'Continue');
   foot().append(btn, el('span', { class: 'foot-spacer' }),
-    el('span', { class: 'savenote' }, `${state.lang === 'ar' ? 'الأمانة' : 'Secretariat'}: ${CONFIG.supportEmail}`));
+    el('span', { class: 'savenote' }, `${state.lang === 'ar' ? 'المنظمون' : 'Organizers'}: ${CONFIG.supportEmail}`));
   b.append(el('button', {
     type: 'button', class: 'btn link', style: 'margin-top:20px',
     onclick: () => { state.screen = 'editRequest'; state.errors = {}; render(); }
@@ -1034,7 +1031,8 @@ async function submitEditRequest() {
   renderEditRequest();
 }
 
-async function submitGate() {
+async function submitGate(btn) {
+  if (state._gateBusy) return;                                 // ignore extra clicks while a request is in flight
   const e = {};
   const c = state.data.invitation_code || '', m = state.data.institutional_email || '';
   if (!c) e.invitation_code = T('errRequired'); else if (!RE.code.test(c)) e.invitation_code = T('errCode');
@@ -1053,6 +1051,10 @@ async function submitGate() {
   if ((Date.now() - state.startedAt) / 1000 < CONFIG.minFillSeconds && !CONFIG.MOCK) return;
   state.errors = e;
   if (Object.keys(e).length) return renderGate();
+
+  state._gateBusy = true;
+  const orig = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = state.lang === 'ar' ? 'جارٍ التحقق…' : 'Checking…'; }
   try {
     const r = await call('/invitations/verify', { invitation_code: c, email: m });
     state.data.personal_email = FREE_MAIL.includes(domainOf(m));
@@ -1075,6 +1077,9 @@ async function submitGate() {
       : msg === 'rate_limited' ? { invitation_code: T('errRateLimited') }
       : { invitation_code: T('errCode') };
     renderGate();
+  } finally {
+    state._gateBusy = false;
+    if (btn && btn.isConnected) { btn.disabled = false; btn.textContent = orig; }
   }
 }
 
