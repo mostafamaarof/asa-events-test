@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow, noarchive">
+<title>Full Report — ASA Events Admin</title>
+<style>
+:root{
+  --ink:#0B2135; --ink-soft:#1C3A56; --surface:#EEF2F6; --sheet:#FFFFFF;
+  --rule:#CBD6E0; --rule-strong:#93A6B8; --muted:#556A7D;
+  --brass:#A8842C; --brass-tint:#F3EBD8;
+  --ok:#1D6B4C; --ok-tint:#E9F4EE; --err:#A02226; --err-tint:#FAECEC; --warn-tint:#FBF3DF; --warn:#8A6100;
+  --f-body:"IBM Plex Sans",system-ui,sans-serif; --f-num:ui-monospace,Consolas,monospace;
+}
+*,*::before,*::after{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{font-family:var(--f-body);font-size:15px;line-height:1.55;color:var(--ink);background:var(--surface)}
+header{background:var(--ink);color:#fff;padding:16px 24px;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+header h1{margin:0;font-size:18px;font-weight:500}
+header p{margin:4px 0 0;font-size:13px;color:#A9BDD0}
+header nav{margin-inline-start:auto;display:flex;gap:14px}
+header nav a{color:#fff;font-size:13px;text-decoration:underline}
+main{max-width:1000px;margin:0 auto;padding:24px 20px 64px;display:grid;gap:20px}
+.card{background:var(--sheet);border:1px solid var(--rule);padding:20px 24px}
+.card h2{font-size:16px;margin:0 0 16px}
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px 20px}
+@media (max-width:640px){.grid{grid-template-columns:1fr}}
+.f{display:flex;flex-direction:column;gap:5px}
+label{font-size:13px;font-weight:500}
+input,select{font:inherit;font-size:14px;padding:8px 10px;border:1px solid var(--rule-strong);border-radius:2px;background:#fff;color:var(--ink)}
+.hint{font-size:12px;color:var(--muted);margin-top:2px}
+.actions{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+button{font:inherit;font-size:14px;font-weight:500;padding:10px 20px;border-radius:2px;border:1px solid transparent;background:var(--ink);color:#fff;cursor:pointer}
+button:hover{background:var(--ink-soft)}
+button:disabled{opacity:.5;cursor:not-allowed}
+button.ghost{background:transparent;color:var(--ink);border-color:var(--rule-strong)}
+button.ghost:hover{background:#F1F5F8}
+.msg{font-size:13px;padding:10px 12px;border-radius:2px;display:none}
+.msg.ok{display:block;background:var(--ok-tint);color:var(--ok)}
+.msg.err{display:block;background:var(--err-tint);color:var(--err)}
+.filters{display:flex;gap:12px;flex-wrap:wrap;align-items:end}
+.filters .f{min-width:180px}
+.count{font-size:13px;color:var(--muted)}
+.empty{color:var(--muted);font-size:13px;padding:8px 0}
+
+/* Participant report card */
+.pcard{background:var(--sheet);border:1px solid var(--rule);break-inside:avoid;page-break-inside:avoid}
+.phead{padding:16px 20px;border-bottom:2px solid var(--ink);display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap}
+.phead .name{font-family:Georgia,serif;font-size:19px;font-weight:600}
+.phead .sub{font-size:13px;color:var(--muted);margin-top:2px}
+.phead .meta{text-align:right;font-size:13px}
+.phead .ref{font-family:var(--f-num)}
+.badge{display:inline-block;padding:3px 10px;border-radius:10px;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.03em}
+.badge.approved{background:var(--ok-tint);color:var(--ok)}
+.badge.rejected{background:var(--err-tint);color:var(--err)}
+.badge.under_review{background:var(--warn-tint);color:var(--warn)}
+.badge.flag{background:var(--err-tint);color:var(--err);margin-inline-start:6px}
+.psec{padding:14px 20px;border-bottom:1px solid var(--rule)}
+.psec:last-child{border-bottom:none}
+.psec h3{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:600;margin:0 0 10px}
+.pfields{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:8px 20px}
+.pfields dt{font-size:12px;color:var(--muted)}
+.pfields dd{margin:2px 0 0;font-size:14px;word-break:break-word}
+.pfields.wide dd{grid-column:1/-1}
+.acc-person{border:1px solid var(--rule);padding:10px 14px;margin-top:8px;background:#FAFCFD}
+.acc-person .n{font-weight:600;font-size:13px;margin-bottom:6px}
+@media print{
+  header, .card.controls{display:none}
+  body{background:#fff}
+  main{max-width:none;padding:0}
+  .pcard{border:1px solid #000;margin-bottom:16px}
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>ASA Events — Full Report</h1>
+    <p>Internal tool. Not linked from the public site. Requires the admin token.</p>
+  </div>
+  <nav><a href="../">Invitation codes</a><a href="../registrations/">Registrations &amp; reports</a></nav>
+</header>
+
+<main>
+  <div class="card controls">
+    <h2>Admin token</h2>
+    <div class="grid">
+      <div class="f" style="grid-column:1/-1">
+        <label for="token">Admin token <span style="color:var(--brass)">*</span></label>
+        <input type="password" id="token" autocomplete="off" placeholder="paste ADMIN_TOKEN">
+        <span class="hint">Kept only in this browser tab (sessionStorage), shared with the other admin pages.</span>
+      </div>
+    </div>
+    <div class="actions" style="margin-top:14px">
+      <button id="load">Load report</button>
+      <button class="ghost" id="printBtn">Print / Save as PDF</button>
+      <span id="topMsg" class="msg"></span>
+    </div>
+    <div class="filters" style="margin-top:16px;margin-bottom:0">
+      <div class="f">
+        <label for="fEvent">Event</label>
+        <select id="fEvent">
+          <option value="">All events</option>
+          <option value="WGITA-35-2026">35th Annual Meeting of INTOSAI Working Group on IT Audit</option>
+          <option value="KSC-SC18-2026">18th KSC Steering Committee Meeting</option>
+        </select>
+      </div>
+      <div class="f" style="flex:1;min-width:220px">
+        <label for="fSearch">Search (name, email, organization)</label>
+        <input type="text" id="fSearch" placeholder="type to filter...">
+      </div>
+      <div class="f">
+        <label for="fEmpty">Empty fields</label>
+        <select id="fEmpty">
+          <option value="hide">Hide</option>
+          <option value="show">Show as "Not provided"</option>
+        </select>
+      </div>
+      <span class="count" id="rowCount"></span>
+    </div>
+  </div>
+
+  <div id="list"></div>
+</main>
+
+<script>
+const CONFIG = { apiBase: 'https://asa-events-api.mostafamaarof.workers.dev/v1' };
+const $ = (id) => document.getElementById(id);
+const tokenInput = $('token');
+tokenInput.value = sessionStorage.getItem('asa_admin_token') || '';
+tokenInput.addEventListener('input', () => sessionStorage.setItem('asa_admin_token', tokenInput.value));
+
+function showMsg(el, text, ok) { el.textContent = text; el.className = 'msg ' + (ok ? 'ok' : 'err'); }
+function authHeaders() {
+  const token = tokenInput.value.trim();
+  if (!token) throw new Error('Enter the admin token first.');
+  return { 'Authorization': 'Bearer ' + token };
+}
+
+/* ---------- option value -> readable label maps (English) ---------- */
+const O = (pairs) => Object.fromEntries(pairs);
+const OPT = {
+  salutation: O([['HE','H.E.'],['Dr','Dr'],['Mr','Mr'],['Mrs','Mrs'],['Ms','Ms']]),
+  gender: O([['female','Female'],['male','Male'],['na','Prefer not to say']]),
+  corrLang: O([['en','English'],['ar','Arabic'],['fr','French']]),
+  region: O([['ARABOSAI','ARABOSAI'],['AFROSAI','AFROSAI'],['AFROSAI-E','AFROSAI-E'],['ASOSAI','ASOSAI'],
+    ['CAROSAI','CAROSAI'],['EUROSAI','EUROSAI'],['OLACEFS','OLACEFS'],['PASAI','PASAI'],['na','Not applicable']]),
+  delRole: O([['hod','Head of delegation'],['delegate','Delegate'],['observer','Observer'],['speaker','Speaker'],
+    ['moderator','Moderator'],['secretariat','Secretariat'],['interpreter','Interpreter'],['accompanying','Accompanying official']]),
+  yesno: O([['yes','Yes'],['no','No']]),
+  passportType: O([['diplomatic','Diplomatic'],['service','Service or special'],['ordinary','Ordinary'],['lp','UN laissez-passer']]),
+  terminal: O([['T1','Terminal 1'],['T2','Terminal 2'],['T3','Terminal 3'],['unknown','Not known yet']]),
+  accomType: O([['official','One of the official hotels'],['own','Accommodation arranged independently']]),
+  roomType: O([['single','Single'],['double','Double'],['suite','Suite']]),
+  dietary: O([['none','No special requirement'],['vegetarian','Vegetarian'],['vegan','Vegan'],['halal','Halal only'],
+    ['gluten','Gluten free'],['diabetic','Diabetic'],['other','Other']]),
+  covidCert: O([['not_provided','Not provided'],['valid','Holds a valid certificate']]),
+  accRel: O([['spouse','Spouse'],['aide','Aide or assistant'],['security','Security'],['interpreter','Interpreter'],['other','Other']])
+};
+const COUNTRIES_RAW = "AF:Afghanistan|AL:Albania|DZ:Algeria|AS:American Samoa|AD:Andorra|AO:Angola|AI:Anguilla|AQ:Antarctica|AG:Antigua and Barbuda|AR:Argentina|AM:Armenia|AW:Aruba|AU:Australia|AT:Austria|AZ:Azerbaijan|BS:Bahamas|BH:Bahrain|BD:Bangladesh|BB:Barbados|BY:Belarus|BE:Belgium|BZ:Belize|BJ:Benin|BM:Bermuda|BT:Bhutan|BO:Bolivia|BQ:Bonaire, Sint Eustatius and Saba|BA:Bosnia and Herzegovina|BW:Botswana|BV:Bouvet Island|BR:Brazil|IO:British Indian Ocean Territory|BN:Brunei Darussalam|BG:Bulgaria|BF:Burkina Faso|BI:Burundi|CV:Cabo Verde|KH:Cambodia|CM:Cameroon|CA:Canada|KY:Cayman Islands|CF:Central African Republic|TD:Chad|CL:Chile|CN:China|CX:Christmas Island|CC:Cocos (Keeling) Islands|CO:Colombia|KM:Comoros|CG:Congo|CD:Congo, The Democratic Republic of the|CK:Cook Islands|CR:Costa Rica|HR:Croatia|CU:Cuba|CW:Curaçao|CY:Cyprus|CZ:Czechia|CI:Côte d'Ivoire|DK:Denmark|DJ:Djibouti|DM:Dominica|DO:Dominican Republic|EC:Ecuador|EG:Egypt|SV:El Salvador|GQ:Equatorial Guinea|ER:Eritrea|EE:Estonia|SZ:Eswatini|ET:Ethiopia|FK:Falkland Islands (Malvinas)|FO:Faroe Islands|FJ:Fiji|FI:Finland|FR:France|GF:French Guiana|PF:French Polynesia|TF:French Southern Territories|GA:Gabon|GM:Gambia|GE:Georgia|DE:Germany|GH:Ghana|GI:Gibraltar|GR:Greece|GL:Greenland|GD:Grenada|GP:Guadeloupe|GU:Guam|GT:Guatemala|GG:Guernsey|GN:Guinea|GW:Guinea-Bissau|GY:Guyana|HT:Haiti|HM:Heard Island and McDonald Islands|VA:Holy See (Vatican City State)|HN:Honduras|HK:Hong Kong|HU:Hungary|IS:Iceland|IN:India|ID:Indonesia|IR:Iran|IQ:Iraq|IE:Ireland|IM:Isle of Man|IL:Israel|IT:Italy|JM:Jamaica|JP:Japan|JE:Jersey|JO:Jordan|KZ:Kazakhstan|KE:Kenya|KI:Kiribati|KP:North Korea|KR:South Korea|KW:Kuwait|KG:Kyrgyzstan|LA:Laos|LV:Latvia|LB:Lebanon|LS:Lesotho|LR:Liberia|LY:Libya|LI:Liechtenstein|LT:Lithuania|LU:Luxembourg|MO:Macao|MG:Madagascar|MW:Malawi|MY:Malaysia|MV:Maldives|ML:Mali|MT:Malta|MH:Marshall Islands|MQ:Martinique|MR:Mauritania|MU:Mauritius|YT:Mayotte|MX:Mexico|FM:Micronesia, Federated States of|MD:Moldova|MC:Monaco|MN:Mongolia|ME:Montenegro|MS:Montserrat|MA:Morocco|MZ:Mozambique|MM:Myanmar|NA:Namibia|NR:Nauru|NP:Nepal|NL:Netherlands|NC:New Caledonia|NZ:New Zealand|NI:Nicaragua|NE:Niger|NG:Nigeria|NU:Niue|NF:Norfolk Island|MK:North Macedonia|MP:Northern Mariana Islands|NO:Norway|OM:Oman|PK:Pakistan|PW:Palau|PS:Palestine, State of|PA:Panama|PG:Papua New Guinea|PY:Paraguay|PE:Peru|PH:Philippines|PN:Pitcairn|PL:Poland|PT:Portugal|PR:Puerto Rico|QA:Qatar|RO:Romania|RU:Russian Federation|RW:Rwanda|RE:Réunion|BL:Saint Barthélemy|SH:Saint Helena, Ascension and Tristan da Cunha|KN:Saint Kitts and Nevis|LC:Saint Lucia|MF:Saint Martin (French part)|PM:Saint Pierre and Miquelon|VC:Saint Vincent and the Grenadines|WS:Samoa|SM:San Marino|ST:Sao Tome and Principe|SA:Saudi Arabia|SN:Senegal|RS:Serbia|SC:Seychelles|SL:Sierra Leone|SG:Singapore|SX:Sint Maarten (Dutch part)|SK:Slovakia|SI:Slovenia|SB:Solomon Islands|SO:Somalia|ZA:South Africa|GS:South Georgia and the South Sandwich Islands|SS:South Sudan|ES:Spain|LK:Sri Lanka|SD:Sudan|SR:Suriname|SJ:Svalbard and Jan Mayen|SE:Sweden|CH:Switzerland|SY:Syria|TW:Taiwan|TJ:Tajikistan|TZ:Tanzania|TH:Thailand|TL:Timor-Leste|TG:Togo|TK:Tokelau|TO:Tonga|TT:Trinidad and Tobago|TN:Tunisia|TM:Turkmenistan|TC:Turks and Caicos Islands|TV:Tuvalu|TR:Türkiye|UG:Uganda|UA:Ukraine|AE:United Arab Emirates|GB:United Kingdom|US:United States|UM:United States Minor Outlying Islands|UY:Uruguay|UZ:Uzbekistan|VU:Vanuatu|VE:Venezuela|VN:Vietnam|VG:Virgin Islands, British|VI:Virgin Islands, U.S.|WF:Wallis and Futuna|EH:Western Sahara|YE:Yemen|ZM:Zambia|ZW:Zimbabwe|AX:Åland Islands";
+OPT.country = O(COUNTRIES_RAW.split('|').map(s => { const i = s.indexOf(':'); return [s.slice(0,i), s.slice(i+1)]; }));
+
+/* ---------- report field schema, grouped exactly like the form ---------- */
+const SECTIONS = [
+  { title: 'Personal information', fields: [
+    ['salutation','Salutation','salutation'], ['gender','Gender','gender'],
+    ['first_name_passport','First name, as in passport'], ['family_name_passport','Family name, as in passport'],
+    ['badge_name_en','Name on badge'], ['nationality','Nationality','country'],
+    ['email','Email'], ['alt_email','Alternative email'], ['mobile','Mobile'],
+    ['whatsapp_same','Also on WhatsApp?','bool'], ['whatsapp_number','WhatsApp number'],
+    ['correspondence_language','Language for correspondence','corrLang']
+  ]},
+  { title: 'Institution and delegation', fields: [
+    ['organization_name','SAI or organisation'], ['regional_group','INTOSAI regional group','region'],
+    ['country','Country','country'], ['job_title','Job title'], ['department','Department'],
+    ['role_in_delegation','Role in the delegation','delRole'],
+    ['has_security_detail','Security detail accompanying','bool'], ['security_detail_count','Security personnel count']
+  ]},
+  { title: 'Speaking and contribution', fields: [
+    ['wants_to_present','Requested a speaking slot?','yesno'],
+    ['presentation_title','Presentation title'], ['presentation_abstract','Abstract'],
+    ['speaker_bio','Short biography'], ['speaker_photo_filename','Portrait photo'], ['slides_file_filename','Presentation slides']
+  ]},
+  { title: 'Travel document', fields: [
+    ['passport_number','Passport number'], ['passport_type','Passport type','passportType'],
+    ['passport_place_of_issue','Place of issue'], ['passport_issue_date','Date of issue'],
+    ['passport_expiry_date','Date of expiry'], ['passport_copy_filename','Passport copy']
+  ]},
+  { title: 'Visa facilitation', fields: [
+    ['visa_letter_needed','Needs a visa facilitation letter?','yesno']
+  ]},
+  { title: 'Flights and transfers', fields: [
+    ['arrival_airline','Arrival airline'], ['arrival_flight_no','Arrival flight number'],
+    ['arrival_date','Arrival date'], ['arrival_time','Arrival time'], ['arrival_terminal','Arrival terminal','terminal'],
+    ['has_connecting_flight','Connecting flight on arrival?','bool'],
+    ['connecting_airline','Connecting airline'], ['connecting_flight_no','Connecting flight number'],
+    ['connecting_date','Connecting date'], ['connecting_time','Connecting time'],
+    ['departure_airline','Departure airline'], ['departure_flight_no','Departure flight number'],
+    ['departure_date','Departure date'], ['departure_time','Departure time'], ['departure_terminal','Departure terminal','terminal'],
+    ['ticket_file_filename','Flight itinerary file']
+  ]},
+  { title: 'Accommodation', fields: [
+    ['accommodation_type','Where will they stay?','accomType'], ['official_hotel','Official hotel'],
+    ['room_type','Room type','roomType'], ['own_hotel_name_address','Own hotel name and address'],
+    ['check_in_date','Check-in'], ['check_out_date','Check-out'], ['booking_reference','Booking reference']
+  ]},
+  { title: 'Emergency contact and requirements', fields: [
+    ['emergency_contact_name','Emergency contact name'], ['emergency_contact_relation','Relationship'],
+    ['emergency_contact_phone','Emergency contact phone'], ['emergency_contact_email','Emergency contact email'],
+    ['dietary_requirements','Dietary requirements','dietaryList'], ['dietary_notes','Dietary notes'],
+    ['allergies','Allergies'], ['medical_notes_emergency','Medical information'], ['covid_certificate','COVID / vaccination certificate','covidCert']
+  ]},
+  { title: 'Social programme', fields: [
+    ['social_program_attending','Joining the social programme?','yesno']
+  ]},
+  { title: 'Consent and declaration', fields: [
+    ['consent_processing','Consented to data processing?','bool'], ['signature_typed_name','Signed as']
+  ]}
+];
+const ACC_FIELDS = [
+  ['acc_full_name_passport','Full name'], ['acc_relationship','Relationship','accRel'],
+  ['acc_nationality','Nationality','country'], ['acc_passport_number','Passport number'],
+  ['acc_passport_expiry_date','Passport expiry'], ['acc_visa_letter_needed','Visa letter needed?','yesno'],
+  ['acc_passport_copy_filename','Passport copy'], ['acc_attends_sessions','Attends sessions?','yesno'],
+  ['acc_attends_social','Attends social programme?','yesno'], ['acc_dietary','Dietary requirements','dietaryList']
+];
+
+function fmt(v, kind) {
+  if (v === undefined || v === null || v === '') return '';
+  if (kind === 'bool') return v ? 'Yes' : 'No';
+  if (kind === 'dietaryList') return (Array.isArray(v) ? v : [v]).map(x => OPT.dietary[x] || x).join(', ');
+  if (kind && OPT[kind]) return OPT[kind][v] || v;
+  if (Array.isArray(v)) return v.join(', ');
+  return String(v);
+}
+
+/* Every uploaded file leaves data.<field>_key / data.<field>_filename; surface
+   the filename under a synthetic "<field>_filename" key so it slots into the
+   same section as the rest of that field's context. */
+function withFileNames(data) {
+  const out = { ...data };
+  for (const k of Object.keys(data || {})) {
+    if (k.endsWith('_key') && data[k]) out[k.slice(0, -4) + '_filename'] = data[k.slice(0, -4) + '_filename'] || '(uploaded)';
+  }
+  return out;
+}
+
+let all = [];
+
+async function loadReport() {
+  const msg = $('topMsg'); msg.className = 'msg';
+  try {
+    const res = await fetch(CONFIG.apiBase + '/admin/export.json', { headers: authHeaders() });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || data.ok === false) throw new Error(data.error || ('HTTP ' + res.status));
+    all = data.registrations || [];
+    showMsg(msg, `Loaded ${all.length} registration(s).`, true);
+    render();
+  } catch (e) {
+    showMsg(msg, e.message, false);
+  }
+}
+
+function render() {
+  const evFilter = $('fEvent').value;
+  const search = $('fSearch').value.trim().toLowerCase();
+  const showEmpty = $('fEmpty').value === 'show';
+  let rows = all;
+  if (evFilter) rows = rows.filter(r => (r.event_codes || '').split(',').includes(evFilter));
+  if (search) rows = rows.filter(r =>
+    (r.full_name || '').toLowerCase().includes(search) ||
+    (r.email || '').toLowerCase().includes(search) ||
+    (r.organization_name || '').toLowerCase().includes(search));
+
+  $('rowCount').textContent = `${rows.length} of ${all.length} shown`;
+  const list = $('list');
+  if (!rows.length) { list.innerHTML = '<p class="empty">No matching registrations. Load the report and adjust filters.</p>'; return; }
+
+  const EVENT_NAMES = { 'WGITA-35-2026': '35th Annual Meeting of INTOSAI Working Group on IT Audit', 'KSC-SC18-2026': '18th KSC Steering Committee Meeting' };
+
+  list.innerHTML = rows.map(r => {
+    const d = withFileNames(r.data || {});
+    const events = (r.event_codes || '').split(',').filter(Boolean).map(c => EVENT_NAMES[c] || c).join(' & ');
+    const sections = SECTIONS.map(sec => {
+      const cells = sec.fields.map(([key, label, kind]) => {
+        const val = fmt(d[key], kind);
+        if (!val && !showEmpty) return '';
+        return `<div><dt>${label}</dt><dd${!val ? ' style="color:var(--rule-strong)"' : ''}>${val || 'Not provided'}</dd></div>`;
+      }).filter(Boolean).join('');
+      if (!cells) return '';
+      return `<div class="psec"><h3>${sec.title}</h3><dl class="pfields">${cells}</dl></div>`;
+    }).join('');
+
+    let accHtml = '';
+    if (d.is_accompanied === 'yes' && Array.isArray(d.accompanying) && d.accompanying.length) {
+      const people = d.accompanying.map((p, i) => {
+        const pf = withFileNames(p);
+        const cells = ACC_FIELDS.map(([key, label, kind]) => {
+          const val = fmt(pf[key], kind);
+          if (!val && !showEmpty) return '';
+          return `<div><dt>${label}</dt><dd${!val ? ' style="color:var(--rule-strong)"' : ''}>${val || 'Not provided'}</dd></div>`;
+        }).filter(Boolean).join('');
+        return `<div class="acc-person"><div class="n">Accompanying person ${i + 1}</div><dl class="pfields">${cells}</dl></div>`;
+      }).join('');
+      accHtml = `<div class="psec"><h3>Accompanying persons</h3>${people}</div>`;
+    }
+
+    const flags = (r.flag_personal_email ? '<span class="badge flag">personal email</span>' : '') +
+      (r.flag_org_mismatch ? '<span class="badge flag">org mismatch</span>' : '');
+
+    return `<div class="pcard">
+      <div class="phead">
+        <div>
+          <div class="name">${r.full_name || '(no name)'}</div>
+          <div class="sub">${r.job_title_line || r.organization_name || ''}${r.country ? ' · ' + (OPT.country[r.country] || r.country) : ''}</div>
+        </div>
+        <div class="meta">
+          <div><span class="badge ${r.status}">${(r.status || '').replace('_',' ')}</span>${flags}</div>
+          <div class="ref" style="margin-top:6px">${r.reference}${r.registration_number ? ' · ' + r.registration_number : ''}</div>
+          <div class="sub" style="margin-top:2px">${events}</div>
+        </div>
+      </div>
+      ${sections}${accHtml}
+    </div>`;
+  }).join('');
+}
+
+$('load').addEventListener('click', loadReport);
+$('printBtn').addEventListener('click', () => window.print());
+$('fEvent').addEventListener('change', render);
+$('fSearch').addEventListener('input', render);
+$('fEmpty').addEventListener('change', render);
+if (tokenInput.value) loadReport();
+</script>
+</body>
+</html>
