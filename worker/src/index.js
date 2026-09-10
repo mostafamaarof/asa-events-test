@@ -25,6 +25,9 @@ import { connect } from 'cloudflare:sockets';
      GET  /v1/admin/attachments?reference=... list one registration's attachments (Bearer ADMIN_TOKEN or VIEWER_TOKEN)
      POST /v1/admin/registrations/status  set status to under_review/approved/rejected, emails the applicant (Bearer ADMIN_TOKEN)
      GET  /v1/admin/audit           recent audit-trail entries (Bearer ADMIN_TOKEN only — not VIEWER_TOKEN)
+   Every error a registrant/editor/uploader can see on the public paths above
+   is also written to audit_log as one 'error_shown' action (entity = which
+   flow, entity_id = the error code, detail = whatever identifies who hit it).
    Nothing here trusts the browser: every rule in the form is re-checked.
    ============================================================================= */
 
@@ -39,6 +42,8 @@ const UPLOAD_ACCEPT = {
   doc: ['application/pdf', 'application/vnd.openxmlformats-officedocument.presentationml.presentation']
 };
 const UPLOAD_MAX_MB = { any: 15, image: 10, doc: 50 };
+const PUBLIC_PATHS = new Set(['/v1/invitations/verify', '/v1/registrations', '/v1/registrations/edit-link',
+  '/v1/registrations/edit-fetch', '/v1/registrations/edit', '/v1/uploads']);
 
 /* ---------- small helpers ---------- */
 const now = () => Math.floor(Date.now() / 1000);
@@ -119,6 +124,15 @@ async function allow(env, key, limit, windowSec) {
 async function audit(env, action, entity, entityId, detail, ipHash) {
   await env.DB.prepare('INSERT INTO audit_log (action,entity,entity_id,detail,ip_hash,created_at) VALUES (?,?,?,?,?,?)')
     .bind(action, entity || null, entityId || null, detail || null, ipHash || null, new Date().toISOString()).run();
+}
+
+/* Every error message a registrant (or someone editing/uploading) can actually
+   see, logged as one 'error_shown' action -- entity is which flow it happened
+   in, entity_id is the error code shown, detail is whatever identifies who hit
+   it (email, reference, or a validation field list) when that's known yet.
+   Never lets a logging failure break the real response. */
+async function auditError(env, flow, code, detail, ipHash) {
+  try { await audit(env, 'error_shown', flow, code, detail, ipHash); } catch (e) { /* logging must never break the response */ }
 }
 
 /* Minimal SMTP client over a raw TLS socket (Workers TCP Sockets), used to
@@ -244,16 +258,16 @@ async function verifyInvitation(req, env, ch, ipHash) {
   const code = String(b.invitation_code || '').toUpperCase().trim();
   const email = String(b.email || '').toLowerCase().trim();
 
-  if (!await allow(env, 'inv:' + ipHash, 30, 3600)) return fail('rate_limited', 429, ch);
-  if (!EMAIL_RE.test(email)) return fail('invalid_email', 400, ch);
-  if (DISPOSABLE.includes(domainOf(email))) return fail('disposable_email', 403, ch);
-  if (!CODE_RE.test(code)) return fail('invalid_code', 400, ch);
+  if (!await allow(env, 'inv:' + ipHash, 30, 3600)) { await auditError(env, 'invitation_verify', 'rate_limited', email, ipHash); return fail('rate_limited', 429, ch); }
+  if (!EMAIL_RE.test(email)) { await auditError(env, 'invitation_verify', 'invalid_email', email, ipHash); return fail('invalid_email', 400, ch); }
+  if (DISPOSABLE.includes(domainOf(email))) { await auditError(env, 'invitation_verify', 'disposable_email', email, ipHash); return fail('disposable_email', 403, ch); }
+  if (!CODE_RE.test(code)) { await auditError(env, 'invitation_verify', 'invalid_code_format', code, ipHash); return fail('invalid_code', 400, ch); }
 
   const inv = await env.DB.prepare('SELECT * FROM invitations WHERE code = ? AND is_active = 1').bind(code).first();
   /* One generic message for every failure: never confirm which half was wrong. */
   if (!inv) { await audit(env, 'invitation_verify_failed', 'invitation', code, null, ipHash); return fail('invalid_code', 400, ch); }
-  if (inv.expires_at && Date.parse(inv.expires_at + 'T23:59:59Z') < Date.now()) return fail('invalid_code', 400, ch);
-  if (inv.max_uses !== null && inv.used_count >= inv.max_uses) return fail('invalid_code', 400, ch);
+  if (inv.expires_at && Date.parse(inv.expires_at + 'T23:59:59Z') < Date.now()) { await auditError(env, 'invitation_verify', 'code_expired', code, ipHash); return fail('invalid_code', 400, ch); }
+  if (inv.max_uses !== null && inv.used_count >= inv.max_uses) { await auditError(env, 'invitation_verify', 'code_exhausted', code, ipHash); return fail('invalid_code', 400, ch); }
 
   /* A code can cover more than one event; only offer the ones still open. */
   const { results: coveredEvents } = await env.DB.prepare(
@@ -261,10 +275,12 @@ async function verifyInvitation(req, env, ch, ipHash) {
      FROM invitation_events ie JOIN events e ON e.code = ie.event_code
      WHERE ie.invitation_id = ? AND e.is_active = 1`).bind(inv.invitation_id).all();
   const openEvents = coveredEvents.filter(e => !e.registration_closes_at || Date.parse(e.registration_closes_at) >= Date.now());
-  if (!openEvents.length) return fail('registration_closed', 410, ch);
+  if (!openEvents.length) { await auditError(env, 'invitation_verify', 'registration_closed', code, ipHash); return fail('registration_closed', 410, ch); }
 
-  if (FREE_MAIL.includes(domainOf(email)) && !inv.allow_free_email)
+  if (FREE_MAIL.includes(domainOf(email)) && !inv.allow_free_email) {
+    await auditError(env, 'invitation_verify', 'free_email_not_allowed', email, ipHash);
     return fail('free_email_not_allowed', 403, ch);
+  }
 
   /* No email-ownership check: a valid invitation code plus a plausible email
      address is enough to unlock the form, and issues a session immediately. */
@@ -292,17 +308,17 @@ const fullNameOf = (d) => [d.first_name_passport, d.family_name_passport].filter
 async function createRegistration(req, env, ch, ipHash) {
   const token = (req.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '');
   const s = await readSession(env, token);
-  if (!s) return fail('session_expired', 401, ch);
-  if (!await allow(env, 'reg:' + ipHash, 10, 3600)) return fail('rate_limited', 429, ch);
+  if (!s) { await auditError(env, 'registration_submit', 'session_expired', null, ipHash); return fail('session_expired', 401, ch); }
+  if (!await allow(env, 'reg:' + ipHash, 10, 3600)) { await auditError(env, 'registration_submit', 'rate_limited', s.e, ipHash); return fail('rate_limited', 429, ch); }
 
   const b = await req.json().catch(() => ({}));
   const d = b.registration || {};
   const requested = Array.isArray(b.event_codes) ? [...new Set(b.event_codes.map(String))] : [];
-  if (!requested.length) return fail('no_events_selected', 400, ch);
-  if ((b.fill_seconds || 0) < MIN_FILL_SECONDS) return fail('too_fast', 400, ch);
+  if (!requested.length) { await auditError(env, 'registration_submit', 'no_events_selected', s.e, ipHash); return fail('no_events_selected', 400, ch); }
+  if ((b.fill_seconds || 0) < MIN_FILL_SECONDS) { await auditError(env, 'registration_submit', 'too_fast', s.e, ipHash); return fail('too_fast', 400, ch); }
 
   const inv = await env.DB.prepare('SELECT * FROM invitations WHERE invitation_id = ?').bind(s.iv).first();
-  if (!inv) return fail('invalid_invitation', 400, ch);
+  if (!inv) { await auditError(env, 'registration_submit', 'invalid_invitation', s.e, ipHash); return fail('invalid_invitation', 400, ch); }
 
   /* Never trust which events the client says it wants — only the ones this
      invitation actually covers are eligible, regardless of what was posted. */
@@ -311,20 +327,26 @@ async function createRegistration(req, env, ch, ipHash) {
      WHERE ie.invitation_id = ? AND e.is_active = 1`).bind(s.iv).all();
   const coveredMap = new Map(covered.map(e => [e.code, e]));
   const targets = requested.filter(c => coveredMap.has(c));
-  if (!targets.length) return fail('invalid_event_selection', 400, ch);
+  if (!targets.length) { await auditError(env, 'registration_submit', 'invalid_event_selection', s.e, ipHash); return fail('invalid_event_selection', 400, ch); }
 
   const openTargets = targets.filter(c => {
     const ev = coveredMap.get(c);
     return !ev.registration_closes_at || Date.parse(ev.registration_closes_at) >= Date.now();
   });
-  if (!openTargets.length) return fail('registration_closed', 410, ch);
+  if (!openTargets.length) { await auditError(env, 'registration_submit', 'registration_closed', s.e, ipHash); return fail('registration_closed', 410, ch); }
 
   const missing = requiredFieldErrors(d);
-  if (missing.length) return json({ ok: false, error: 'validation_failed', fields: missing }, 400, ch);
+  if (missing.length) {
+    await auditError(env, 'registration_submit', 'validation_failed', `${s.e}: ${missing.slice(0, 12).join(', ')}`, ipHash);
+    return json({ ok: false, error: 'validation_failed', fields: missing }, 400, ch);
+  }
 
   /* One person, one row — even when the invitation covers more than one event. */
   const dup = await env.DB.prepare('SELECT reference FROM registrations WHERE email = ?').bind(s.e).first();
-  if (dup) return json({ ok: false, error: 'duplicate_registration', reference: dup.reference }, 409, ch);
+  if (dup) {
+    await auditError(env, 'registration_submit', 'duplicate_registration', `${s.e} (already ${dup.reference})`, ipHash);
+    return json({ ok: false, error: 'duplicate_registration', reference: dup.reference }, 409, ch);
+  }
 
   const fullName = fullNameOf(d);
   const orgMismatch = d.organization_name &&
@@ -379,8 +401,8 @@ async function requestEditLink(req, env, ch, ipHash) {
   const b = await req.json().catch(() => ({}));
   const reference = String(b.reference || '').trim().toUpperCase();
   const email = String(b.email || '').toLowerCase().trim();
-  if (!await allow(env, 'editlink:' + ipHash, 20, 3600)) return fail('rate_limited', 429, ch);
-  if (!reference || !EMAIL_RE.test(email)) return fail('invalid_request', 400, ch);
+  if (!await allow(env, 'editlink:' + ipHash, 20, 3600)) { await auditError(env, 'edit_link_request', 'rate_limited', `${reference} ${email}`, ipHash); return fail('rate_limited', 429, ch); }
+  if (!reference || !EMAIL_RE.test(email)) { await auditError(env, 'edit_link_request', 'invalid_request', `${reference} ${email}`, ipHash); return fail('invalid_request', 400, ch); }
 
   const reg = await env.DB.prepare('SELECT registration_id, reference, email, event_codes FROM registrations WHERE reference = ? AND email = ?')
     .bind(reference, email).first();
@@ -407,14 +429,14 @@ async function eventTitles(env, eventCodesStr) {
   return { codes, titlesEn: results.map(e => e.title_en).join(' & ') || codes.join(', ') };
 }
 
-async function fetchForEdit(req, env, ch) {
+async function fetchForEdit(req, env, ch, ipHash) {
   const b = await req.json().catch(() => ({}));
   const reference = String(b.reference || '').trim().toUpperCase();
   const t = await readEditToken(env, String(b.token || '').trim());
-  if (!t) return fail('invalid_edit_link', 401, ch);
+  if (!t) { await auditError(env, 'edit_fetch', 'invalid_edit_link', reference, ipHash); return fail('invalid_edit_link', 401, ch); }
   const reg = await env.DB.prepare('SELECT * FROM registrations WHERE reference = ? AND registration_id = ?')
     .bind(reference, t.r).first();
-  if (!reg) return fail('invalid_edit_link', 401, ch);
+  if (!reg) { await auditError(env, 'edit_fetch', 'invalid_edit_link', reference, ipHash); return fail('invalid_edit_link', 401, ch); }
   return json({ ok: true, reference: reg.reference, event_codes: (reg.event_codes || '').split(',').filter(Boolean), status: reg.status,
     registration: JSON.parse(reg.data_json || '{}'), consents: JSON.parse(reg.consents_json || '{}') }, 200, ch);
 }
@@ -423,16 +445,19 @@ async function updateRegistration(req, env, ch, ipHash) {
   const b = await req.json().catch(() => ({}));
   const reference = String(b.reference || '').trim().toUpperCase();
   const t = await readEditToken(env, String(b.token || '').trim());
-  if (!t) return fail('invalid_edit_link', 401, ch);
-  if (!await allow(env, 'edit:' + ipHash, 10, 3600)) return fail('rate_limited', 429, ch);
+  if (!t) { await auditError(env, 'edit_save', 'invalid_edit_link', reference, ipHash); return fail('invalid_edit_link', 401, ch); }
+  if (!await allow(env, 'edit:' + ipHash, 10, 3600)) { await auditError(env, 'edit_save', 'rate_limited', reference, ipHash); return fail('rate_limited', 429, ch); }
 
   const reg = await env.DB.prepare('SELECT * FROM registrations WHERE reference = ? AND registration_id = ?')
     .bind(reference, t.r).first();
-  if (!reg) return fail('invalid_edit_link', 401, ch);
+  if (!reg) { await auditError(env, 'edit_save', 'invalid_edit_link', reference, ipHash); return fail('invalid_edit_link', 401, ch); }
 
   const d = b.registration || {};
   const missing = requiredFieldErrors(d);
-  if (missing.length) return json({ ok: false, error: 'validation_failed', fields: missing }, 400, ch);
+  if (missing.length) {
+    await auditError(env, 'edit_save', 'validation_failed', `${reg.reference}: ${missing.slice(0, 12).join(', ')}`, ipHash);
+    return json({ ok: false, error: 'validation_failed', fields: missing }, 400, ch);
+  }
 
   const inv = reg.invitation_id ? await env.DB.prepare('SELECT organization_name FROM invitations WHERE invitation_id = ?').bind(reg.invitation_id).first() : null;
   const fullName = fullNameOf(d);
@@ -631,25 +656,26 @@ async function adminCreateInvitation(req, env, ch, ipHash) {
   return json({ ok: true, invitation_id: id, code, event_codes: eventCodes }, 201, ch);
 }
 
-async function uploadFile(req, env, ch) {
+async function uploadFile(req, env, ch, ipHash) {
   // Two distinct callers hit this: a fresh registration (session token, from
   // invitation-verify) and someone editing an existing one via their edit
   // link (edit token, namespaced separately). Accept either.
   const token = (req.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '');
   const s = await readSession(env, token);
   const t = s ? null : await readEditToken(env, token);
-  if (!s && !t) return fail('session_expired', 401, ch);
+  if (!s && !t) { await auditError(env, 'upload', 'session_expired', null, ipHash); return fail('session_expired', 401, ch); }
+  const who = s ? s.e : t.r;
 
   const form = await req.formData().catch(() => null);
   const file = form && form.get('file');
   const field = form ? String(form.get('field') || '').trim() : '';
   const accept = (form && form.get('accept')) || 'any';
-  if (!file || typeof file === 'string' || !field) return fail('invalid_request', 400, ch);
+  if (!file || typeof file === 'string' || !field) { await auditError(env, 'upload', 'invalid_request', who, ipHash); return fail('invalid_request', 400, ch); }
 
   const allow = UPLOAD_ACCEPT[accept] || UPLOAD_ACCEPT.any;
-  if (!allow.includes(file.type)) return fail('invalid_file_type', 400, ch);
+  if (!allow.includes(file.type)) { await auditError(env, 'upload', 'invalid_file_type', `${who} — ${field} (${file.type})`, ipHash); return fail('invalid_file_type', 400, ch); }
   const maxMB = UPLOAD_MAX_MB[accept] || 15;
-  if (file.size > maxMB * 1048576) return fail('file_too_large', 400, ch);
+  if (file.size > maxMB * 1048576) { await auditError(env, 'upload', 'file_too_large', `${who} — ${field} (${(file.size / 1048576).toFixed(1)}MB)`, ipHash); return fail('file_too_large', 400, ch); }
 
   const safeName = String(file.name || 'file').replace(/[^A-Za-z0-9._-]/g, '_').slice(-80);
   const keyPrefix = s ? `regs/${s.iv}/${await sha256(s.e)}` : `regs/edit/${t.r}`;
@@ -686,14 +712,14 @@ export default {
       if (req.method === 'POST' && pathname === '/v1/invitations/verify') return await verifyInvitation(req, env, ch, ipHash);
       if (req.method === 'POST' && pathname === '/v1/registrations')      return await createRegistration(req, env, ch, ipHash);
       if (req.method === 'POST' && pathname === '/v1/registrations/edit-link')  return await requestEditLink(req, env, ch, ipHash);
-      if (req.method === 'POST' && pathname === '/v1/registrations/edit-fetch') return await fetchForEdit(req, env, ch);
+      if (req.method === 'POST' && pathname === '/v1/registrations/edit-fetch') return await fetchForEdit(req, env, ch, ipHash);
       if (req.method === 'POST' && pathname === '/v1/registrations/edit')       return await updateRegistration(req, env, ch, ipHash);
       if (req.method === 'GET'  && pathname === '/v1/admin/registrations')return await adminRead(req, env, ch, false);
       if (req.method === 'GET'  && pathname === '/v1/admin/export.csv')   return await adminRead(req, env, ch, true);
       if (req.method === 'GET'  && pathname === '/v1/admin/export.json')  return await adminExportFull(req, env, ch);
       if (req.method === 'GET'  && pathname === '/v1/admin/invitations')  return await adminListInvitations(req, env, ch);
       if (req.method === 'POST' && pathname === '/v1/admin/invitations')  return await adminCreateInvitation(req, env, ch, ipHash);
-      if (req.method === 'POST' && pathname === '/v1/uploads')            return await uploadFile(req, env, ch);
+      if (req.method === 'POST' && pathname === '/v1/uploads')            return await uploadFile(req, env, ch, ipHash);
       if (req.method === 'GET'  && pathname === '/v1/admin/files')        return await adminGetFile(req, env, ch);
       if (req.method === 'GET'  && pathname === '/v1/admin/attachments')  return await adminAttachments(req, env, ch);
       if (req.method === 'POST' && pathname === '/v1/admin/registrations/status') return await adminSetStatus(req, env, ch, ipHash);
@@ -701,6 +727,11 @@ export default {
       if (pathname === '/v1/health') return json({ ok: true, time: new Date().toISOString() }, 200, ch);
       return fail('not_found', 404, ch);
     } catch (e) {
+      /* An unhandled exception on a public, registrant-facing path is exactly
+         the kind of thing that should show up in the audit trail -- someone
+         saw a generic error and we'd otherwise never know. Admin-tool crashes
+         aren't logged here; those are noticed directly by whoever hit them. */
+      if (PUBLIC_PATHS.has(pathname)) await auditError(env, 'server', 'server_error', pathname, ipHash);
       return fail('server_error', 500, ch);
     }
   }

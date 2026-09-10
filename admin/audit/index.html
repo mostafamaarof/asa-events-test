@@ -139,9 +139,42 @@ const ACTIONS = {
   invitation_created:          { label: 'Invitation code created',     pill: 'new' },
   invitation_verified:         { label: 'Invitation code verified',    pill: 'info' },
   invitation_verify_failed:    { label: 'Invitation code check failed', pill: 'warn', warn: true },
-  file_uploaded:                { label: 'File uploaded',               pill: 'info' }
+  file_uploaded:                { label: 'File uploaded',               pill: 'info' },
+  error_shown:                  { label: 'Error shown to applicant',    pill: 'warn', warn: true }
 };
 function actionMeta(a) { return ACTIONS[a] || { label: a, pill: 'info' }; }
+
+/* Which step of the public flow an 'error_shown' entry's entity names. */
+const FLOW_LABELS = {
+  invitation_verify: 'checking the invitation code',
+  registration_submit: 'submitting the registration',
+  edit_link_request: 'requesting an edit link',
+  edit_fetch: 'opening the edit link',
+  edit_save: 'saving an edit',
+  upload: 'uploading a file',
+  server: 'an unexpected server error'
+};
+/* Error codes plain enough to skip a label; these earn a friendlier one. */
+const ERROR_LABELS = {
+  rate_limited: 'Too many attempts, temporarily blocked',
+  session_expired: 'Session expired',
+  too_fast: 'Form filled suspiciously fast (bot check)',
+  invalid_code_format: 'Invitation code not in the expected format',
+  code_expired: 'Invitation code expired',
+  code_exhausted: 'Invitation code already used up',
+  registration_closed: 'Registration closed for that event',
+  free_email_not_allowed: 'Free email address not allowed for this code',
+  no_events_selected: 'No event selected',
+  invalid_invitation: 'Invitation no longer valid',
+  invalid_event_selection: "Event not covered by this person's invitation",
+  validation_failed: 'Missing or invalid required field(s)',
+  duplicate_registration: 'Already registered with this email',
+  invalid_request: 'Malformed request',
+  invalid_edit_link: 'Edit link invalid or expired',
+  invalid_file_type: 'File type not accepted',
+  file_too_large: 'File too large',
+  server_error: 'Unexpected server error'
+};
 
 function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c])); }
 
@@ -187,6 +220,11 @@ function describe(e) {
     case 'invitation_verified': return `Code used to open the registration form (email entered: ${e.detail || 'not recorded'})`;
     case 'invitation_verify_failed': return `Code "${e.entity_id}" typed — not found or inactive`;
     case 'file_uploaded': return `Field "${e.detail || '?'}" — key ${e.entity_id}`;
+    case 'error_shown': {
+      const flow = FLOW_LABELS[e.entity] || e.entity || 'the registration flow';
+      const label = ERROR_LABELS[e.entity_id] || e.entity_id || 'error';
+      return `${label} — while ${flow}${e.detail ? ' (' + e.detail + ')' : ''}`;
+    }
     default: return e.detail || e.entity_id || '';
   }
 }
@@ -239,11 +277,28 @@ function filteredRows() {
     if (from && day < from) return false;
     if (to && day > to) return false;
     if (search) {
-      const hay = [e.entity_id, e.detail, e.ip_hash, actionMeta(e.action).label, person(e), org(e)].join(' ').toLowerCase();
+      const hay = [e.entity_id, e.detail, e.ip_hash, actionMeta(e.action).label, person(e), org(e), describe(e)].join(' ').toLowerCase();
       if (!hay.includes(search)) return false;
     }
     return true;
   });
+}
+
+/* A quick "what's actually going wrong" tally, grouped by flow + error code. */
+function errorBreakdown(errorRows) {
+  if (!errorRows.length) return '';
+  const counts = new Map();
+  errorRows.forEach(e => {
+    const key = `${FLOW_LABELS[e.entity] || e.entity} — ${ERROR_LABELS[e.entity_id] || e.entity_id}`;
+    counts.set(key, (counts.get(key) || 0) + 1);
+  });
+  const rows = [...counts.entries()].sort((a, b) => b[1] - a[1]);
+  return `<div class="card" style="padding:14px 18px;margin-top:14px">
+    <div style="font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:600;margin-bottom:8px">Error breakdown</div>
+    <div style="display:flex;flex-wrap:wrap;gap:8px">
+      ${rows.map(([k, n]) => `<span class="pill warn" style="font-weight:500">${esc(k)} · ${n}</span>`).join('')}
+    </div>
+  </div>`;
 }
 
 function render() {
@@ -254,13 +309,15 @@ function render() {
   const submittedCount = rows.filter(e => e.action === 'registration_submitted').length;
   const editedCount = rows.filter(e => e.action === 'registration_updated').length;
   const statusCount = rows.filter(e => e.action === 'registration_status_changed').length;
+  const errorRows = rows.filter(e => e.action === 'error_shown');
   $('summary').innerHTML = `<div class="kpis">
     <div class="kpi"><div class="v">${rows.length}</div><div class="l">Events shown</div></div>
     <div class="kpi"><div class="v">${submittedCount}</div><div class="l">Registrations submitted</div></div>
     <div class="kpi"><div class="v">${editedCount}</div><div class="l">Registrations edited</div></div>
     <div class="kpi"><div class="v">${statusCount}</div><div class="l">Status changes</div></div>
     <div class="kpi"><div class="v">${failedCount}</div><div class="l">Failed code attempts</div></div>
-  </div>`;
+    <div class="kpi"><div class="v">${errorRows.length}</div><div class="l">Errors shown to applicants</div></div>
+  </div>${errorBreakdown(errorRows)}`;
 
   const list = $('list');
   if (!rows.length) { list.innerHTML = '<p class="empty">No matching audit entries. Load the trail and adjust filters.</p>'; return; }
