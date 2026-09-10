@@ -118,6 +118,7 @@ td.muted{color:var(--rule-strong)}
       <div class="tab active" data-tab="arrival">By arrival date</div>
       <div class="tab" data-tab="departure">By departure date</div>
       <div class="tab" data-tab="hotel">By hotel</div>
+      <div class="tab" data-tab="passport">Passport report</div>
     </div>
   </div>
 
@@ -145,7 +146,8 @@ const OPT = {
     ['moderator','Moderator'],['secretariat','Secretariat'],['interpreter','Interpreter'],['accompanying','Accompanying official']]),
   terminal: O([['T1','Terminal 1'],['T2','Terminal 2'],['T3','Terminal 3'],['unknown','Not known yet']]),
   roomType: O([['single','Single'],['double','Double'],['suite','Suite']]),
-  tier: O([['president','President'],['vice_president','Vice President'],['other','Other']])
+  tier: O([['president','President'],['vice_president','Vice President'],['other','Other']]),
+  passportType: O([['diplomatic','Diplomatic'],['service','Service or special'],['ordinary','Ordinary'],['lp','UN laissez-passer']])
 };
 const COUNTRIES_RAW = "AF:Afghanistan|AL:Albania|DZ:Algeria|AS:American Samoa|AD:Andorra|AO:Angola|AI:Anguilla|AQ:Antarctica|AG:Antigua and Barbuda|AR:Argentina|AM:Armenia|AW:Aruba|AU:Australia|AT:Austria|AZ:Azerbaijan|BS:Bahamas|BH:Bahrain|BD:Bangladesh|BB:Barbados|BY:Belarus|BE:Belgium|BZ:Belize|BJ:Benin|BM:Bermuda|BT:Bhutan|BO:Bolivia|BQ:Bonaire, Sint Eustatius and Saba|BA:Bosnia and Herzegovina|BW:Botswana|BV:Bouvet Island|BR:Brazil|IO:British Indian Ocean Territory|BN:Brunei Darussalam|BG:Bulgaria|BF:Burkina Faso|BI:Burundi|CV:Cabo Verde|KH:Cambodia|CM:Cameroon|CA:Canada|KY:Cayman Islands|CF:Central African Republic|TD:Chad|CL:Chile|CN:China|CX:Christmas Island|CC:Cocos (Keeling) Islands|CO:Colombia|KM:Comoros|CG:Congo|CD:Congo, The Democratic Republic of the|CK:Cook Islands|CR:Costa Rica|HR:Croatia|CU:Cuba|CW:Curaçao|CY:Cyprus|CZ:Czechia|CI:Côte d'Ivoire|DK:Denmark|DJ:Djibouti|DM:Dominica|DO:Dominican Republic|EC:Ecuador|EG:Egypt|SV:El Salvador|GQ:Equatorial Guinea|ER:Eritrea|EE:Estonia|SZ:Eswatini|ET:Ethiopia|FK:Falkland Islands (Malvinas)|FO:Faroe Islands|FJ:Fiji|FI:Finland|FR:France|GF:French Guiana|PF:French Polynesia|TF:French Southern Territories|GA:Gabon|GM:Gambia|GE:Georgia|DE:Germany|GH:Ghana|GI:Gibraltar|GR:Greece|GL:Greenland|GD:Grenada|GP:Guadeloupe|GU:Guam|GT:Guatemala|GG:Guernsey|GN:Guinea|GW:Guinea-Bissau|GY:Guyana|HT:Haiti|HM:Heard Island and McDonald Islands|VA:Holy See (Vatican City State)|HN:Honduras|HK:Hong Kong|HU:Hungary|IS:Iceland|IN:India|ID:Indonesia|IR:Iran|IQ:Iraq|IE:Ireland|IM:Isle of Man|IL:Israel|IT:Italy|JM:Jamaica|JP:Japan|JE:Jersey|JO:Jordan|KZ:Kazakhstan|KE:Kenya|KI:Kiribati|KP:North Korea|KR:South Korea|KW:Kuwait|KG:Kyrgyzstan|LA:Laos|LV:Latvia|LB:Lebanon|LS:Lesotho|LR:Liberia|LY:Libya|LI:Liechtenstein|LT:Lithuania|LU:Luxembourg|MO:Macao|MG:Madagascar|MW:Malawi|MY:Malaysia|MV:Maldives|ML:Mali|MT:Malta|MH:Marshall Islands|MQ:Martinique|MR:Mauritania|MU:Mauritius|YT:Mayotte|MX:Mexico|FM:Micronesia, Federated States of|MD:Moldova|MC:Monaco|MN:Mongolia|ME:Montenegro|MS:Montserrat|MA:Morocco|MZ:Mozambique|MM:Myanmar|NA:Namibia|NR:Nauru|NP:Nepal|NL:Netherlands|NC:New Caledonia|NZ:New Zealand|NI:Nicaragua|NE:Niger|NG:Nigeria|NU:Niue|NF:Norfolk Island|MK:North Macedonia|MP:Northern Mariana Islands|NO:Norway|OM:Oman|PK:Pakistan|PW:Palau|PS:Palestine, State of|PA:Panama|PG:Papua New Guinea|PY:Paraguay|PE:Peru|PH:Philippines|PN:Pitcairn|PL:Poland|PT:Portugal|PR:Puerto Rico|QA:Qatar|RO:Romania|RU:Russian Federation|RW:Rwanda|RE:Réunion|BL:Saint Barthélemy|SH:Saint Helena, Ascension and Tristan da Cunha|KN:Saint Kitts and Nevis|LC:Saint Lucia|MF:Saint Martin (French part)|PM:Saint Pierre and Miquelon|VC:Saint Vincent and the Grenadines|WS:Samoa|SM:San Marino|ST:Sao Tome and Principe|SA:Saudi Arabia|SN:Senegal|RS:Serbia|SC:Seychelles|SL:Sierra Leone|SG:Singapore|SX:Sint Maarten (Dutch part)|SK:Slovakia|SI:Slovenia|SB:Solomon Islands|SO:Somalia|ZA:South Africa|GS:South Georgia and the South Sandwich Islands|SS:South Sudan|ES:Spain|LK:Sri Lanka|SD:Sudan|SR:Suriname|SJ:Svalbard and Jan Mayen|SE:Sweden|CH:Switzerland|SY:Syria|TW:Taiwan|TJ:Tajikistan|TZ:Tanzania|TH:Thailand|TL:Timor-Leste|TG:Togo|TK:Tokelau|TO:Tonga|TT:Trinidad and Tobago|TN:Tunisia|TM:Turkmenistan|TC:Turks and Caicos Islands|TV:Tuvalu|TR:Türkiye|UG:Uganda|UA:Ukraine|AE:United Arab Emirates|GB:United Kingdom|US:United States|UM:United States Minor Outlying Islands|UY:Uruguay|UZ:Uzbekistan|VU:Vanuatu|VE:Venezuela|VN:Vietnam|VG:Virgin Islands, British|VI:Virgin Islands, U.S.|WF:Wallis and Futuna|EH:Western Sahara|YE:Yemen|ZM:Zambia|ZW:Zimbabwe|AX:Åland Islands";
 OPT.country = O(COUNTRIES_RAW.split('|').map(s => { const i = s.indexOf(':'); return [s.slice(0,i), s.slice(i+1)]; }));
@@ -202,7 +204,14 @@ function computeRows() {
         accomType: d.accommodation_type || '', hotelName,
         roomType: OPT.roomType[d.room_type] || d.room_type || '',
         checkIn: d.check_in_date || '', checkOut: d.check_out_date || '',
-        bookingRef: d.booking_reference || ''
+        bookingRef: d.booking_reference || '',
+        passportNumber: d.passport_number || '',
+        passportType: OPT.passportType[d.passport_type] || d.passport_type || '',
+        passportPlaceOfIssue: d.passport_place_of_issue || '',
+        passportIssueDate: d.passport_issue_date || '',
+        passportExpiryDate: d.passport_expiry_date || '',
+        passportCopyKey: d.passport_copy_key || '',
+        passportCopyFilename: d.passport_copy_filename || ''
       };
     })
     .filter(row => !search ||
@@ -285,6 +294,29 @@ function hotelReport(rows) {
   });
 }
 
+/* ---------- Passport report: name, tier, passport details, and a download
+   button for the attached copy. Grouped by whether a copy was uploaded so
+   outstanding ones are easy to chase -- missing group listed first. ---------- */
+function passportReport(rows) {
+  const groups = groupBy(rows, r => r.passportCopyKey ? 'A__has' : 'B__missing');
+  const keys = [...groups.keys()].sort();
+  const cols = ['Name','Tier','Org / Country','Passport number','Type','Place of issue','Issue date','Expiry date','Copy','Ref'];
+  return keys.map(key => {
+    const items = groups.get(key).slice().sort((a, b) => a.name.localeCompare(b.name));
+    const title = key === 'A__has' ? 'Passport copy uploaded' : 'Passport copy missing';
+    const rowsHtml = items.map(r => `<tr>
+      <td class="wrap">${esc(r.name)}</td>${td(r.tier)}${td(r.org ? r.org + (r.country ? ' · ' + r.country : '') : r.country, 'wrap')}
+      ${td(r.passportNumber)}${td(r.passportType)}${td(r.passportPlaceOfIssue, 'wrap')}
+      ${td(fmtDate(r.passportIssueDate))}${td(fmtDate(r.passportExpiryDate))}
+      ${r.passportCopyKey
+        ? `<td><button type="button" class="ghost passportDlBtn" data-key="${esc(r.passportCopyKey)}" data-filename="${esc(r.passportCopyFilename)}" style="height:26px;padding:0 10px;font-size:12px">Download</button></td>`
+        : '<td class="muted">Not uploaded</td>'}
+      <td class="ref">${esc(r.ref)}</td>
+    </tr>`).join('');
+    return { title, count: items.length, cols, rowsHtml, items };
+  });
+}
+
 let lastGroups = [];
 
 function render() {
@@ -295,7 +327,8 @@ function render() {
 
   lastGroups = activeTab === 'arrival' ? dateReport(rows, 'arrival')
     : activeTab === 'departure' ? dateReport(rows, 'departure')
-    : hotelReport(rows);
+    : activeTab === 'hotel' ? hotelReport(rows)
+    : passportReport(rows);
 
   list.innerHTML = lastGroups.map(g => `
     <div class="group">
@@ -325,10 +358,14 @@ function exportCsv() {
         : activeTab === 'departure'
         ? [r.name, r.tier, (r.org ? r.org + (r.country ? ' - ' + r.country : '') : r.country), r.role, r.events, r.mobile, r.pax,
            r.depTime, [r.depAirline, r.depFlight].filter(Boolean).join(' '), r.depTerminal, r.hotelName, fmtDate(r.checkOut), r.ref]
-        : [r.name, r.tier, (r.org ? r.org + (r.country ? ' - ' + r.country : '') : r.country), r.role, r.events, r.mobile, r.pax,
+        : activeTab === 'hotel'
+        ? [r.name, r.tier, (r.org ? r.org + (r.country ? ' - ' + r.country : '') : r.country), r.role, r.events, r.mobile, r.pax,
            r.roomType, fmtDate(r.checkIn), fmtDate(r.checkOut), r.bookingRef,
            r.arrDate ? fmtDate(r.arrDate) + (r.arrTime ? ' ' + r.arrTime : '') : '',
-           r.depDate ? fmtDate(r.depDate) + (r.depTime ? ' ' + r.depTime : '') : '', r.ref];
+           r.depDate ? fmtDate(r.depDate) + (r.depTime ? ' ' + r.depTime : '') : '', r.ref]
+        : [r.name, r.tier, (r.org ? r.org + (r.country ? ' - ' + r.country : '') : r.country),
+           r.passportNumber, r.passportType, r.passportPlaceOfIssue, fmtDate(r.passportIssueDate), fmtDate(r.passportExpiryDate),
+           r.passportCopyKey ? (r.passportCopyFilename || 'Uploaded') : 'Not uploaded', r.ref];
       aoa.push([g.title, ...vals]);
     });
   });
@@ -336,10 +373,34 @@ function exportCsv() {
   const ws = XLSX.utils.aoa_to_sheet(aoa);
   ws['!cols'] = header.map((h, i) => ({ wch: Math.min(40, Math.max(10, h.length, ...aoa.slice(1).map(r => String(r[i] ?? '').length / 1.6))) }));
   const wb = XLSX.utils.book_new();
-  const sheetName = activeTab === 'arrival' ? 'By arrival date' : activeTab === 'departure' ? 'By departure date' : 'By hotel';
+  const sheetName = activeTab === 'arrival' ? 'By arrival date' : activeTab === 'departure' ? 'By departure date'
+    : activeTab === 'hotel' ? 'By hotel' : 'Passport report';
   XLSX.utils.book_append_sheet(wb, ws, sheetName);
   XLSX.writeFile(wb, `asa-logistics-${activeTab}.xlsx`);
 }
+
+async function downloadFileByKey(key, filename) {
+  const res = await fetch(CONFIG.apiBase + '/admin/files?key=' + encodeURIComponent(key), { headers: authHeaders() });
+  if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || ('HTTP ' + res.status)); }
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename || key.split('/').pop();
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+}
+
+$('list').addEventListener('click', async (e) => {
+  const btn = e.target.closest('.passportDlBtn'); if (!btn) return;
+  btn.disabled = true; const orig = btn.textContent; btn.textContent = '...';
+  try {
+    await downloadFileByKey(btn.dataset.key, btn.dataset.filename);
+  } catch (err) {
+    alert('Could not download the passport copy: ' + err.message);
+  } finally {
+    btn.disabled = false; btn.textContent = orig;
+  }
+});
 
 document.querySelectorAll('.tab').forEach(tab => tab.addEventListener('click', () => {
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
