@@ -151,6 +151,20 @@ function groupCountByTier(rows, keyFn, nameMap) {
   });
   return Object.values(counts);
 }
+/* One row per organisation: how many delegates it sent (main participants,
+   one per approved registration) vs. how many people they brought along
+   (accompanying persons, summed across that organisation's delegates). */
+function groupOrgParticipants(rows, accCountOf) {
+  const counts = {};
+  rows.forEach(r => {
+    const org = r.organization_name;
+    if (!org) return;
+    if (!counts[org]) counts[org] = { label: org, main: 0, accompanying: 0 };
+    counts[org].main++;
+    counts[org].accompanying += accCountOf(r);
+  });
+  return Object.values(counts);
+}
 
 /* A plain rows-x-columns table: one row per category value, one column per
    series (event or tier), a Total column per row and a Total row per column
@@ -177,6 +191,7 @@ function crossTable(groupRows, columns, rowHeader) {
 
 const EVENT_COLS = [{ key: 'wgita', label: 'WGITA' }, { key: 'ksc', label: 'KSC' }, { key: 'both', label: 'Both' }];
 const TIER_COLS = [{ key: 'president', label: 'President' }, { key: 'vice_president', label: 'Vice President' }, { key: 'other', label: 'Other' }];
+const PARTICIPANTS_COLS = [{ key: 'main', label: 'Main participants' }, { key: 'accompanying', label: 'Accompanying persons' }];
 
 async function loadDashboard() {
   const msg = $('topMsg'); msg.className = 'msg';
@@ -215,12 +230,15 @@ function renderDashboard(rows) {
   const own = rows.filter(r => dset(r).accommodation_type === 'own').length;
   const presidents = rows.filter(r => r.participant_tier === 'president').length;
   const vicePresidents = rows.filter(r => r.participant_tier === 'vice_president').length;
+  const accCountOf = (r) => { const d = dset(r); return (d.is_accompanied === 'yes' && Array.isArray(d.accompanying)) ? d.accompanying.length : 0; };
+  const totalAccompanying = rows.reduce((s, r) => s + accCountOf(r), 0);
 
   const byRole = groupCountByEvent(rows, r => r.role_in_delegation, ROLE_NAMES);
   const byTierEvent = groupCountByEvent(rows, r => r.participant_tier || 'other', TIER_NAMES);
   const byCountry = groupCountByEvent(rows, r => r.country, COUNTRY_NAMES);
   const byOrgEvent = groupCountByEvent(rows, r => r.organization_name);
   const byOrgTier = groupCountByTier(rows, r => r.organization_name);
+  const byOrgParticipants = groupOrgParticipants(rows, accCountOf);
   const byJobTitle = groupCountByEvent(rows, r => (dset(r).job_title || '').trim());
   const byDiet = groupCountByEvent(rows, r => dset(r).dietary_requirements, DIET_NAMES);
   const byHotelEvent = groupCountByEvent(rows, hotelName);
@@ -232,6 +250,7 @@ function renderDashboard(rows) {
       <p class="cap">Confirmed (approved) registrations only.</p>
       <div class="kpis">
         ${kpiTile(rows.length, 'Total confirmed registrations')}
+        ${kpiTile(totalAccompanying, 'Accompanying persons')}
         ${kpiTile(countries.size, 'Countries represented')}
         ${kpiTile(orgs.size, 'Organisations represented')}
         ${kpiTile(presidents, 'Presidents attending')}
@@ -294,6 +313,12 @@ function renderDashboard(rows) {
       <h2>All organisations, by protocol tier</h2>
       <p class="cap">Which organisations the President/Vice President attendees belong to.</p>
       ${crossTable(byOrgTier, TIER_COLS, 'Organisation')}
+    </div>
+
+    <div class="card">
+      <h2>All organisations, main vs. accompanying</h2>
+      <p class="cap">How many delegates each organisation sent, and how many people they brought along.</p>
+      ${crossTable(byOrgParticipants, PARTICIPANTS_COLS, 'Organisation')}
     </div>
 
     <div class="card">
