@@ -65,11 +65,21 @@ button.ghost:hover{background:#F1F5F8}
 .pfields.wide dd{grid-column:1/-1}
 .acc-person{border:1px solid var(--rule);padding:10px 14px;margin-top:8px;background:#FAFCFD}
 .acc-person .n{font-weight:600;font-size:13px;margin-bottom:6px}
+
+/* Summary table view */
+.tblwrap{overflow-x:auto;background:var(--sheet);border:1px solid var(--rule)}
+table.summary{border-collapse:collapse;width:100%;font-size:13px}
+table.summary th,table.summary td{text-align:left;padding:8px 12px;border-bottom:1px solid var(--rule);white-space:nowrap}
+table.summary th{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:600;background:#FAFCFD;position:sticky;top:0}
+table.summary td.wrap{white-space:normal}
+table.summary tr:last-child td{border-bottom:none}
+
 @media print{
   header, .card.controls{display:none}
   body{background:#fff}
   main{max-width:none;padding:0}
   .pcard{border:1px solid #000;margin-bottom:16px}
+  table.summary{font-size:11px}
 }
 </style>
 </head>
@@ -96,9 +106,17 @@ button.ghost:hover{background:#F1F5F8}
       <button id="load">Load report</button>
       <button class="ghost" id="printBtn">Print / Save as PDF</button>
       <button class="ghost" id="excelBtn">Export to Excel</button>
+      <button class="ghost" id="summaryExcelBtn" style="display:none">Export summary to Excel</button>
       <span id="topMsg" class="msg"></span>
     </div>
     <div class="filters" style="margin-top:16px;margin-bottom:0">
+      <div class="f">
+        <label for="viewMode">View</label>
+        <select id="viewMode">
+          <option value="cards">Full detail (cards)</option>
+          <option value="summary">Summary table</option>
+        </select>
+      </div>
       <div class="f">
         <label for="fEvent">Event</label>
         <select id="fEvent">
@@ -111,7 +129,7 @@ button.ghost:hover{background:#F1F5F8}
         <label for="fSearch">Search (name, email, organization)</label>
         <input type="text" id="fSearch" placeholder="type to filter...">
       </div>
-      <div class="f">
+      <div class="f" id="fEmptyWrap">
         <label for="fEmpty">Empty fields</label>
         <select id="fEmpty">
           <option value="hide">Hide</option>
@@ -120,7 +138,7 @@ button.ghost:hover{background:#F1F5F8}
       </div>
       <span class="count" id="rowCount"></span>
     </div>
-    <div class="f" style="margin-top:16px;margin-bottom:0">
+    <div class="f" id="sectionTogglesWrap" style="margin-top:16px;margin-bottom:0">
       <label>Sections to show</label>
       <div id="sectionToggles" style="display:flex;flex-wrap:wrap;gap:6px 16px;margin-top:4px"></div>
     </div>
@@ -323,6 +341,35 @@ function filteredRows() {
   return rows;
 }
 
+/* Compact roster: one row per person, a handful of columns only --
+   for a quick "who's coming" scan rather than the full record. */
+const SUMMARY_COLS = [
+  ['Name', r => r.full_name || '(no name)'],
+  ['Gender', r => fmt((r.data || {}).gender, 'gender')],
+  ['Organization', r => r.organization_name || ''],
+  ['Country', r => OPT.country[r.country] || r.country || ''],
+  ['Job title', r => (r.data || {}).job_title || ''],
+  ['Role', r => fmt(r.role_in_delegation, 'delRole')],
+  ['Speaking', r => fmt((r.data || {}).wants_to_present, 'yesno')],
+  ['Social', r => fmt((r.data || {}).social_program_attending, 'yesno')]
+];
+function renderSummaryTable(rows) {
+  const list = $('list');
+  const head = SUMMARY_COLS.map(([label]) => `<th>${label}</th>`).join('');
+  const body = rows.map(r => `<tr>${SUMMARY_COLS.map(([, get]) => `<td class="wrap">${get(r) || '—'}</td>`).join('')}</tr>`).join('');
+  list.innerHTML = `<div class="tblwrap"><table class="summary"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>`;
+}
+function exportSummaryToExcel() {
+  const rows = filteredRows();
+  if (!rows.length) { alert('Load the report first.'); return; }
+  const aoa = [SUMMARY_COLS.map(([label]) => label), ...rows.map(r => SUMMARY_COLS.map(([, get]) => get(r)))];
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  ws['!cols'] = aoa[0].map((h, i) => ({ wch: Math.min(40, Math.max(10, h.length, ...aoa.slice(1).map(row => String(row[i] ?? '').length))) }));
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Summary');
+  XLSX.writeFile(wb, 'asa-events-summary.xlsx');
+}
+
 function render() {
   const showEmpty = $('fEmpty').value === 'show';
   const rows = filteredRows();
@@ -330,6 +377,8 @@ function render() {
   $('rowCount').textContent = `${rows.length} of ${all.length} shown`;
   const list = $('list');
   if (!rows.length) { list.innerHTML = '<p class="empty">No matching registrations. Load the report and adjust filters.</p>'; return; }
+
+  if ($('viewMode').value === 'summary') { renderSummaryTable(rows); return; }
 
   list.innerHTML = rows.map(r => {
     const d = withFileNames(r.data || {});
@@ -420,9 +469,20 @@ function exportToExcel() {
   XLSX.writeFile(wb, 'asa-events-report.xlsx');
 }
 
+function applyViewMode() {
+  const summary = $('viewMode').value === 'summary';
+  $('fEmptyWrap').style.display = summary ? 'none' : '';
+  $('sectionTogglesWrap').style.display = summary ? 'none' : '';
+  $('excelBtn').style.display = summary ? 'none' : '';
+  $('summaryExcelBtn').style.display = summary ? '' : 'none';
+  render();
+}
+
 $('load').addEventListener('click', loadReport);
 $('excelBtn').addEventListener('click', exportToExcel);
+$('summaryExcelBtn').addEventListener('click', exportSummaryToExcel);
 $('printBtn').addEventListener('click', () => window.print());
+$('viewMode').addEventListener('change', applyViewMode);
 $('fEvent').addEventListener('change', render);
 $('fSearch').addEventListener('input', render);
 $('fEmpty').addEventListener('change', render);
