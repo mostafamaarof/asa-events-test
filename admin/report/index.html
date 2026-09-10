@@ -67,8 +67,12 @@ button.ghost:hover{background:#F1F5F8}
 .acc-person{border:1px solid var(--rule);padding:10px 14px;margin-top:8px;background:#FAFCFD}
 .acc-person .n{font-weight:600;font-size:13px;margin-bottom:6px}
 
-/* Summary table view */
-.tblwrap{overflow-x:auto;background:var(--sheet);border:1px solid var(--rule)}
+/* Summary table view, grouped by event */
+.group{background:var(--sheet);border:1px solid var(--rule);break-inside:avoid;page-break-inside:avoid;margin-bottom:16px}
+.ghead{padding:12px 18px;border-bottom:2px solid var(--ink);background:var(--brass-tint);display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap}
+.ghead .t{font-family:Georgia,serif;font-size:16px;font-weight:600}
+.ghead .n{font-size:12.5px;color:var(--muted)}
+.tblwrap{overflow-x:auto;background:var(--sheet)}
 table.summary{border-collapse:collapse;width:100%;font-size:13px}
 table.summary th,table.summary td{text-align:left;padding:8px 12px;border-bottom:1px solid var(--rule);white-space:nowrap}
 table.summary th{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:600;background:#FAFCFD;position:sticky;top:0}
@@ -81,10 +85,13 @@ table.summary tr:last-child td{border-bottom:none}
   main{max-width:none;padding:0}
   .pcard{border:1px solid #000;margin-bottom:16px}
   table.summary{font-size:11px}
-  /* The summary table can run well past one page -- repeat its header row
-     on every printed page instead of forcing the whole table to fit (which
-     the browser can't honour once it's taller than a page anyway), and
-     never split a single person's row across the page break. */
+  /* A group's table can run past one page -- repeat its header row on every
+     printed page instead of forcing the whole group to fit (which the
+     browser can't honour once it's taller than a page anyway), never split
+     a single person's row, and keep the group's heading from being orphaned
+     alone at the bottom of a page. */
+  .group{break-inside:auto;page-break-inside:auto;border:1px solid #000}
+  .ghead{break-after:avoid;page-break-after:avoid}
   table.summary thead{display:table-header-group}
   table.summary tr{break-inside:avoid;page-break-inside:avoid}
 }
@@ -373,18 +380,45 @@ const SUMMARY_COLS = [
   ['Speaking', r => fmt((r.data || {}).wants_to_present, 'yesno')],
   ['Social', r => fmt((r.data || {}).social_program_attending, 'yesno')]
 ];
+/* One bucket per event combination -- WGITA only, KSC only, Both -- in that
+   fixed reading order rather than alphabetical, since there are always
+   exactly these three and that's the order every other report on this site
+   uses them in. */
+function groupByEvent(rows) {
+  const buckets = {
+    'WGITA-35-2026': { title: EVENT_NAMES['WGITA-35-2026'], rows: [] },
+    'KSC-SC18-2026': { title: EVENT_NAMES['KSC-SC18-2026'], rows: [] },
+    both: { title: 'Both events', rows: [] }
+  };
+  rows.forEach(r => {
+    const codes = (r.event_codes || '').split(',').filter(Boolean);
+    const key = codes.length > 1 ? 'both' : codes[0];
+    if (buckets[key]) buckets[key].rows.push(r);
+  });
+  return ['WGITA-35-2026', 'KSC-SC18-2026', 'both'].map(k => buckets[k]).filter(g => g.rows.length);
+}
 function renderSummaryTable(rows) {
   const list = $('list');
+  const groups = groupByEvent(rows);
+  if (!groups.length) { list.innerHTML = '<p class="empty">No matching registrations. Load the report and adjust filters.</p>'; return; }
   const head = SUMMARY_COLS.map(([label]) => `<th>${label}</th>`).join('');
-  const body = rows.map(r => `<tr>${SUMMARY_COLS.map(([, get]) => `<td class="wrap">${get(r) || '—'}</td>`).join('')}</tr>`).join('');
-  list.innerHTML = `<div class="tblwrap"><table class="summary"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>`;
+  list.innerHTML = groups.map(g => {
+    const body = g.rows.map(r => `<tr>${SUMMARY_COLS.map(([, get]) => `<td class="wrap">${get(r) || '—'}</td>`).join('')}</tr>`).join('');
+    return `<div class="group">
+      <div class="ghead"><div class="t">${g.title}</div><div class="n">${g.rows.length} participant(s)</div></div>
+      <div class="tblwrap"><table class="summary"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>
+    </div>`;
+  }).join('');
 }
 function exportSummaryToExcel() {
   const rows = filteredRows();
   if (!rows.length) { alert('Load the report first.'); return; }
-  const aoa = [SUMMARY_COLS.map(([label]) => label), ...rows.map(r => SUMMARY_COLS.map(([, get]) => get(r)))];
+  const groups = groupByEvent(rows);
+  const header = ['Event group', ...SUMMARY_COLS.map(([label]) => label)];
+  const aoa = [header];
+  groups.forEach(g => g.rows.forEach(r => aoa.push([g.title, ...SUMMARY_COLS.map(([, get]) => get(r))])));
   const ws = XLSX.utils.aoa_to_sheet(aoa);
-  ws['!cols'] = aoa[0].map((h, i) => ({ wch: Math.min(40, Math.max(10, h.length, ...aoa.slice(1).map(row => String(row[i] ?? '').length))) }));
+  ws['!cols'] = header.map((h, i) => ({ wch: Math.min(40, Math.max(10, h.length, ...aoa.slice(1).map(row => String(row[i] ?? '').length))) }));
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Summary');
   XLSX.writeFile(wb, 'asa-events-summary.xlsx');
