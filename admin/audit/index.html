@@ -96,7 +96,7 @@ td.ip{font-family:var(--f-num);font-size:11px;color:var(--rule-strong)}
         <select id="fAction"><option value="">All actions</option></select>
       </div>
       <div class="f" style="flex:1;min-width:220px">
-        <label for="fSearch">Search (reference, code, email, IP hash)</label>
+        <label for="fSearch">Search (name, organisation, reference, code, email, IP hash)</label>
         <input type="text" id="fSearch" placeholder="type to filter...">
       </div>
       <div class="f">
@@ -145,6 +145,34 @@ function actionMeta(a) { return ACTIONS[a] || { label: a, pill: 'info' }; }
 
 function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c])); }
 
+/* Registration and invitation lookups, keyed by the ids the audit log already
+   carries in entity_id, so every row can show a real name and SAI/organisation
+   instead of a bare reference or invitation id. */
+let regById = {};
+let invById = {};
+
+function person(e) {
+  if (e.entity === 'registration') {
+    const r = regById[e.entity_id];
+    if (r && r.full_name) return r.full_name;
+  }
+  if (e.action === 'invitation_verified' || e.action === 'invitation_verify_failed') {
+    return e.action === 'invitation_verified' ? (e.detail || '') : '';
+  }
+  return '';
+}
+function org(e) {
+  if (e.entity === 'registration') {
+    const r = regById[e.entity_id];
+    if (r && r.organization_name) return r.organization_name;
+  }
+  if (e.entity === 'invitation') {
+    const i = invById[e.entity_id];
+    if (i && i.organization_name) return i.organization_name;
+  }
+  return '';
+}
+
 /* Turn the raw (action, entity, entity_id, detail) tuple into one readable sentence. */
 function describe(e) {
   switch (e.action) {
@@ -156,8 +184,8 @@ function describe(e) {
     }
     case 'edit_link_sent': return `Reference ${e.detail || e.entity_id} — link emailed to the registrant`;
     case 'invitation_created': return `Code ${e.detail || e.entity_id} generated`;
-    case 'invitation_verified': return `Code accepted for ${e.detail || '(email not recorded)'}`;
-    case 'invitation_verify_failed': return `Code "${e.entity_id}" — not found or inactive`;
+    case 'invitation_verified': return `Code used to open the registration form (email entered: ${e.detail || 'not recorded'})`;
+    case 'invitation_verify_failed': return `Code "${e.entity_id}" typed — not found or inactive`;
     case 'file_uploaded': return `Field "${e.detail || '?'}" — key ${e.entity_id}`;
     default: return e.detail || e.entity_id || '';
   }
@@ -168,10 +196,21 @@ let all = [];
 async function loadAudit() {
   const msg = $('topMsg'); msg.className = 'msg';
   try {
-    const res = await fetch(CONFIG.apiBase + '/admin/audit', { headers: authHeaders() });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok || data.ok === false) throw new Error(data.error || ('HTTP ' + res.status));
-    all = data.entries || [];
+    const [auditRes, regRes, invRes] = await Promise.all([
+      fetch(CONFIG.apiBase + '/admin/audit', { headers: authHeaders() }),
+      fetch(CONFIG.apiBase + '/admin/export.json', { headers: authHeaders() }),
+      fetch(CONFIG.apiBase + '/admin/invitations', { headers: authHeaders() })
+    ]);
+    const auditData = await auditRes.json().catch(() => ({}));
+    if (!auditRes.ok || auditData.ok === false) throw new Error(auditData.error || ('HTTP ' + auditRes.status));
+    all = auditData.entries || [];
+
+    const regData = await regRes.json().catch(() => ({}));
+    regById = Object.fromEntries((regData.registrations || []).map(r => [r.registration_id, r]));
+
+    const invData = await invRes.json().catch(() => ({}));
+    invById = Object.fromEntries((invData.invitations || []).map(i => [i.invitation_id, i]));
+
     showMsg(msg, `Loaded ${all.length} audit entr${all.length === 1 ? 'y' : 'ies'}.`, true);
     buildActionFilter();
     render();
@@ -200,7 +239,7 @@ function filteredRows() {
     if (from && day < from) return false;
     if (to && day > to) return false;
     if (search) {
-      const hay = [e.entity_id, e.detail, e.ip_hash, actionMeta(e.action).label].join(' ').toLowerCase();
+      const hay = [e.entity_id, e.detail, e.ip_hash, actionMeta(e.action).label, person(e), org(e)].join(' ').toLowerCase();
       if (!hay.includes(search)) return false;
     }
     return true;
@@ -227,13 +266,15 @@ function render() {
   if (!rows.length) { list.innerHTML = '<p class="empty">No matching audit entries. Load the trail and adjust filters.</p>'; return; }
 
   list.innerHTML = `<div class="tblwrap"><table>
-    <thead><tr><th>Time</th><th>Action</th><th>Details</th><th>IP hash</th></tr></thead>
+    <thead><tr><th>Time</th><th>Action</th><th>Person</th><th>SAI / Organisation</th><th>Details</th><th>IP hash</th></tr></thead>
     <tbody>${rows.map(e => {
       const m = actionMeta(e.action);
       const t = e.created_at ? new Date(e.created_at).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' }) : '';
       return `<tr${m.warn ? ' class="warn"' : ''}>
         <td class="time">${esc(t)}</td>
         <td><span class="pill ${m.pill}">${esc(m.label)}</span></td>
+        <td class="wrap">${esc(person(e)) || '—'}</td>
+        <td class="wrap">${esc(org(e)) || '—'}</td>
         <td class="wrap">${esc(describe(e))}</td>
         <td class="ip">${esc((e.ip_hash || '').slice(0, 12))}</td>
       </tr>`;
@@ -244,9 +285,9 @@ function render() {
 function exportToExcel() {
   const rows = filteredRows();
   if (!rows.length) { alert('Load the audit trail first.'); return; }
-  const header = ['Time', 'Action', 'Entity', 'Entity ID', 'Detail', 'IP hash'];
+  const header = ['Time', 'Action', 'Person', 'SAI / Organisation', 'Detail', 'Entity', 'Entity ID', 'IP hash'];
   const aoa = [header, ...rows.map(e => [
-    e.created_at || '', actionMeta(e.action).label, e.entity || '', e.entity_id || '', e.detail || '', e.ip_hash || ''
+    e.created_at || '', actionMeta(e.action).label, person(e), org(e), describe(e), e.entity || '', e.entity_id || '', e.ip_hash || ''
   ])];
   const ws = XLSX.utils.aoa_to_sheet(aoa);
   ws['!cols'] = header.map((h, i) => ({ wch: Math.min(50, Math.max(10, h.length, ...aoa.slice(1).map(r => String(r[i] ?? '').length))) }));
