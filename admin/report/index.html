@@ -81,6 +81,12 @@ table.summary tr:last-child td{border-bottom:none}
   main{max-width:none;padding:0}
   .pcard{border:1px solid #000;margin-bottom:16px}
   table.summary{font-size:11px}
+  /* The summary table can run well past one page -- repeat its header row
+     on every printed page instead of forcing the whole table to fit (which
+     the browser can't honour once it's taller than a page anyway), and
+     never split a single person's row across the page break. */
+  table.summary thead{display:table-header-group}
+  table.summary tr{break-inside:avoid;page-break-inside:avoid}
 }
 </style>
 </head>

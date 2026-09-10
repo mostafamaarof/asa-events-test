@@ -62,7 +62,18 @@ table.datatable tr:last-child td{border-bottom:none}
   header, .card.controls{display:none}
   body{background:#fff}
   main{max-width:none;padding:0}
-  .card{border:1px solid #000;break-inside:avoid;page-break-inside:avoid}
+  .card{border:1px solid #000}
+  /* Short cards (KPI grids, the small "by event" table) never split. A card
+     holding a long table CAN'T be forced onto one page once the table itself
+     is taller than a page -- forcing it just pushes a big blank gap onto the
+     previous page and the browser breaks it anyway. So instead: keep the
+     heading glued to what follows it, repeat the table's header row on every
+     printed page it spans, and never let a single data row split in half. */
+  .kpis{break-inside:avoid;page-break-inside:avoid}
+  .card h2,.card .cap{break-after:avoid;page-break-after:avoid}
+  table.datatable thead{display:table-header-group}
+  table.datatable tr{break-inside:avoid;page-break-inside:avoid}
+  table.datatable tr.totalrow{break-before:avoid;page-break-before:avoid}
 }
 </style>
 </head>

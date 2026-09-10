@@ -64,6 +64,16 @@ td.muted{color:var(--rule-strong)}
   body{background:#fff}
   main{max-width:none;padding:0}
   .group{border:1px solid #000;margin-bottom:16px}
+  /* A group's table can run past one page -- once it's taller than a page,
+     forcing the whole .group to stay together (its base break-inside:avoid)
+     just wastes a page with a big blank gap and the browser breaks it anyway.
+     So in print, let it flow: repeat the header row on every page it spans,
+     never split a single row, and keep the group's own heading from being
+     orphaned alone at the bottom of a page. */
+  .group{break-inside:auto;page-break-inside:auto}
+  .ghead{break-after:avoid;page-break-after:avoid}
+  table thead{display:table-header-group}
+  table tr{break-inside:avoid;page-break-inside:avoid}
 }
 </style>
 </head>
