@@ -119,6 +119,7 @@ td.muted{color:var(--rule-strong)}
       <div class="tab" data-tab="departure">By departure date</div>
       <div class="tab" data-tab="hotel">By hotel</div>
       <div class="tab" data-tab="passport">Passport report</div>
+      <div class="tab" data-tab="accompanying">Accompanying persons</div>
     </div>
   </div>
 
@@ -147,8 +148,12 @@ const OPT = {
   terminal: O([['T1','Terminal 1'],['T2','Terminal 2'],['T3','Terminal 3'],['unknown','Not known yet']]),
   roomType: O([['single','Single'],['double','Double'],['suite','Suite']]),
   tier: O([['president','President'],['vice_president','Vice President'],['other','Other']]),
-  passportType: O([['diplomatic','Diplomatic'],['service','Service or special'],['ordinary','Ordinary'],['lp','UN laissez-passer']])
+  passportType: O([['diplomatic','Diplomatic'],['service','Service or special'],['ordinary','Ordinary'],['lp','UN laissez-passer']]),
+  accRel: O([['spouse','Spouse'],['aide','Aide or assistant'],['security','Security'],['interpreter','Interpreter'],['other','Other']]),
+  dietary: O([['none','No special requirement'],['vegetarian','Vegetarian'],['vegan','Vegan'],['halal','Halal only'],
+    ['gluten','Gluten free'],['diabetic','Diabetic'],['other','Other']])
 };
+const yn = (v) => v === 'yes' ? 'Yes' : v === 'no' ? 'No' : '';
 const COUNTRIES_RAW = "AF:Afghanistan|AL:Albania|DZ:Algeria|AS:American Samoa|AD:Andorra|AO:Angola|AI:Anguilla|AQ:Antarctica|AG:Antigua and Barbuda|AR:Argentina|AM:Armenia|AW:Aruba|AU:Australia|AT:Austria|AZ:Azerbaijan|BS:Bahamas|BH:Bahrain|BD:Bangladesh|BB:Barbados|BY:Belarus|BE:Belgium|BZ:Belize|BJ:Benin|BM:Bermuda|BT:Bhutan|BO:Bolivia|BQ:Bonaire, Sint Eustatius and Saba|BA:Bosnia and Herzegovina|BW:Botswana|BV:Bouvet Island|BR:Brazil|IO:British Indian Ocean Territory|BN:Brunei Darussalam|BG:Bulgaria|BF:Burkina Faso|BI:Burundi|CV:Cabo Verde|KH:Cambodia|CM:Cameroon|CA:Canada|KY:Cayman Islands|CF:Central African Republic|TD:Chad|CL:Chile|CN:China|CX:Christmas Island|CC:Cocos (Keeling) Islands|CO:Colombia|KM:Comoros|CG:Congo|CD:Congo, The Democratic Republic of the|CK:Cook Islands|CR:Costa Rica|HR:Croatia|CU:Cuba|CW:Curaçao|CY:Cyprus|CZ:Czechia|CI:Côte d'Ivoire|DK:Denmark|DJ:Djibouti|DM:Dominica|DO:Dominican Republic|EC:Ecuador|EG:Egypt|SV:El Salvador|GQ:Equatorial Guinea|ER:Eritrea|EE:Estonia|SZ:Eswatini|ET:Ethiopia|FK:Falkland Islands (Malvinas)|FO:Faroe Islands|FJ:Fiji|FI:Finland|FR:France|GF:French Guiana|PF:French Polynesia|TF:French Southern Territories|GA:Gabon|GM:Gambia|GE:Georgia|DE:Germany|GH:Ghana|GI:Gibraltar|GR:Greece|GL:Greenland|GD:Grenada|GP:Guadeloupe|GU:Guam|GT:Guatemala|GG:Guernsey|GN:Guinea|GW:Guinea-Bissau|GY:Guyana|HT:Haiti|HM:Heard Island and McDonald Islands|VA:Holy See (Vatican City State)|HN:Honduras|HK:Hong Kong|HU:Hungary|IS:Iceland|IN:India|ID:Indonesia|IR:Iran|IQ:Iraq|IE:Ireland|IM:Isle of Man|IL:Israel|IT:Italy|JM:Jamaica|JP:Japan|JE:Jersey|JO:Jordan|KZ:Kazakhstan|KE:Kenya|KI:Kiribati|KP:North Korea|KR:South Korea|KW:Kuwait|KG:Kyrgyzstan|LA:Laos|LV:Latvia|LB:Lebanon|LS:Lesotho|LR:Liberia|LY:Libya|LI:Liechtenstein|LT:Lithuania|LU:Luxembourg|MO:Macao|MG:Madagascar|MW:Malawi|MY:Malaysia|MV:Maldives|ML:Mali|MT:Malta|MH:Marshall Islands|MQ:Martinique|MR:Mauritania|MU:Mauritius|YT:Mayotte|MX:Mexico|FM:Micronesia, Federated States of|MD:Moldova|MC:Monaco|MN:Mongolia|ME:Montenegro|MS:Montserrat|MA:Morocco|MZ:Mozambique|MM:Myanmar|NA:Namibia|NR:Nauru|NP:Nepal|NL:Netherlands|NC:New Caledonia|NZ:New Zealand|NI:Nicaragua|NE:Niger|NG:Nigeria|NU:Niue|NF:Norfolk Island|MK:North Macedonia|MP:Northern Mariana Islands|NO:Norway|OM:Oman|PK:Pakistan|PW:Palau|PS:Palestine, State of|PA:Panama|PG:Papua New Guinea|PY:Paraguay|PE:Peru|PH:Philippines|PN:Pitcairn|PL:Poland|PT:Portugal|PR:Puerto Rico|QA:Qatar|RO:Romania|RU:Russian Federation|RW:Rwanda|RE:Réunion|BL:Saint Barthélemy|SH:Saint Helena, Ascension and Tristan da Cunha|KN:Saint Kitts and Nevis|LC:Saint Lucia|MF:Saint Martin (French part)|PM:Saint Pierre and Miquelon|VC:Saint Vincent and the Grenadines|WS:Samoa|SM:San Marino|ST:Sao Tome and Principe|SA:Saudi Arabia|SN:Senegal|RS:Serbia|SC:Seychelles|SL:Sierra Leone|SG:Singapore|SX:Sint Maarten (Dutch part)|SK:Slovakia|SI:Slovenia|SB:Solomon Islands|SO:Somalia|ZA:South Africa|GS:South Georgia and the South Sandwich Islands|SS:South Sudan|ES:Spain|LK:Sri Lanka|SD:Sudan|SR:Suriname|SJ:Svalbard and Jan Mayen|SE:Sweden|CH:Switzerland|SY:Syria|TW:Taiwan|TJ:Tajikistan|TZ:Tanzania|TH:Thailand|TL:Timor-Leste|TG:Togo|TK:Tokelau|TO:Tonga|TT:Trinidad and Tobago|TN:Tunisia|TM:Turkmenistan|TC:Turks and Caicos Islands|TV:Tuvalu|TR:Türkiye|UG:Uganda|UA:Ukraine|AE:United Arab Emirates|GB:United Kingdom|US:United States|UM:United States Minor Outlying Islands|UY:Uruguay|UZ:Uzbekistan|VU:Vanuatu|VE:Venezuela|VN:Vietnam|VG:Virgin Islands, British|VI:Virgin Islands, U.S.|WF:Wallis and Futuna|EH:Western Sahara|YE:Yemen|ZM:Zambia|ZW:Zimbabwe|AX:Åland Islands";
 OPT.country = O(COUNTRIES_RAW.split('|').map(s => { const i = s.indexOf(':'); return [s.slice(0,i), s.slice(i+1)]; }));
 const EVENT_NAMES = { 'WGITA-35-2026': '35th Annual Meeting of INTOSAI Working Group on IT Audit', 'KSC-SC18-2026': '18th KSC Steering Committee Meeting' };
@@ -211,7 +216,8 @@ function computeRows() {
         passportIssueDate: d.passport_issue_date || '',
         passportExpiryDate: d.passport_expiry_date || '',
         passportCopyKey: d.passport_copy_key || '',
-        passportCopyFilename: d.passport_copy_filename || ''
+        passportCopyFilename: d.passport_copy_filename || '',
+        accompanying: (d.is_accompanied === 'yes' && Array.isArray(d.accompanying)) ? d.accompanying : []
       };
     })
     .filter(row => !search ||
@@ -317,6 +323,42 @@ function passportReport(rows) {
   });
 }
 
+/* ---------- Accompanying persons: one group per delegate they travel with ---------- */
+function accompanyingReport(rows) {
+  const withAcc = rows.filter(r => r.accompanying.length);
+  const groups = new Map();
+  withAcc.forEach(r => groups.set(r.ref, r));
+  const keys = [...groups.keys()].sort((a, b) => groups.get(a).name.localeCompare(groups.get(b).name));
+  const cols = ['Accompanying person','Relationship','Nationality','Passport number','Passport expiry','Visa needed','Attends sessions','Attends social','Dietary','Copy'];
+  return keys.map(ref => {
+    const delegate = groups.get(ref);
+    const items = delegate.accompanying.map(p => ({
+      delegateRef: ref, delegateName: delegate.name, delegateTier: delegate.tier,
+      delegateOrg: delegate.org, delegateCountry: delegate.country,
+      name: p.acc_full_name_passport || '(no name)',
+      relationship: OPT.accRel[p.acc_relationship] || p.acc_relationship || '',
+      nationality: OPT.country[p.acc_nationality] || p.acc_nationality || '',
+      passportNumber: p.acc_passport_number || '',
+      passportExpiryDate: p.acc_passport_expiry_date || '',
+      visaNeeded: yn(p.acc_visa_letter_needed),
+      attendsSessions: yn(p.acc_attends_sessions),
+      attendsSocial: yn(p.acc_attends_social),
+      dietary: (Array.isArray(p.acc_dietary) ? p.acc_dietary : [p.acc_dietary]).filter(Boolean).map(v => OPT.dietary[v] || v).join(', '),
+      passportCopyKey: p.acc_passport_copy_key || '', passportCopyFilename: p.acc_passport_copy_filename || ''
+    }));
+    const title = `${delegate.name}${delegate.tier !== 'Other' ? ' · ' + delegate.tier : ''} — ${delegate.org}${delegate.country ? ', ' + delegate.country : ''} (${ref})`;
+    const rowsHtml = items.map(r => `<tr>
+      <td class="wrap">${esc(r.name)}</td>${td(r.relationship)}${td(r.nationality)}
+      ${td(r.passportNumber)}${td(fmtDate(r.passportExpiryDate))}${td(r.visaNeeded)}${td(r.attendsSessions)}${td(r.attendsSocial)}
+      ${td(r.dietary, 'wrap')}
+      ${r.passportCopyKey
+        ? `<td><button type="button" class="ghost passportDlBtn" data-key="${esc(r.passportCopyKey)}" data-filename="${esc(r.passportCopyFilename)}" style="height:26px;padding:0 10px;font-size:12px">Download</button></td>`
+        : '<td class="muted">Not uploaded</td>'}
+    </tr>`).join('');
+    return { title, count: items.length, cols, rowsHtml, items };
+  });
+}
+
 let lastGroups = [];
 
 function render() {
@@ -328,7 +370,13 @@ function render() {
   lastGroups = activeTab === 'arrival' ? dateReport(rows, 'arrival')
     : activeTab === 'departure' ? dateReport(rows, 'departure')
     : activeTab === 'hotel' ? hotelReport(rows)
-    : passportReport(rows);
+    : activeTab === 'passport' ? passportReport(rows)
+    : accompanyingReport(rows);
+
+  if (!lastGroups.length) {
+    list.innerHTML = `<p class="empty">${activeTab === 'accompanying' ? 'No accompanying persons for this selection.' : 'No matching rows for this selection.'}</p>`;
+    return;
+  }
 
   list.innerHTML = lastGroups.map(g => `
     <div class="group">
@@ -363,9 +411,13 @@ function exportCsv() {
            r.roomType, fmtDate(r.checkIn), fmtDate(r.checkOut), r.bookingRef,
            r.arrDate ? fmtDate(r.arrDate) + (r.arrTime ? ' ' + r.arrTime : '') : '',
            r.depDate ? fmtDate(r.depDate) + (r.depTime ? ' ' + r.depTime : '') : '', r.ref]
-        : [r.name, r.tier, (r.org ? r.org + (r.country ? ' - ' + r.country : '') : r.country),
+        : activeTab === 'passport'
+        ? [r.name, r.tier, (r.org ? r.org + (r.country ? ' - ' + r.country : '') : r.country),
            r.passportNumber, r.passportType, r.passportPlaceOfIssue, fmtDate(r.passportIssueDate), fmtDate(r.passportExpiryDate),
-           r.passportCopyKey ? (r.passportCopyFilename || 'Uploaded') : 'Not uploaded', r.ref];
+           r.passportCopyKey ? (r.passportCopyFilename || 'Uploaded') : 'Not uploaded', r.ref]
+        : [r.name, r.relationship, r.nationality, r.passportNumber, fmtDate(r.passportExpiryDate),
+           r.visaNeeded, r.attendsSessions, r.attendsSocial, r.dietary,
+           r.passportCopyKey ? (r.passportCopyFilename || 'Uploaded') : 'Not uploaded'];
       aoa.push([g.title, ...vals]);
     });
   });
@@ -374,7 +426,7 @@ function exportCsv() {
   ws['!cols'] = header.map((h, i) => ({ wch: Math.min(40, Math.max(10, h.length, ...aoa.slice(1).map(r => String(r[i] ?? '').length / 1.6))) }));
   const wb = XLSX.utils.book_new();
   const sheetName = activeTab === 'arrival' ? 'By arrival date' : activeTab === 'departure' ? 'By departure date'
-    : activeTab === 'hotel' ? 'By hotel' : 'Passport report';
+    : activeTab === 'hotel' ? 'By hotel' : activeTab === 'passport' ? 'Passport report' : 'Accompanying persons';
   XLSX.utils.book_append_sheet(wb, ws, sheetName);
   XLSX.writeFile(wb, `asa-logistics-${activeTab}.xlsx`);
 }
