@@ -270,11 +270,14 @@ function renderTable(rows) {
       <td>${r.role_in_delegation || ''}</td>
       <td>${r.visa_letter_needed ? 'yes' : ''}</td>
       <td>${r.flag_personal_email ? '<span class="badge flag">personal email</span>' : ''}${r.flag_org_mismatch ? ' <span class="badge flag">org mismatch</span>' : ''}</td>
-      <td><button type="button" class="btn ghost filesBtn" data-ref="${r.reference}" style="height:30px;padding:0 12px;font-size:12px">Files</button></td>
+      <td>
+        <button type="button" class="btn ghost filesBtn" data-ref="${r.reference}" style="height:30px;padding:0 12px;font-size:12px">Files</button>
+        <button type="button" class="btn ghost editBtn" data-ref="${r.reference}" style="height:30px;padding:0 12px;font-size:12px">Edit</button>
+      </td>
     </tr>`).join('');
   wrap.innerHTML = `<table>
     <thead><tr><th>Reference</th><th>Reg. number</th><th>Date</th><th>Event</th><th>Status</th><th>Tier</th><th>Name</th><th>Email</th>
-      <th>Organization</th><th>Country</th><th>Mode</th><th>Role</th><th>Visa</th><th>Flags</th><th>Files</th></tr></thead>
+      <th>Organization</th><th>Country</th><th>Mode</th><th>Role</th><th>Visa</th><th>Flags</th><th>Actions</th></tr></thead>
     <tbody>${rowsHtml}</tbody></table>`;
 }
 
@@ -316,20 +319,39 @@ wrap0.addEventListener('change', async (e) => {
 });
 
 wrap0.addEventListener('click', async (e) => {
-  const btn = e.target.closest('.filesBtn'); if (!btn) return;
-  const reference = btn.dataset.ref;
-  btn.disabled = true; const orig = btn.textContent; btn.textContent = '...';
-  try {
-    const data = await apiFetch('/admin/attachments?reference=' + encodeURIComponent(reference), { method: 'GET' });
-    if (!data.attachments.length) { alert('No attachments for ' + reference + '.'); return; }
-    for (let i = 0; i < data.attachments.length; i++) {
-      const att = data.attachments[i];
-      setTimeout(() => downloadFileByKey(att.key, att.filename).catch(err => console.error(err)), i * 350);
+  const filesBtn = e.target.closest('.filesBtn');
+  const editBtn = e.target.closest('.editBtn');
+  if (!filesBtn && !editBtn) return;
+
+  if (filesBtn) {
+    const reference = filesBtn.dataset.ref;
+    filesBtn.disabled = true; const orig = filesBtn.textContent; filesBtn.textContent = '...';
+    try {
+      const data = await apiFetch('/admin/attachments?reference=' + encodeURIComponent(reference), { method: 'GET' });
+      if (!data.attachments.length) { alert('No attachments for ' + reference + '.'); return; }
+      for (let i = 0; i < data.attachments.length; i++) {
+        const att = data.attachments[i];
+        setTimeout(() => downloadFileByKey(att.key, att.filename).catch(err => console.error(err)), i * 350);
+      }
+    } catch (e2) {
+      alert('Could not list attachments: ' + e2.message);
+    } finally {
+      filesBtn.disabled = false; filesBtn.textContent = orig;
     }
+    return;
+  }
+
+  const reference = editBtn.dataset.ref;
+  editBtn.disabled = true; const orig = editBtn.textContent; editBtn.textContent = '...';
+  try {
+    const data = await apiFetch('/admin/registrations/edit-token', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reference })
+    });
+    window.open(data.editUrl, '_blank');
   } catch (e2) {
-    alert('Could not list attachments: ' + e2.message);
+    alert('Could not open the edit form: ' + e2.message);
   } finally {
-    btn.disabled = false; btn.textContent = orig;
+    editBtn.disabled = false; editBtn.textContent = orig;
   }
 });
 

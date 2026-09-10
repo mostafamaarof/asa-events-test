@@ -25,6 +25,8 @@ import { connect } from 'cloudflare:sockets';
      GET  /v1/admin/attachments?reference=... list one registration's attachments (Bearer ADMIN_TOKEN or VIEWER_TOKEN)
      POST /v1/admin/registrations/status  set status to under_review/approved/rejected, emails the applicant (Bearer ADMIN_TOKEN)
      POST /v1/admin/registrations/tier    set participant_tier to president/vice_president/other, never emailed (Bearer ADMIN_TOKEN)
+     POST /v1/admin/registrations/edit-token  mint an edit-link token for any reference, opens the same public
+                                    edit form; the resulting save is never emailed to the registrant (Bearer ADMIN_TOKEN)
      GET  /v1/admin/audit           recent audit-trail entries (Bearer ADMIN_TOKEN only — not VIEWER_TOKEN)
    Every error a registrant/editor/uploader can see on the public paths above
    is also written to audit_log as one 'error_shown' action (entity = which
@@ -97,9 +99,14 @@ async function readSession(env, token) {
 }
 
 /* Self-service edit links. Namespaced ('edit:' prefix on the signed text) so
-   an edit token can never be replayed as a login session or vice versa. */
-async function signEditToken(env, registrationId) {
-  const body = b64u(JSON.stringify({ r: registrationId, exp: now() + 60 * 60 * 24 * 30 }));
+   an edit token can never be replayed as a login session or vice versa.
+   opts.admin marks a token minted by an admin (not emailed to the
+   registrant) -- updateRegistration reads it back off the token to decide
+   whether to send the "your registration has been updated" email, so the
+   flag travels with the token itself rather than a client-supplied one
+   that anyone holding a normal edit link could just as easily claim. */
+async function signEditToken(env, registrationId, opts) {
+  const body = b64u(JSON.stringify({ r: registrationId, exp: now() + 60 * 60 * 24 * 30, admin: !!(opts && opts.admin) }));
   return body + '.' + await hmac(env.SESSION_SECRET, 'edit:' + body);
 }
 async function readEditToken(env, token) {
@@ -500,13 +507,17 @@ async function updateRegistration(req, env, ch, ipHash) {
       d.role_in_delegation || null, d.visa_letter_needed === 'yes' ? 1 : 0,
       JSON.stringify(d), JSON.stringify(b.consents || {}), orgMismatch ? 1 : 0, reg.registration_id).run();
 
-  await audit(env, 'registration_updated', 'registration', reg.registration_id, reg.reference, ipHash);
-  await notifyTelegram(env, `✏️ <b>Registration edited</b>\n${esc(fullName || reg.full_name || '(no name)')} — ${esc(reg.reference)}`);
+  await audit(env, t.admin ? 'registration_updated_by_admin' : 'registration_updated', 'registration', reg.registration_id, reg.reference, ipHash);
+  await notifyTelegram(env, `✏️ <b>Registration edited${t.admin ? ' by admin' : ''}</b>\n${esc(fullName || reg.full_name || '(no name)')} — ${esc(reg.reference)}`);
 
   const { codes, titlesEn } = await eventTitles(env, reg.event_codes);
-  await sendMail(env, reg.email, `Registration updated — ${reg.reference}`, shell(
-    `<h2 style="font-size:18px;margin:0 0 12px">Your registration has been updated</h2>
-     <p>Reference <b>${reg.reference}</b> for <b>${titlesEn}</b> has been updated.</p>`));
+  /* Admin-initiated edits (typo fixes, protocol corrections) don't notify the
+     registrant -- only their own self-service edits do. */
+  if (!t.admin) {
+    await sendMail(env, reg.email, `Registration updated — ${reg.reference}`, shell(
+      `<h2 style="font-size:18px;margin:0 0 12px">Your registration has been updated</h2>
+       <p>Reference <b>${reg.reference}</b> for <b>${titlesEn}</b> has been updated.</p>`));
+  }
 
   return json({ ok: true, status: reg.status, registration_number: reg.registration_number || null, reference: reg.reference, event_codes: codes }, 200, ch);
 }
@@ -614,6 +625,22 @@ async function adminSetTier(req, env, ch, ipHash) {
   await notifyTelegram(env, `🎖️ <b>Tier changed</b>\n${esc(reg.full_name || '(no name)')} — ${esc(reference)} → <b>${esc(TIER_LABELS[tier])}</b>`);
 
   return json({ ok: true, reference, tier }, 200, ch);
+}
+
+/* Lets an admin open any registration in the SAME edit form a registrant
+   uses via their emailed link -- no separate admin-only form to build and
+   keep in sync with the real one. The minted token is flagged admin:true
+   (see signEditToken) so the eventual save doesn't email the registrant. */
+async function adminMintEditToken(req, env, ch) {
+  if (!requireAdmin(req, env)) return fail('unauthorized', 401, ch);
+  const b = await req.json().catch(() => ({}));
+  const reference = String(b.reference || '').trim().toUpperCase();
+  const reg = await env.DB.prepare('SELECT registration_id, reference FROM registrations WHERE reference = ?').bind(reference).first();
+  if (!reg) return fail('not_found', 404, ch);
+
+  const token = await signEditToken(env, reg.registration_id, { admin: true });
+  const editUrl = `${env.FRONTEND_BASE || ''}/register/?edit=${encodeURIComponent(reg.reference)}.${encodeURIComponent(token)}`;
+  return json({ ok: true, reference: reg.reference, token, editUrl }, 200, ch);
 }
 
 async function adminExportFull(req, env, ch) {
@@ -777,6 +804,7 @@ export default {
       if (req.method === 'GET'  && pathname === '/v1/admin/attachments')  return await adminAttachments(req, env, ch);
       if (req.method === 'POST' && pathname === '/v1/admin/registrations/status') return await adminSetStatus(req, env, ch, ipHash);
       if (req.method === 'POST' && pathname === '/v1/admin/registrations/tier')   return await adminSetTier(req, env, ch, ipHash);
+      if (req.method === 'POST' && pathname === '/v1/admin/registrations/edit-token') return await adminMintEditToken(req, env, ch);
       if (req.method === 'GET'  && pathname === '/v1/admin/audit')              return await adminAuditLog(req, env, ch);
       if (pathname === '/v1/health') return json({ ok: true, time: new Date().toISOString() }, 200, ch);
       return fail('not_found', 404, ch);

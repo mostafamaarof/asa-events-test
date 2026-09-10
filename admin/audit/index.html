@@ -134,6 +134,7 @@ function authHeaders() {
 const ACTIONS = {
   registration_submitted:      { label: 'Registration submitted',      pill: 'new' },
   registration_updated:        { label: 'Registration edited',         pill: 'edit' },
+  registration_updated_by_admin: { label: 'Registration edited by admin', pill: 'edit' },
   registration_status_changed: { label: 'Status changed',              pill: 'edit' },
   participant_tier_changed:    { label: 'Protocol tier changed',       pill: 'edit' },
   edit_link_sent:              { label: 'Edit link emailed',           pill: 'info' },
@@ -212,6 +213,7 @@ function describe(e) {
   switch (e.action) {
     case 'registration_submitted': return `Reference ${e.detail || e.entity_id}`;
     case 'registration_updated': return `Reference ${e.detail || e.entity_id} edited via self-service link`;
+    case 'registration_updated_by_admin': return `Reference ${e.detail || e.entity_id} edited by an admin (registrant not notified)`;
     case 'registration_status_changed': {
       const [ref, status] = String(e.detail || '').split(':');
       return `Reference ${ref || e.entity_id} → ${status || '?'}`;
@@ -313,7 +315,7 @@ function render() {
 
   const failedCount = rows.filter(e => e.action === 'invitation_verify_failed').length;
   const submittedCount = rows.filter(e => e.action === 'registration_submitted').length;
-  const editedCount = rows.filter(e => e.action === 'registration_updated').length;
+  const editedCount = rows.filter(e => e.action === 'registration_updated' || e.action === 'registration_updated_by_admin').length;
   const statusCount = rows.filter(e => e.action === 'registration_status_changed').length;
   const errorRows = rows.filter(e => e.action === 'error_shown');
   $('summary').innerHTML = `<div class="kpis">
