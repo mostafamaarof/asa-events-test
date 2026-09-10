@@ -28,6 +28,10 @@ import { connect } from 'cloudflare:sockets';
    Every error a registrant/editor/uploader can see on the public paths above
    is also written to audit_log as one 'error_shown' action (entity = which
    flow, entity_id = the error code, detail = whatever identifies who hit it).
+   The events worth knowing about right away (new registration, edit, status
+   change, invalid code, new invitation code, edit-link request, every error)
+   also fire a Telegram message when TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID are
+   set (secrets) — silently a no-op otherwise.
    Nothing here trusts the browser: every rule in the form is re-checked.
    ============================================================================= */
 
@@ -133,6 +137,23 @@ async function audit(env, action, entity, entityId, detail, ipHash) {
    Never lets a logging failure break the real response. */
 async function auditError(env, flow, code, detail, ipHash) {
   try { await audit(env, 'error_shown', flow, code, detail, ipHash); } catch (e) { /* logging must never break the response */ }
+  await notifyTelegram(env, `❗ <b>Error shown</b> — ${esc(flow)}: ${esc(code)}${detail ? '\n' + esc(detail) : ''}`);
+}
+
+/* Optional real-time alert to a Telegram chat (TELEGRAM_BOT_TOKEN +
+   TELEGRAM_CHAT_ID secrets) for the audit events worth knowing about right
+   away. A no-op until both secrets are set; never lets a Telegram outage or
+   a bad token break the real response. */
+function esc(s) { return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+async function notifyTelegram(env, text) {
+  if (!env.TELEGRAM_BOT_TOKEN || !env.TELEGRAM_CHAT_ID) return;
+  try {
+    await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_id: env.TELEGRAM_CHAT_ID, text, parse_mode: 'HTML', disable_web_page_preview: true })
+    });
+  } catch (e) { /* a notification failure must never break the real response */ }
 }
 
 /* Minimal SMTP client over a raw TLS socket (Workers TCP Sockets), used to
@@ -265,7 +286,11 @@ async function verifyInvitation(req, env, ch, ipHash) {
 
   const inv = await env.DB.prepare('SELECT * FROM invitations WHERE code = ? AND is_active = 1').bind(code).first();
   /* One generic message for every failure: never confirm which half was wrong. */
-  if (!inv) { await audit(env, 'invitation_verify_failed', 'invitation', code, null, ipHash); return fail('invalid_code', 400, ch); }
+  if (!inv) {
+    await audit(env, 'invitation_verify_failed', 'invitation', code, null, ipHash);
+    await notifyTelegram(env, `⚠️ <b>Invalid invitation code entered</b>\n"${esc(code)}" — ${esc(email)}`);
+    return fail('invalid_code', 400, ch);
+  }
   if (inv.expires_at && Date.parse(inv.expires_at + 'T23:59:59Z') < Date.now()) { await auditError(env, 'invitation_verify', 'code_expired', code, ipHash); return fail('invalid_code', 400, ch); }
   if (inv.max_uses !== null && inv.used_count >= inv.max_uses) { await auditError(env, 'invitation_verify', 'code_exhausted', code, ipHash); return fail('invalid_code', 400, ch); }
 
@@ -375,6 +400,7 @@ async function createRegistration(req, env, ch, ipHash) {
 
   await env.DB.prepare('UPDATE invitations SET used_count = used_count + 1 WHERE invitation_id = ?').bind(s.iv).run();
   await audit(env, 'registration_submitted', 'registration', id, ref, ipHash);
+  await notifyTelegram(env, `🆕 <b>New registration</b>\n${esc(fullName || '(no name)')} — ${esc(d.organization_name || '?')}\n${esc(regNumber)} · ${esc(ref)}`);
 
   const combinedLabel = targetEvents.length > 1 ? 'WGITA & KSC Annual Meetings' : targetEvents[0].title_en;
   const dateRange = formatDateRange(targetEvents);
@@ -415,6 +441,7 @@ async function requestEditLink(req, env, ch, ipHash) {
        <p>Use this link to review or update your submission for <b>${titlesEn}</b> (reference <b>${reg.reference}</b>). It is valid for 30 days.</p>
        <p><a href="${link}">${link}</a></p>`));
     await audit(env, 'edit_link_sent', 'registration', reg.registration_id, reg.reference, ipHash);
+    await notifyTelegram(env, `✉️ <b>Edit link requested</b>\n${esc(reg.reference)}`);
   }
   /* Same response whether or not a match was found — never confirm which half was wrong. */
   return json({ ok: true }, 200, ch);
@@ -473,6 +500,7 @@ async function updateRegistration(req, env, ch, ipHash) {
       JSON.stringify(d), JSON.stringify(b.consents || {}), orgMismatch ? 1 : 0, reg.registration_id).run();
 
   await audit(env, 'registration_updated', 'registration', reg.registration_id, reg.reference, ipHash);
+  await notifyTelegram(env, `✏️ <b>Registration edited</b>\n${esc(fullName || reg.full_name || '(no name)')} — ${esc(reg.reference)}`);
 
   const { codes, titlesEn } = await eventTitles(env, reg.event_codes);
   await sendMail(env, reg.email, `Registration updated — ${reg.reference}`, shell(
@@ -547,6 +575,7 @@ async function adminSetStatus(req, env, ch, ipHash) {
   await env.DB.prepare('UPDATE registrations SET status = ?, registration_number = ? WHERE reference = ?')
     .bind(status, regNumber || null, reference).run();
   await audit(env, 'registration_status_changed', 'registration', reg.registration_id, `${reference}:${status}`, ipHash);
+  await notifyTelegram(env, `📋 <b>Status changed</b>\n${esc(reg.full_name || '(no name)')} — ${esc(reference)} → <b>${esc(status)}</b>`);
 
   if (status === 'approved' || status === 'rejected') {
     const { titlesEn } = await eventTitles(env, reg.event_codes);
@@ -653,6 +682,7 @@ async function adminCreateInvitation(req, env, ch, ipHash) {
     env.DB.prepare('INSERT INTO invitation_events (invitation_id, event_code) VALUES (?,?)').bind(id, ec)));
 
   await audit(env, 'invitation_created', 'invitation', id, code, ipHash);
+  await notifyTelegram(env, `🔑 <b>Invitation code created</b>\n${esc(code)} — ${esc(orgName)}`);
   return json({ ok: true, invitation_id: id, code, event_codes: eventCodes }, 201, ch);
 }
 
