@@ -24,6 +24,7 @@ import { connect } from 'cloudflare:sockets';
      GET  /v1/admin/files?key=...  download a stored attachment (Bearer ADMIN_TOKEN or VIEWER_TOKEN)
      GET  /v1/admin/attachments?reference=... list one registration's attachments (Bearer ADMIN_TOKEN or VIEWER_TOKEN)
      POST /v1/admin/registrations/status  set status to under_review/approved/rejected, emails the applicant (Bearer ADMIN_TOKEN)
+     POST /v1/admin/registrations/tier    set participant_tier to president/vice_president/other, never emailed (Bearer ADMIN_TOKEN)
      GET  /v1/admin/audit           recent audit-trail entries (Bearer ADMIN_TOKEN only — not VIEWER_TOKEN)
    Every error a registrant/editor/uploader can see on the public paths above
    is also written to audit_log as one 'error_shown' action (entity = which
@@ -515,7 +516,7 @@ async function adminRead(req, env, ch, csv) {
   if (!env.ADMIN_TOKEN || token !== env.ADMIN_TOKEN) return fail('unauthorized', 401, ch);
   const { results } = await env.DB.prepare(
     `SELECT reference, registration_number, created_at, status, event_codes, full_name, email, organization_name, country,
-            attendance_mode, role_in_delegation, visa_letter_needed, flag_personal_email, flag_org_mismatch
+            attendance_mode, role_in_delegation, participant_tier, visa_letter_needed, flag_personal_email, flag_org_mismatch
      FROM registrations ORDER BY created_at DESC LIMIT 500`).all();
   if (!csv) return json({ ok: true, count: results.length, registrations: results }, 200, ch);
   const cols = Object.keys(results[0] || { reference: '' });
@@ -593,11 +594,33 @@ async function adminSetStatus(req, env, ch, ipHash) {
   return json({ ok: true, reference, status, registration_number: regNumber || null }, 200, ch);
 }
 
+const TIERS = ['president', 'vice_president', 'other'];
+const TIER_LABELS = { president: 'President', vice_president: 'Vice President', other: 'Other' };
+
+/* Protocol tier -- purely an internal admin classification for logistics/
+   seating/escort planning. Never emailed to the registrant, unlike status. */
+async function adminSetTier(req, env, ch, ipHash) {
+  if (!requireAdmin(req, env)) return fail('unauthorized', 401, ch);
+  const b = await req.json().catch(() => ({}));
+  const reference = String(b.reference || '').trim().toUpperCase();
+  const tier = String(b.tier || '').trim();
+  if (!TIERS.includes(tier)) return fail('invalid_tier', 400, ch);
+
+  const reg = await env.DB.prepare('SELECT registration_id, reference, full_name FROM registrations WHERE reference = ?').bind(reference).first();
+  if (!reg) return fail('not_found', 404, ch);
+
+  await env.DB.prepare('UPDATE registrations SET participant_tier = ? WHERE reference = ?').bind(tier, reference).run();
+  await audit(env, 'participant_tier_changed', 'registration', reg.registration_id, `${reference}:${tier}`, ipHash);
+  await notifyTelegram(env, `🎖️ <b>Tier changed</b>\n${esc(reg.full_name || '(no name)')} — ${esc(reference)} → <b>${esc(TIER_LABELS[tier])}</b>`);
+
+  return json({ ok: true, reference, tier }, 200, ch);
+}
+
 async function adminExportFull(req, env, ch) {
   if (!requireAdminOrViewer(req, env)) return fail('unauthorized', 401, ch);
   const { results } = await env.DB.prepare(
     `SELECT registration_id, reference, registration_number, created_at, status, event_codes, invitation_id, email, full_name,
-            organization_name, country, attendance_mode, role_in_delegation, visa_letter_needed,
+            organization_name, country, attendance_mode, role_in_delegation, participant_tier, visa_letter_needed,
             flag_personal_email, flag_org_mismatch, fill_seconds, locale, data_json, consents_json
      FROM registrations ORDER BY created_at DESC LIMIT 1000`).all();
   const registrations = results.map(r => ({
@@ -753,6 +776,7 @@ export default {
       if (req.method === 'GET'  && pathname === '/v1/admin/files')        return await adminGetFile(req, env, ch);
       if (req.method === 'GET'  && pathname === '/v1/admin/attachments')  return await adminAttachments(req, env, ch);
       if (req.method === 'POST' && pathname === '/v1/admin/registrations/status') return await adminSetStatus(req, env, ch, ipHash);
+      if (req.method === 'POST' && pathname === '/v1/admin/registrations/tier')   return await adminSetTier(req, env, ch, ipHash);
       if (req.method === 'GET'  && pathname === '/v1/admin/audit')              return await adminAuditLog(req, env, ch);
       if (pathname === '/v1/health') return json({ ok: true, time: new Date().toISOString() }, 200, ch);
       return fail('not_found', 404, ch);

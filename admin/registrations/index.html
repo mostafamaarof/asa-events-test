@@ -112,6 +112,15 @@ td.ref{font-family:var(--f-num)}
           <option value="">All statuses</option>
         </select>
       </div>
+      <div class="f">
+        <label for="fTier">Tier</label>
+        <select id="fTier">
+          <option value="">All tiers</option>
+          <option value="president">President</option>
+          <option value="vice_president">Vice President</option>
+          <option value="other">Other</option>
+        </select>
+      </div>
       <div class="f" style="flex:1;min-width:220px">
         <label for="fSearch">Search (name, email, organization)</label>
         <input type="text" id="fSearch" placeholder="type to filter...">
@@ -217,12 +226,16 @@ function renderTiles(rows) {
   tiles.innerHTML = html;
 }
 
+const TIER_LABELS = { president: 'President', vice_president: 'Vice President', other: 'Other' };
+
 function renderTable(rows) {
   const wrap = $('tableWrap');
   const search = $('fSearch').value.trim().toLowerCase();
   const status = $('fStatus').value;
+  const tier = $('fTier').value;
   let out = rows;
   if (status) out = out.filter(r => r.status === status);
+  if (tier) out = out.filter(r => (r.participant_tier || 'other') === tier);
   if (search) out = out.filter(r =>
     (r.full_name || '').toLowerCase().includes(search) ||
     (r.email || '').toLowerCase().includes(search) ||
@@ -232,6 +245,7 @@ function renderTable(rows) {
 
   if (!out.length) { wrap.innerHTML = '<p class="empty">No matching registrations.</p>'; return; }
   const statusOpt = (v, cur) => `<option value="${v}"${v === cur ? ' selected' : ''}>${v.replace('_', ' ')}</option>`;
+  const tierOpt = (v, cur) => `<option value="${v}"${v === (cur || 'other') ? ' selected' : ''}>${TIER_LABELS[v]}</option>`;
   const rowsHtml = out.map(r => `
     <tr>
       <td class="ref">${r.reference}</td>
@@ -241,6 +255,11 @@ function renderTable(rows) {
       <td>
         <select class="statusSel" data-ref="${r.reference}">
           ${statusOpt('under_review', r.status)}${statusOpt('approved', r.status)}${statusOpt('rejected', r.status)}
+        </select>
+      </td>
+      <td>
+        <select class="tierSel" data-ref="${r.reference}">
+          ${tierOpt('president', r.participant_tier)}${tierOpt('vice_president', r.participant_tier)}${tierOpt('other', r.participant_tier)}
         </select>
       </td>
       <td>${r.full_name || ''}</td>
@@ -254,24 +273,44 @@ function renderTable(rows) {
       <td><button type="button" class="btn ghost filesBtn" data-ref="${r.reference}" style="height:30px;padding:0 12px;font-size:12px">Files</button></td>
     </tr>`).join('');
   wrap.innerHTML = `<table>
-    <thead><tr><th>Reference</th><th>Reg. number</th><th>Date</th><th>Event</th><th>Status</th><th>Name</th><th>Email</th>
+    <thead><tr><th>Reference</th><th>Reg. number</th><th>Date</th><th>Event</th><th>Status</th><th>Tier</th><th>Name</th><th>Email</th>
       <th>Organization</th><th>Country</th><th>Mode</th><th>Role</th><th>Visa</th><th>Flags</th><th>Files</th></tr></thead>
     <tbody>${rowsHtml}</tbody></table>`;
 }
 
 wrap0.addEventListener('change', async (e) => {
-  const sel = e.target.closest('.statusSel'); if (!sel) return;
-  const reference = sel.dataset.ref, status = sel.value;
-  sel.disabled = true;
+  const statusSel = e.target.closest('.statusSel');
+  const tierSel = e.target.closest('.tierSel');
+  if (!statusSel && !tierSel) return;
+
+  if (statusSel) {
+    const reference = statusSel.dataset.ref, status = statusSel.value;
+    statusSel.disabled = true;
+    try {
+      const data = await apiFetch('/admin/registrations/status', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reference, status })
+      });
+      const row = all.find(r => r.reference === reference);
+      if (row) { row.status = data.status; row.registration_number = data.registration_number || row.registration_number; }
+      populateStatusFilter(); render();
+    } catch (e2) {
+      alert('Could not update status: ' + e2.message);
+      render();
+    }
+    return;
+  }
+
+  const reference = tierSel.dataset.ref, tier = tierSel.value;
+  tierSel.disabled = true;
   try {
-    const data = await apiFetch('/admin/registrations/status', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reference, status })
+    await apiFetch('/admin/registrations/tier', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reference, tier })
     });
     const row = all.find(r => r.reference === reference);
-    if (row) { row.status = data.status; row.registration_number = data.registration_number || row.registration_number; }
-    populateStatusFilter(); render();
+    if (row) row.participant_tier = tier;
+    render();
   } catch (e2) {
-    alert('Could not update status: ' + e2.message);
+    alert('Could not update tier: ' + e2.message);
     render();
   }
 });
@@ -303,6 +342,7 @@ function render() {
 $('load').addEventListener('click', loadData);
 $('fEvent').addEventListener('change', render);
 $('fStatus').addEventListener('change', render);
+$('fTier').addEventListener('change', render);
 $('fSearch').addEventListener('input', render);
 
 $('exportCsv').addEventListener('click', async () => {
@@ -322,7 +362,7 @@ $('exportCsv').addEventListener('click', async () => {
 });
 
 const SUMMARY_COLS = ['reference', 'registration_number', 'created_at', 'status', 'event_codes', 'full_name', 'email',
-  'organization_name', 'country', 'attendance_mode', 'role_in_delegation', 'visa_letter_needed',
+  'organization_name', 'country', 'attendance_mode', 'role_in_delegation', 'participant_tier', 'visa_letter_needed',
   'flag_personal_email', 'flag_org_mismatch', 'fill_seconds', 'locale', 'invitation_id', 'registration_id'];
 
 function cellText(v) {

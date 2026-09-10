@@ -56,6 +56,7 @@ button.ghost:hover{background:#F1F5F8}
 .badge.rejected{background:var(--err-tint);color:var(--err)}
 .badge.under_review{background:var(--warn-tint);color:var(--warn)}
 .badge.flag{background:var(--err-tint);color:var(--err);margin-inline-start:6px}
+.badge.tier{background:var(--brass-tint);color:var(--brass);margin-inline-start:6px}
 .psec{padding:14px 20px;border-bottom:1px solid var(--rule)}
 .psec:last-child{border-bottom:none}
 .psec h3{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:600;margin:0 0 10px}
@@ -125,6 +126,15 @@ table.summary tr:last-child td{border-bottom:none}
           <option value="KSC-SC18-2026">18th KSC Steering Committee Meeting</option>
         </select>
       </div>
+      <div class="f">
+        <label for="fTier">Tier</label>
+        <select id="fTier">
+          <option value="">All tiers</option>
+          <option value="president">President</option>
+          <option value="vice_president">Vice President</option>
+          <option value="other">Other</option>
+        </select>
+      </div>
       <div class="f" style="flex:1;min-width:220px">
         <label for="fSearch">Search (name, email, organization)</label>
         <input type="text" id="fSearch" placeholder="type to filter...">
@@ -172,6 +182,7 @@ const OPT = {
     ['CAROSAI','CAROSAI'],['EUROSAI','EUROSAI'],['OLACEFS','OLACEFS'],['PASAI','PASAI'],['na','Not applicable']]),
   delRole: O([['hod','Head of delegation'],['delegate','Delegate'],['observer','Observer'],['speaker','Speaker'],
     ['moderator','Moderator'],['secretariat','Secretariat'],['interpreter','Interpreter'],['accompanying','Accompanying official']]),
+  tier: O([['president','President'],['vice_president','Vice President'],['other','Other']]),
   yesno: O([['yes','Yes'],['no','No']]),
   passportType: O([['diplomatic','Diplomatic'],['service','Service or special'],['ordinary','Ordinary'],['lp','UN laissez-passer']]),
   terminal: O([['T1','Terminal 1'],['T2','Terminal 2'],['T3','Terminal 3'],['unknown','Not known yet']]),
@@ -198,7 +209,7 @@ const SECTIONS = [
   { id: 'institution', title: 'Institution and delegation', fields: [
     ['organization_name','SAI or organisation'], ['regional_group','INTOSAI regional group','region'],
     ['country','Country','country'], ['job_title','Job title'], ['department','Department'],
-    ['role_in_delegation','Role in the delegation','delRole'],
+    ['role_in_delegation','Role in the delegation','delRole'], ['participant_tier','Protocol tier','tier'],
     ['has_security_detail','Security detail accompanying','bool'], ['security_detail_count','Security personnel count']
   ]},
   { id: 'contribution', title: 'Speaking and contribution', fields: [
@@ -331,9 +342,11 @@ const EVENT_NAMES = { 'WGITA-35-2026': '35th Annual Meeting of INTOSAI Working G
 
 function filteredRows() {
   const evFilter = $('fEvent').value;
+  const tierFilter = $('fTier').value;
   const search = $('fSearch').value.trim().toLowerCase();
   let rows = all;
   if (evFilter) rows = rows.filter(r => (r.event_codes || '').split(',').includes(evFilter));
+  if (tierFilter) rows = rows.filter(r => (r.participant_tier || 'other') === tierFilter);
   if (search) rows = rows.filter(r =>
     (r.full_name || '').toLowerCase().includes(search) ||
     (r.email || '').toLowerCase().includes(search) ||
@@ -350,6 +363,7 @@ const SUMMARY_COLS = [
   ['Country', r => OPT.country[r.country] || r.country || ''],
   ['Job title', r => (r.data || {}).job_title || ''],
   ['Role', r => fmt(r.role_in_delegation, 'delRole')],
+  ['Tier', r => fmt(r.participant_tier || 'other', 'tier')],
   ['Speaking', r => fmt((r.data || {}).wants_to_present, 'yesno')],
   ['Social', r => fmt((r.data || {}).social_program_attending, 'yesno')]
 ];
@@ -381,7 +395,7 @@ function render() {
   if ($('viewMode').value === 'summary') { renderSummaryTable(rows); return; }
 
   list.innerHTML = rows.map(r => {
-    const d = withFileNames(r.data || {});
+    const d = { ...withFileNames(r.data || {}), participant_tier: r.participant_tier || 'other' };
     const events = (r.event_codes || '').split(',').filter(Boolean).map(c => EVENT_NAMES[c] || c).join(' & ');
     const sections = SECTIONS.filter(sec => !hiddenSections.has(sec.id)).map(sec => {
       const cells = sec.fields.map(([key, label, kind]) => {
@@ -415,7 +429,7 @@ function render() {
           <div class="sub">${r.job_title_line || r.organization_name || ''}${r.country ? ' · ' + (OPT.country[r.country] || r.country) : ''}</div>
         </div>
         <div class="meta">
-          <div><span class="badge ${r.status}">${(r.status || '').replace('_',' ')}</span></div>
+          <div><span class="badge ${r.status}">${(r.status || '').replace('_',' ')}</span>${(r.participant_tier === 'president' || r.participant_tier === 'vice_president') ? `<span class="badge tier">${OPT.tier[r.participant_tier]}</span>` : ''}</div>
           <div class="ref" style="margin-top:6px">${r.reference}${r.registration_number ? ' · ' + r.registration_number : ''}</div>
           <div class="sub" style="margin-top:2px">${events}</div>
           ${attCount ? `<button type="button" class="ghost attBtn" data-ref="${r.reference}" style="height:30px;padding:0 12px;font-size:12px;margin-top:8px">Download attachments (${attCount})</button>` : ''}
@@ -447,7 +461,7 @@ function exportToExcel() {
 
   const aoa = [header];
   rows.forEach(r => {
-    const d = withFileNames(r.data || {});
+    const d = { ...withFileNames(r.data || {}), participant_tier: r.participant_tier || 'other' };
     const events = (r.event_codes || '').split(',').filter(Boolean).map(c => EVENT_NAMES[c] || c).join(' & ');
     const cells = [r.reference, r.registration_number || '', r.status, events];
     visibleSections.forEach(sec => sec.fields.forEach(([key, , kind]) => cells.push(fmt(d[key], kind))));
@@ -484,6 +498,7 @@ $('summaryExcelBtn').addEventListener('click', exportSummaryToExcel);
 $('printBtn').addEventListener('click', () => window.print());
 $('viewMode').addEventListener('change', applyViewMode);
 $('fEvent').addEventListener('change', render);
+$('fTier').addEventListener('change', render);
 $('fSearch').addEventListener('input', render);
 $('fEmpty').addEventListener('change', render);
 

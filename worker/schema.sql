@@ -72,6 +72,7 @@ CREATE TABLE registrations (
   country             TEXT,
   attendance_mode     TEXT,
   role_in_delegation  TEXT,
+  participant_tier    TEXT NOT NULL DEFAULT 'other', -- 'president' | 'vice_president' | 'other' -- protocol tier, admin-assigned only
   visa_letter_needed  INTEGER DEFAULT 0,
   status              TEXT NOT NULL DEFAULT 'approved', -- auto-confirmed on submission; admin can still revert/reject
   registration_number TEXT,              -- assigned immediately on submission, distinct from reference

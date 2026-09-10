@@ -135,6 +135,7 @@ const ACTIONS = {
   registration_submitted:      { label: 'Registration submitted',      pill: 'new' },
   registration_updated:        { label: 'Registration edited',         pill: 'edit' },
   registration_status_changed: { label: 'Status changed',              pill: 'edit' },
+  participant_tier_changed:    { label: 'Protocol tier changed',       pill: 'edit' },
   edit_link_sent:              { label: 'Edit link emailed',           pill: 'info' },
   invitation_created:          { label: 'Invitation code created',     pill: 'new' },
   invitation_verified:         { label: 'Invitation code verified',    pill: 'info' },
@@ -214,6 +215,11 @@ function describe(e) {
     case 'registration_status_changed': {
       const [ref, status] = String(e.detail || '').split(':');
       return `Reference ${ref || e.entity_id} → ${status || '?'}`;
+    }
+    case 'participant_tier_changed': {
+      const [ref, tier] = String(e.detail || '').split(':');
+      const TIER_LABELS = { president: 'President', vice_president: 'Vice President', other: 'Other' };
+      return `Reference ${ref || e.entity_id} → ${TIER_LABELS[tier] || tier || '?'}`;
     }
     case 'edit_link_sent': return `Reference ${e.detail || e.entity_id} — link emailed to the registrant`;
     case 'invitation_created': return `Code ${e.detail || e.entity_id} generated`;
