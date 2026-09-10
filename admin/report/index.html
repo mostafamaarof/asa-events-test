@@ -129,6 +129,7 @@ button.ghost:hover{background:#F1F5F8}
   <div id="list"></div>
 </main>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
 const CONFIG = { apiBase: 'https://asa-events-api.mostafamaarof.workers.dev/v1' };
 const $ = (id) => document.getElementById(id);
@@ -378,6 +379,13 @@ function render() {
 
 /* One row per registration, columns matching whatever sections are
    currently shown -- hidden sections stay out of the export too. */
+/* A genuine .xlsx workbook, not a CSV -- a CSV's comma delimiter is
+   ambiguous with commas that occur naturally inside free-text fields
+   (addresses, job titles, abstracts), and Excel's locale-dependent list
+   separator makes that worse: opened under a semicolon-locale, or run
+   through Text-to-Columns, every embedded comma shifts that row's later
+   columns, so different people end up with their fields in different
+   columns. A real spreadsheet file has no delimiter to misread. */
 function exportToExcel() {
   const rows = filteredRows();
   if (!rows.length) { alert('Load the report first.'); return; }
@@ -388,9 +396,7 @@ function exportToExcel() {
   visibleSections.forEach(sec => sec.fields.forEach(([, label]) => header.push(label)));
   if (showAccompanying) header.push('Accompanying persons');
 
-  const esc = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
-  const lines = [header.map(esc).join(',')];
-
+  const aoa = [header];
   rows.forEach(r => {
     const d = withFileNames(r.data || {});
     const events = (r.event_codes || '').split(',').filter(Boolean).map(c => EVENT_NAMES[c] || c).join(' & ');
@@ -404,15 +410,14 @@ function exportToExcel() {
         return rel ? `${name} (${rel})` : name;
       }).filter(Boolean).join('; '));
     }
-    lines.push(cells.map(esc).join(','));
+    aoa.push(cells);
   });
 
-  const blob = new Blob(['﻿' + lines.join('\n')], { type: 'text/csv;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url; a.download = 'asa-events-report.csv';
-  document.body.appendChild(a); a.click(); a.remove();
-  URL.revokeObjectURL(url);
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  ws['!cols'] = header.map((h, i) => ({ wch: Math.min(40, Math.max(10, h.length, ...aoa.slice(1).map(r => String(r[i] ?? '').length / 1.6))) }));
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Report');
+  XLSX.writeFile(wb, 'asa-events-report.xlsx');
 }
 
 $('load').addEventListener('click', loadReport);
