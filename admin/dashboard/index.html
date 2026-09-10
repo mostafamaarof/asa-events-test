@@ -57,6 +57,13 @@ table.datatable tr:last-child td{border-bottom:none}
 
 .two-col{display:grid;grid-template-columns:1fr 1fr;gap:20px}
 @media (max-width:720px){.two-col{grid-template-columns:1fr}}
+
+@media print{
+  header, .card.controls{display:none}
+  body{background:#fff}
+  main{max-width:none;padding:0}
+  .card{border:1px solid #000;break-inside:avoid;page-break-inside:avoid}
+}
 </style>
 </head>
 <body>
@@ -67,7 +74,7 @@ table.datatable tr:last-child td{border-bottom:none}
 </header>
 
 <main>
-  <div class="card">
+  <div class="card controls">
     <h2>Access token</h2>
     <div class="grid">
       <div class="f" style="grid-column:1/-1">
@@ -78,6 +85,8 @@ table.datatable tr:last-child td{border-bottom:none}
     </div>
     <div class="actions" style="margin-top:14px">
       <button id="load">Load dashboard</button>
+      <button class="ghost" id="printBtn">Print / Save as PDF</button>
+      <button class="ghost" id="excelBtn">Export to Excel</button>
       <span id="topMsg" class="msg"></span>
     </div>
   </div>
@@ -85,6 +94,7 @@ table.datatable tr:last-child td{border-bottom:none}
   <div id="content"></div>
 </main>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
 const CONFIG = { apiBase: 'https://asa-events-api.mostafamaarof.workers.dev/v1' };
 const $ = (id) => document.getElementById(id);
@@ -166,6 +176,20 @@ function groupOrgParticipants(rows, accCountOf) {
   return Object.values(counts);
 }
 
+/* Shared by crossTable (HTML) and groupsToAoa (spreadsheet rows) so the
+   totals math -- and the alphabetical-by-label sort -- is written once. */
+function aggregateGroups(groupRows, columns) {
+  const sorted = groupRows.slice().sort((a, b) => a.label.localeCompare(b.label));
+  const colTotals = Object.fromEntries(columns.map(c => [c.key, 0]));
+  let grandTotal = 0;
+  const rowsWithTotal = sorted.map(g => {
+    const rowTotal = columns.reduce((s, c) => s + (g[c.key] || 0), 0);
+    columns.forEach(c => { colTotals[c.key] += (g[c.key] || 0); });
+    grandTotal += rowTotal;
+    return { ...g, rowTotal };
+  });
+  return { rows: rowsWithTotal, colTotals, grandTotal };
+}
 /* A plain rows-x-columns table: one row per category value, one column per
    series (event or tier), a Total column per row and a Total row per column
    -- the whole dashboard is figures and tables only, no charts. Sorted
@@ -173,25 +197,35 @@ function groupOrgParticipants(rows, accCountOf) {
    be found by scanning, not by picking it out of a ranked list. */
 function crossTable(groupRows, columns, rowHeader) {
   if (!groupRows.length) return '<p class="empty">No data.</p>';
-  const sorted = groupRows.slice().sort((a, b) => a.label.localeCompare(b.label));
-  const colTotals = Object.fromEntries(columns.map(c => [c.key, 0]));
-  let grandTotal = 0;
-  const bodyRows = sorted.map(g => {
-    const rowTotal = columns.reduce((s, c) => s + (g[c.key] || 0), 0);
-    columns.forEach(c => { colTotals[c.key] += (g[c.key] || 0); });
-    grandTotal += rowTotal;
-    return `<tr><td class="wrap">${esc(g.label)}</td>${columns.map(c => `<td class="n">${g[c.key] || 0}</td>`).join('')}<td class="n">${rowTotal}</td></tr>`;
-  }).join('');
+  const { rows, colTotals, grandTotal } = aggregateGroups(groupRows, columns);
+  const bodyRows = rows.map(g =>
+    `<tr><td class="wrap">${esc(g.label)}</td>${columns.map(c => `<td class="n">${g[c.key] || 0}</td>`).join('')}<td class="n">${g.rowTotal}</td></tr>`
+  ).join('');
   const totalRow = `<tr class="totalrow"><td>Total</td>${columns.map(c => `<td class="n">${colTotals[c.key]}</td>`).join('')}<td class="n">${grandTotal}</td></tr>`;
   return `<div class="tblwrap"><table class="datatable">
     <thead><tr><th>${rowHeader}</th>${columns.map(c => `<th class="n">${c.label}</th>`).join('')}<th class="n">Total</th></tr></thead>
     <tbody>${bodyRows}${totalRow}</tbody>
   </table></div>`;
 }
+/* Same aggregation, as a plain array-of-arrays for the Excel export. */
+function groupsToAoa(groupRows, columns, rowHeader) {
+  const header = [rowHeader, ...columns.map(c => c.label), 'Total'];
+  if (!groupRows.length) return [header];
+  const { rows, colTotals, grandTotal } = aggregateGroups(groupRows, columns);
+  return [
+    header,
+    ...rows.map(g => [g.label, ...columns.map(c => g[c.key] || 0), g.rowTotal]),
+    ['Total', ...columns.map(c => colTotals[c.key]), grandTotal]
+  ];
+}
 
 const EVENT_COLS = [{ key: 'wgita', label: 'WGITA' }, { key: 'ksc', label: 'KSC' }, { key: 'both', label: 'Both' }];
 const TIER_COLS = [{ key: 'president', label: 'President' }, { key: 'vice_president', label: 'Vice President' }, { key: 'other', label: 'Other' }];
 const PARTICIPANTS_COLS = [{ key: 'main', label: 'Main participants' }, { key: 'accompanying', label: 'Accompanying persons' }];
+
+/* Everything the Excel export needs, captured once per render so it doesn't
+   have to recompute (or re-scrape the rendered HTML) when the button is clicked. */
+let lastDashboard = null;
 
 async function loadDashboard() {
   const msg = $('topMsg'); msg.className = 'msg';
@@ -345,9 +379,61 @@ function renderDashboard(rows) {
       ${crossTable(byHotelTier, TIER_COLS, 'Hotel')}
     </div>
   `;
+
+  lastDashboard = {
+    summary: [
+      ['Metric', 'Value'],
+      ['Total confirmed registrations', rows.length],
+      ['Accompanying persons', totalAccompanying],
+      ['Countries represented', countries.size],
+      ['Organisations represented', orgs.size],
+      ['Presidents attending', presidents],
+      ['Vice Presidents attending', vicePresidents],
+      ['Requesting to speak', speaking],
+      ['Need a visa facilitation letter', visa],
+      ['Joining the social programme', social],
+      ['Staying at an official hotel', official],
+      ['Own accommodation arrangement', own]
+    ],
+    byEvent: [
+      ['Event', 'Count'],
+      ['WGITA only', wgitaOnly],
+      ['KSC only', kscOnly],
+      ['Both', bothCount],
+      ['Total', wgitaOnly + kscOnly + bothCount]
+    ],
+    sheets: [
+      ['Protocol tier', byTierEvent, EVENT_COLS, 'Tier'],
+      ['Role', byRole, EVENT_COLS, 'Role'],
+      ['Countries', byCountry, EVENT_COLS, 'Country'],
+      ['Orgs by event', byOrgEvent, EVENT_COLS, 'Organisation'],
+      ['Orgs by tier', byOrgTier, TIER_COLS, 'Organisation'],
+      ['Orgs main-vs-acc', byOrgParticipants, PARTICIPANTS_COLS, 'Organisation'],
+      ['Job title', byJobTitle, EVENT_COLS, 'Job title'],
+      ['Dietary', byDiet, EVENT_COLS, 'Requirement'],
+      ['Hotels by event', byHotelEvent, EVENT_COLS, 'Hotel'],
+      ['Hotels by tier', byHotelTier, TIER_COLS, 'Hotel']
+    ]
+  };
+}
+
+function exportToExcel() {
+  if (!lastDashboard) { alert('Load the dashboard first.'); return; }
+  const wb = XLSX.utils.book_new();
+  const addSheet = (name, aoa) => {
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    ws['!cols'] = aoa[0].map((h, i) => ({ wch: Math.min(40, Math.max(10, String(h ?? '').length, ...aoa.slice(1).map(r => String(r[i] ?? '').length))) }));
+    XLSX.utils.book_append_sheet(wb, ws, name);
+  };
+  addSheet('At a glance', lastDashboard.summary);
+  addSheet('By event', lastDashboard.byEvent);
+  lastDashboard.sheets.forEach(([name, groupRows, columns, rowHeader]) => addSheet(name, groupsToAoa(groupRows, columns, rowHeader)));
+  XLSX.writeFile(wb, 'asa-events-dashboard.xlsx');
 }
 
 $('load').addEventListener('click', loadDashboard);
+$('printBtn').addEventListener('click', () => window.print());
+$('excelBtn').addEventListener('click', exportToExcel);
 if (tokenInput.value) loadDashboard();
 </script>
 </body>
