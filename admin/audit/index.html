@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow, noarchive">
+<title>Audit Trail — ASA Events Admin</title>
+<style>
+:root{
+  --ink:#0B2135; --ink-soft:#1C3A56; --surface:#EEF2F6; --sheet:#FFFFFF;
+  --rule:#CBD6E0; --rule-strong:#93A6B8; --muted:#556A7D;
+  --brass:#A8842C; --brass-tint:#F3EBD8;
+  --ok:#1D6B4C; --ok-tint:#E9F4EE; --err:#A02226; --err-tint:#FAECEC; --warn-tint:#FBF3DF; --warn:#8A6100;
+  --f-body:"IBM Plex Sans",system-ui,sans-serif; --f-num:ui-monospace,Consolas,monospace;
+}
+*,*::before,*::after{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{font-family:var(--f-body);font-size:15px;line-height:1.55;color:var(--ink);background:var(--surface)}
+header{background:var(--ink);color:#fff;padding:16px 24px;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+header h1{margin:0;font-size:18px;font-weight:500}
+header p{margin:4px 0 0;font-size:13px;color:#A9BDD0}
+header nav{margin-inline-start:auto;display:flex;gap:14px}
+header nav a{color:#fff;font-size:13px;text-decoration:underline}
+main{max-width:1150px;margin:0 auto;padding:24px 20px 64px;display:grid;gap:20px}
+.card{background:var(--sheet);border:1px solid var(--rule);padding:20px 24px}
+.card h2{font-size:16px;margin:0 0 16px}
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px 20px}
+@media (max-width:640px){.grid{grid-template-columns:1fr}}
+.f{display:flex;flex-direction:column;gap:5px}
+label{font-size:13px;font-weight:500}
+input,select{font:inherit;font-size:14px;padding:8px 10px;border:1px solid var(--rule-strong);border-radius:2px;background:#fff;color:var(--ink)}
+.hint{font-size:12px;color:var(--muted);margin-top:2px}
+.actions{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+button{font:inherit;font-size:14px;font-weight:500;padding:10px 20px;border-radius:2px;border:1px solid transparent;background:var(--ink);color:#fff;cursor:pointer}
+button:hover{background:var(--ink-soft)}
+button:disabled{opacity:.5;cursor:not-allowed}
+button.ghost{background:transparent;color:var(--ink);border-color:var(--rule-strong)}
+button.ghost:hover{background:#F1F5F8}
+.msg{font-size:13px;padding:10px 12px;border-radius:2px;display:none}
+.msg.ok{display:block;background:var(--ok-tint);color:var(--ok)}
+.msg.err{display:block;background:var(--err-tint);color:var(--err)}
+.filters{display:flex;gap:12px;flex-wrap:wrap;align-items:end}
+.filters .f{min-width:170px}
+.count{font-size:13px;color:var(--muted)}
+.empty{color:var(--muted);font-size:13px;padding:8px 0}
+
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1px;background:var(--rule);border:1px solid var(--rule)}
+.kpi{background:var(--sheet);padding:14px 16px}
+.kpi .v{font-size:24px;font-weight:600;line-height:1.1}
+.kpi .l{font-size:12px;color:var(--muted);margin-top:5px}
+
+.tblwrap{overflow-x:auto;background:var(--sheet);border:1px solid var(--rule)}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th,td{text-align:left;padding:8px 12px;border-bottom:1px solid var(--rule);white-space:nowrap}
+th{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:600;background:#FAFCFD;position:sticky;top:0}
+td.wrap{white-space:normal}
+tr:last-child td{border-bottom:none}
+tr.warn td{background:var(--warn-tint)}
+td.time{font-family:var(--f-num);font-size:12px;color:var(--muted)}
+td.ip{font-family:var(--f-num);font-size:11px;color:var(--rule-strong)}
+.pill{display:inline-block;padding:2px 9px;border-radius:10px;font-size:11px;font-weight:600}
+.pill.new{background:var(--ok-tint);color:var(--ok)}
+.pill.edit{background:var(--brass-tint);color:var(--brass)}
+.pill.warn{background:var(--err-tint);color:var(--err)}
+.pill.info{background:var(--surface);color:var(--muted)}
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>ASA Events — Audit Trail</h1>
+    <p>Internal tool. Not linked from the public site or shared with report viewers. Requires the admin token.</p>
+  </div>
+  <nav><a href="../">Invitation codes</a><a href="../registrations/">Registrations &amp; reports</a><a href="../report/">Full report</a></nav>
+</header>
+
+<main>
+  <div class="card">
+    <h2>Admin token</h2>
+    <div class="grid">
+      <div class="f" style="grid-column:1/-1">
+        <label for="token">Admin token <span style="color:var(--brass)">*</span></label>
+        <input type="password" id="token" autocomplete="off" placeholder="paste your admin token">
+        <span class="hint">Kept only in this browser tab (sessionStorage). This page accepts the admin token only — the report/dashboard viewer token will not work here.</span>
+      </div>
+    </div>
+    <div class="actions" style="margin-top:14px">
+      <button id="load">Load audit trail</button>
+      <button class="ghost" id="excelBtn">Export to Excel</button>
+      <span id="topMsg" class="msg"></span>
+    </div>
+    <div class="filters" style="margin-top:16px;margin-bottom:0">
+      <div class="f">
+        <label for="fAction">Action</label>
+        <select id="fAction"><option value="">All actions</option></select>
+      </div>
+      <div class="f" style="flex:1;min-width:220px">
+        <label for="fSearch">Search (reference, code, email, IP hash)</label>
+        <input type="text" id="fSearch" placeholder="type to filter...">
+      </div>
+      <div class="f">
+        <label for="fFrom">From date</label>
+        <input type="date" id="fFrom">
+      </div>
+      <div class="f">
+        <label for="fTo">To date</label>
+        <input type="date" id="fTo">
+      </div>
+      <span class="count" id="rowCount"></span>
+    </div>
+  </div>
+
+  <div id="summary"></div>
+  <div id="list"></div>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script>
+const CONFIG = { apiBase: 'https://asa-events-api.mostafamaarof.workers.dev/v1' };
+const $ = (id) => document.getElementById(id);
+const tokenInput = $('token');
+tokenInput.value = sessionStorage.getItem('asa_admin_token') || '';
+tokenInput.addEventListener('input', () => sessionStorage.setItem('asa_admin_token', tokenInput.value));
+
+function showMsg(el, text, ok) { el.textContent = text; el.className = 'msg ' + (ok ? 'ok' : 'err'); }
+function authHeaders() {
+  const token = tokenInput.value.trim();
+  if (!token) throw new Error('Enter the admin token first.');
+  return { 'Authorization': 'Bearer ' + token };
+}
+
+/* action -> { label, pillClass, warn } */
+const ACTIONS = {
+  registration_submitted:      { label: 'Registration submitted',      pill: 'new' },
+  registration_updated:        { label: 'Registration edited',         pill: 'edit' },
+  registration_status_changed: { label: 'Status changed',              pill: 'edit' },
+  edit_link_sent:              { label: 'Edit link emailed',           pill: 'info' },
+  invitation_created:          { label: 'Invitation code created',     pill: 'new' },
+  invitation_verified:         { label: 'Invitation code verified',    pill: 'info' },
+  invitation_verify_failed:    { label: 'Invitation code check failed', pill: 'warn', warn: true },
+  file_uploaded:                { label: 'File uploaded',               pill: 'info' }
+};
+function actionMeta(a) { return ACTIONS[a] || { label: a, pill: 'info' }; }
+
+function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c])); }
+
+/* Turn the raw (action, entity, entity_id, detail) tuple into one readable sentence. */
+function describe(e) {
+  switch (e.action) {
+    case 'registration_submitted': return `Reference ${e.detail || e.entity_id}`;
+    case 'registration_updated': return `Reference ${e.detail || e.entity_id} edited via self-service link`;
+    case 'registration_status_changed': {
+      const [ref, status] = String(e.detail || '').split(':');
+      return `Reference ${ref || e.entity_id} → ${status || '?'}`;
+    }
+    case 'edit_link_sent': return `Reference ${e.detail || e.entity_id} — link emailed to the registrant`;
+    case 'invitation_created': return `Code ${e.detail || e.entity_id} generated`;
+    case 'invitation_verified': return `Code accepted for ${e.detail || '(email not recorded)'}`;
+    case 'invitation_verify_failed': return `Code "${e.entity_id}" — not found or inactive`;
+    case 'file_uploaded': return `Field "${e.detail || '?'}" — key ${e.entity_id}`;
+    default: return e.detail || e.entity_id || '';
+  }
+}
+
+let all = [];
+
+async function loadAudit() {
+  const msg = $('topMsg'); msg.className = 'msg';
+  try {
+    const res = await fetch(CONFIG.apiBase + '/admin/audit', { headers: authHeaders() });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || data.ok === false) throw new Error(data.error || ('HTTP ' + res.status));
+    all = data.entries || [];
+    showMsg(msg, `Loaded ${all.length} audit entr${all.length === 1 ? 'y' : 'ies'}.`, true);
+    buildActionFilter();
+    render();
+  } catch (e) {
+    showMsg(msg, e.message, false);
+  }
+}
+
+function buildActionFilter() {
+  const sel = $('fAction');
+  const current = sel.value;
+  const seen = [...new Set(all.map(e => e.action))];
+  sel.innerHTML = '<option value="">All actions</option>' +
+    seen.map(a => `<option value="${a}">${esc(actionMeta(a).label)}</option>`).join('');
+  sel.value = current;
+}
+
+function filteredRows() {
+  const action = $('fAction').value;
+  const search = $('fSearch').value.trim().toLowerCase();
+  const from = $('fFrom').value;
+  const to = $('fTo').value;
+  return all.filter(e => {
+    if (action && e.action !== action) return false;
+    const day = (e.created_at || '').slice(0, 10);
+    if (from && day < from) return false;
+    if (to && day > to) return false;
+    if (search) {
+      const hay = [e.entity_id, e.detail, e.ip_hash, actionMeta(e.action).label].join(' ').toLowerCase();
+      if (!hay.includes(search)) return false;
+    }
+    return true;
+  });
+}
+
+function render() {
+  const rows = filteredRows();
+  $('rowCount').textContent = `${rows.length} of ${all.length} shown`;
+
+  const failedCount = rows.filter(e => e.action === 'invitation_verify_failed').length;
+  const submittedCount = rows.filter(e => e.action === 'registration_submitted').length;
+  const editedCount = rows.filter(e => e.action === 'registration_updated').length;
+  const statusCount = rows.filter(e => e.action === 'registration_status_changed').length;
+  $('summary').innerHTML = `<div class="kpis">
+    <div class="kpi"><div class="v">${rows.length}</div><div class="l">Events shown</div></div>
+    <div class="kpi"><div class="v">${submittedCount}</div><div class="l">Registrations submitted</div></div>
+    <div class="kpi"><div class="v">${editedCount}</div><div class="l">Registrations edited</div></div>
+    <div class="kpi"><div class="v">${statusCount}</div><div class="l">Status changes</div></div>
+    <div class="kpi"><div class="v">${failedCount}</div><div class="l">Failed code attempts</div></div>
+  </div>`;
+
+  const list = $('list');
+  if (!rows.length) { list.innerHTML = '<p class="empty">No matching audit entries. Load the trail and adjust filters.</p>'; return; }
+
+  list.innerHTML = `<div class="tblwrap"><table>
+    <thead><tr><th>Time</th><th>Action</th><th>Details</th><th>IP hash</th></tr></thead>
+    <tbody>${rows.map(e => {
+      const m = actionMeta(e.action);
+      const t = e.created_at ? new Date(e.created_at).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' }) : '';
+      return `<tr${m.warn ? ' class="warn"' : ''}>
+        <td class="time">${esc(t)}</td>
+        <td><span class="pill ${m.pill}">${esc(m.label)}</span></td>
+        <td class="wrap">${esc(describe(e))}</td>
+        <td class="ip">${esc((e.ip_hash || '').slice(0, 12))}</td>
+      </tr>`;
+    }).join('')}</tbody>
+  </table></div>`;
+}
+
+function exportToExcel() {
+  const rows = filteredRows();
+  if (!rows.length) { alert('Load the audit trail first.'); return; }
+  const header = ['Time', 'Action', 'Entity', 'Entity ID', 'Detail', 'IP hash'];
+  const aoa = [header, ...rows.map(e => [
+    e.created_at || '', actionMeta(e.action).label, e.entity || '', e.entity_id || '', e.detail || '', e.ip_hash || ''
+  ])];
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  ws['!cols'] = header.map((h, i) => ({ wch: Math.min(50, Math.max(10, h.length, ...aoa.slice(1).map(r => String(r[i] ?? '').length))) }));
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Audit trail');
+  XLSX.writeFile(wb, 'asa-events-audit-trail.xlsx');
+}
+
+$('load').addEventListener('click', loadAudit);
+$('excelBtn').addEventListener('click', exportToExcel);
+$('fAction').addEventListener('change', render);
+$('fSearch').addEventListener('input', render);
+$('fFrom').addEventListener('change', render);
+$('fTo').addEventListener('change', render);
+if (tokenInput.value) loadAudit();
+</script>
+</body>
+</html>

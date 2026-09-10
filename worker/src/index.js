@@ -24,6 +24,7 @@ import { connect } from 'cloudflare:sockets';
      GET  /v1/admin/files?key=...  download a stored attachment (Bearer ADMIN_TOKEN or VIEWER_TOKEN)
      GET  /v1/admin/attachments?reference=... list one registration's attachments (Bearer ADMIN_TOKEN or VIEWER_TOKEN)
      POST /v1/admin/registrations/status  set status to under_review/approved/rejected, emails the applicant (Bearer ADMIN_TOKEN)
+     GET  /v1/admin/audit           recent audit-trail entries (Bearer ADMIN_TOKEN only — not VIEWER_TOKEN)
    Nothing here trusts the browser: every rule in the form is re-checked.
    ============================================================================= */
 
@@ -554,6 +555,14 @@ async function adminExportFull(req, env, ch) {
   return json({ ok: true, count: registrations.length, exported_at: new Date().toISOString(), registrations }, 200, ch);
 }
 
+async function adminAuditLog(req, env, ch) {
+  if (!requireAdmin(req, env)) return fail('unauthorized', 401, ch);
+  const { results } = await env.DB.prepare(
+    `SELECT id, action, entity, entity_id, detail, ip_hash, created_at
+     FROM audit_log ORDER BY id DESC LIMIT 2000`).all();
+  return json({ ok: true, count: results.length, entries: results }, 200, ch);
+}
+
 function requireAdmin(req, env) {
   const token = (req.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '');
   return !!env.ADMIN_TOKEN && token === env.ADMIN_TOKEN;
@@ -688,6 +697,7 @@ export default {
       if (req.method === 'GET'  && pathname === '/v1/admin/files')        return await adminGetFile(req, env, ch);
       if (req.method === 'GET'  && pathname === '/v1/admin/attachments')  return await adminAttachments(req, env, ch);
       if (req.method === 'POST' && pathname === '/v1/admin/registrations/status') return await adminSetStatus(req, env, ch, ipHash);
+      if (req.method === 'GET'  && pathname === '/v1/admin/audit')              return await adminAuditLog(req, env, ch);
       if (pathname === '/v1/health') return json({ ok: true, time: new Date().toISOString() }, 200, ch);
       return fail('not_found', 404, ch);
     } catch (e) {
