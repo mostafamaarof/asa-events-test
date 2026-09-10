@@ -395,7 +395,14 @@ function groupByEvent(rows) {
     const key = codes.length > 1 ? 'both' : codes[0];
     if (buckets[key]) buckets[key].rows.push(r);
   });
-  return ['WGITA-35-2026', 'KSC-SC18-2026', 'both'].map(k => buckets[k]).filter(g => g.rows.length);
+  const groups = ['WGITA-35-2026', 'KSC-SC18-2026', 'both'].map(k => buckets[k]).filter(g => g.rows.length);
+  /* Sorted by organisation within each event group; same-organisation rows
+     then by name, so the order is stable rather than whatever the API
+     happened to return. */
+  groups.forEach(g => g.rows.sort((a, b) =>
+    (a.organization_name || '').localeCompare(b.organization_name || '') ||
+    (a.full_name || '').localeCompare(b.full_name || '')));
+  return groups;
 }
 function renderSummaryTable(rows) {
   const list = $('list');
