@@ -391,7 +391,11 @@ function speakersReport(rows) {
   });
   const TITLES = { A__wgita: EVENT_NAMES['WGITA-35-2026'], B__ksc: EVENT_NAMES['KSC-SC18-2026'], C__both: 'Both events', D__other: 'Other' };
   const keys = [...groups.keys()].sort();
-  const cols = ['Name','Tier','Org / Country','Presentation title','Abstract','Photo','Slides','Ref'];
+  /* Abstract isn't a column on screen -- full text under a collapsible
+     disclosure makes every row printed-programme-length regardless of who
+     wrote a three-sentence blurb versus a page. It's still its own column
+     in the Excel export, which SPEAKERS_EXPORT_COLS (see exportCsv) covers. */
+  const cols = ['Name','Tier','Org / Country','Presentation title','Photo','Slides','Ref'];
   const dlBtn = (key, filename) => key
     ? `<td><button type="button" class="ghost passportDlBtn" data-key="${esc(key)}" data-filename="${esc(filename)}" style="height:26px;padding:0 10px;font-size:12px">Download</button></td>`
     : '<td class="muted">Not uploaded</td>';
@@ -400,13 +404,16 @@ function speakersReport(rows) {
     const title = TITLES[key] || key;
     const rowsHtml = items.map(r => `<tr>
       <td class="wrap">${esc(r.name)}</td>${td(r.tier)}${td(r.org ? r.org + (r.country ? ' · ' + r.country : '') : r.country, 'wrap')}
-      ${td(r.presentationTitle, 'wrap')}${td(r.presentationAbstract, 'wrap')}
+      <td class="wrap">${esc(r.presentationTitle) || '—'}${r.presentationAbstract
+        ? `<details style="margin-top:4px"><summary style="cursor:pointer;font-size:12px;color:var(--muted)">Abstract</summary><div style="margin-top:4px;font-size:13px">${esc(r.presentationAbstract)}</div></details>`
+        : ''}</td>
       ${dlBtn(r.speakerPhotoKey, r.speakerPhotoFilename)}${dlBtn(r.slidesFileKey, r.slidesFileFilename)}
       <td class="ref">${esc(r.ref)}</td>
     </tr>`).join('');
     return { title, count: items.length, cols, rowsHtml, items };
   });
 }
+const SPEAKERS_EXPORT_COLS = ['Name','Tier','Org / Country','Presentation title','Abstract','Photo','Slides','Ref'];
 
 let lastGroups = [];
 
@@ -449,7 +456,10 @@ function render() {
    delimiter to misread. */
 function exportCsv() {
   if (!lastGroups.length) return;
-  const cols = lastGroups[0].cols;
+  /* The speakers tab's on-screen table folds Abstract into a per-row
+     disclosure to keep rows compact, but the export keeps it as a real
+     column since a spreadsheet has no "click to expand" problem. */
+  const cols = activeTab === 'speakers' ? SPEAKERS_EXPORT_COLS : lastGroups[0].cols;
   const aoa = [['Group', ...cols]];
   lastGroups.forEach(g => {
     g.items.forEach(r => {
