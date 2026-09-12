@@ -654,7 +654,8 @@ async function adminMintEditToken(req, env, ch) {
    value across every matching registration. */
 const RENAMEABLE_FIELDS = {
   organization_name: { column: 'organization_name', jsonPath: '$.organization_name' },
-  official_hotel: { column: null, jsonPath: '$.official_hotel' }
+  official_hotel: { column: null, jsonPath: '$.official_hotel' },
+  own_hotel_name_address: { column: null, jsonPath: '$.own_hotel_name_address' }
 };
 
 async function adminFieldValues(req, env, ch) {
