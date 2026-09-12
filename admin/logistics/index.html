@@ -130,6 +130,7 @@ td.muted{color:var(--rule-strong)}
       <div class="tab" data-tab="hotel">By hotel</div>
       <div class="tab" data-tab="passport">Passport report</div>
       <div class="tab" data-tab="accompanying">Accompanying persons</div>
+      <div class="tab" data-tab="speakers">Speakers</div>
     </div>
   </div>
 
@@ -227,7 +228,15 @@ function computeRows() {
         passportExpiryDate: d.passport_expiry_date || '',
         passportCopyKey: d.passport_copy_key || '',
         passportCopyFilename: d.passport_copy_filename || '',
-        accompanying: (d.is_accompanied === 'yes' && Array.isArray(d.accompanying)) ? d.accompanying : []
+        accompanying: (d.is_accompanied === 'yes' && Array.isArray(d.accompanying)) ? d.accompanying : [],
+        eventCodes: (r.event_codes || '').split(',').filter(Boolean),
+        wantsToPresent: d.wants_to_present === 'yes',
+        presentationTitle: d.presentation_title || '',
+        presentationAbstract: d.presentation_abstract || '',
+        speakerPhotoKey: d.speaker_photo_key || '',
+        speakerPhotoFilename: d.speaker_photo_filename || '',
+        slidesFileKey: d.slides_file_key || '',
+        slidesFileFilename: d.slides_file_filename || ''
       };
     })
     .filter(row => !search ||
@@ -369,6 +378,36 @@ function accompanyingReport(rows) {
   });
 }
 
+/* ---------- Speakers: presentation details plus a download button each for
+   the portrait photo and the slides, grouped by event so each event's
+   programme can be compiled separately. ---------- */
+function speakersReport(rows) {
+  const speakers = rows.filter(r => r.wantsToPresent);
+  const groups = groupBy(speakers, r => {
+    if (r.eventCodes.length > 1) return 'C__both';
+    if (r.eventCodes[0] === 'WGITA-35-2026') return 'A__wgita';
+    if (r.eventCodes[0] === 'KSC-SC18-2026') return 'B__ksc';
+    return 'D__other';
+  });
+  const TITLES = { A__wgita: EVENT_NAMES['WGITA-35-2026'], B__ksc: EVENT_NAMES['KSC-SC18-2026'], C__both: 'Both events', D__other: 'Other' };
+  const keys = [...groups.keys()].sort();
+  const cols = ['Name','Tier','Org / Country','Presentation title','Abstract','Photo','Slides','Ref'];
+  const dlBtn = (key, filename) => key
+    ? `<td><button type="button" class="ghost passportDlBtn" data-key="${esc(key)}" data-filename="${esc(filename)}" style="height:26px;padding:0 10px;font-size:12px">Download</button></td>`
+    : '<td class="muted">Not uploaded</td>';
+  return keys.map(key => {
+    const items = groups.get(key).slice().sort((a, b) => a.name.localeCompare(b.name));
+    const title = TITLES[key] || key;
+    const rowsHtml = items.map(r => `<tr>
+      <td class="wrap">${esc(r.name)}</td>${td(r.tier)}${td(r.org ? r.org + (r.country ? ' · ' + r.country : '') : r.country, 'wrap')}
+      ${td(r.presentationTitle, 'wrap')}${td(r.presentationAbstract, 'wrap')}
+      ${dlBtn(r.speakerPhotoKey, r.speakerPhotoFilename)}${dlBtn(r.slidesFileKey, r.slidesFileFilename)}
+      <td class="ref">${esc(r.ref)}</td>
+    </tr>`).join('');
+    return { title, count: items.length, cols, rowsHtml, items };
+  });
+}
+
 let lastGroups = [];
 
 function render() {
@@ -381,10 +420,14 @@ function render() {
     : activeTab === 'departure' ? dateReport(rows, 'departure')
     : activeTab === 'hotel' ? hotelReport(rows)
     : activeTab === 'passport' ? passportReport(rows)
-    : accompanyingReport(rows);
+    : activeTab === 'accompanying' ? accompanyingReport(rows)
+    : speakersReport(rows);
 
   if (!lastGroups.length) {
-    list.innerHTML = `<p class="empty">${activeTab === 'accompanying' ? 'No accompanying persons for this selection.' : 'No matching rows for this selection.'}</p>`;
+    const emptyMsg = activeTab === 'accompanying' ? 'No accompanying persons for this selection.'
+      : activeTab === 'speakers' ? 'No speakers for this selection.'
+      : 'No matching rows for this selection.';
+    list.innerHTML = `<p class="empty">${emptyMsg}</p>`;
     return;
   }
 
@@ -425,9 +468,14 @@ function exportCsv() {
         ? [r.name, r.tier, (r.org ? r.org + (r.country ? ' - ' + r.country : '') : r.country),
            r.passportNumber, r.passportType, r.passportPlaceOfIssue, fmtDate(r.passportIssueDate), fmtDate(r.passportExpiryDate),
            r.passportCopyKey ? (r.passportCopyFilename || 'Uploaded') : 'Not uploaded', r.ref]
-        : [r.name, r.relationship, r.nationality, r.passportNumber, fmtDate(r.passportExpiryDate),
+        : activeTab === 'accompanying'
+        ? [r.name, r.relationship, r.nationality, r.passportNumber, fmtDate(r.passportExpiryDate),
            r.visaNeeded, r.attendsSessions, r.attendsSocial, r.dietary,
-           r.passportCopyKey ? (r.passportCopyFilename || 'Uploaded') : 'Not uploaded'];
+           r.passportCopyKey ? (r.passportCopyFilename || 'Uploaded') : 'Not uploaded']
+        : [r.name, r.tier, (r.org ? r.org + (r.country ? ' - ' + r.country : '') : r.country),
+           r.presentationTitle, r.presentationAbstract,
+           r.speakerPhotoKey ? (r.speakerPhotoFilename || 'Uploaded') : 'Not uploaded',
+           r.slidesFileKey ? (r.slidesFileFilename || 'Uploaded') : 'Not uploaded', r.ref];
       aoa.push([g.title, ...vals]);
     });
   });
@@ -436,7 +484,8 @@ function exportCsv() {
   ws['!cols'] = header.map((h, i) => ({ wch: Math.min(40, Math.max(10, h.length, ...aoa.slice(1).map(r => String(r[i] ?? '').length / 1.6))) }));
   const wb = XLSX.utils.book_new();
   const sheetName = activeTab === 'arrival' ? 'By arrival date' : activeTab === 'departure' ? 'By departure date'
-    : activeTab === 'hotel' ? 'By hotel' : activeTab === 'passport' ? 'Passport report' : 'Accompanying persons';
+    : activeTab === 'hotel' ? 'By hotel' : activeTab === 'passport' ? 'Passport report'
+    : activeTab === 'accompanying' ? 'Accompanying persons' : 'Speakers';
   XLSX.utils.book_append_sheet(wb, ws, sheetName);
   XLSX.writeFile(wb, `asa-logistics-${activeTab}.xlsx`);
 }
