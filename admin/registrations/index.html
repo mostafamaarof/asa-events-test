@@ -146,6 +146,28 @@ td.ref{font-family:var(--f-num)}
       <span id="fileMsg" class="msg"></span>
     </div>
   </div>
+
+  <div class="card">
+    <h2>Data cleanup — merge duplicate names</h2>
+    <p style="font-size:13px;color:var(--muted);margin:-6px 0 14px">
+      Organisation and hotel names are typed freely on the registration form, so the same SAI or hotel can end up
+      spelled several ways across registrations — which quietly splits one group into several in every report.
+      Pick a field, tick the spelling(s) to fix, and merge them into one canonical name across every matching
+      registration.
+    </p>
+    <div class="filters" style="margin-bottom:14px">
+      <div class="f">
+        <label for="cleanupField">Field</label>
+        <select id="cleanupField">
+          <option value="organization_name">Organisation / SAI name</option>
+          <option value="official_hotel">Official hotel name</option>
+        </select>
+      </div>
+      <button class="ghost" id="cleanupLoad">Load values</button>
+      <span id="cleanupMsg" class="msg"></span>
+    </div>
+    <div id="cleanupList"><p class="empty">Load values to see the spellings currently in use.</p></div>
+  </div>
 </main>
 
 <script>
@@ -481,6 +503,63 @@ $('downloadFile').addEventListener('click', async () => {
     showMsg(msg, e.message, false);
   }
 });
+
+function escHtml(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c])); }
+
+async function loadCleanupValues() {
+  const msg = $('cleanupMsg'); msg.className = 'msg';
+  const field = $('cleanupField').value;
+  try {
+    const data = await apiFetch('/admin/field-values?field=' + encodeURIComponent(field), { method: 'GET' });
+    renderCleanupList(data.values || []);
+  } catch (e) {
+    showMsg(msg, e.message, false);
+  }
+}
+
+function renderCleanupList(values) {
+  const wrap = $('cleanupList');
+  if (!values.length) { wrap.innerHTML = '<p class="empty">No values found for this field yet.</p>'; return; }
+  const rows = values.map(v => `
+    <label style="display:flex;align-items:center;gap:10px;padding:7px 10px;border-bottom:1px solid var(--rule);font-size:13px;cursor:pointer">
+      <input type="checkbox" class="cleanupChk" value="${escHtml(v.value)}">
+      <span style="flex:1">${escHtml(v.value)}</span>
+      <span style="color:var(--muted);font-family:var(--f-num)">${v.count}</span>
+    </label>`).join('');
+  wrap.innerHTML = `
+    <div style="max-height:320px;overflow-y:auto;border:1px solid var(--rule);margin-bottom:14px">${rows}</div>
+    <div class="filters" style="margin-bottom:0">
+      <div class="f" style="flex:1;min-width:260px">
+        <label for="cleanupTo">Merge the ticked spelling(s) into</label>
+        <input type="text" id="cleanupTo" placeholder="Canonical name...">
+      </div>
+      <button id="cleanupMerge">Merge</button>
+    </div>`;
+  $('cleanupMerge').addEventListener('click', doCleanupMerge);
+}
+
+async function doCleanupMerge() {
+  const msg = $('cleanupMsg'); msg.className = 'msg';
+  const field = $('cleanupField').value;
+  const from = [...document.querySelectorAll('.cleanupChk:checked')].map(c => c.value);
+  const to = $('cleanupTo').value.trim();
+  if (!from.length) { showMsg(msg, 'Tick at least one spelling to merge.', false); return; }
+  if (!to) { showMsg(msg, 'Enter the name to merge into.', false); return; }
+  const label = field === 'organization_name' ? 'organisation' : 'hotel';
+  if (!confirm(`Merge ${from.length} ${label} spelling(s) into "${to}"? This updates every matching registration right away.`)) return;
+  try {
+    const data = await apiFetch('/admin/field-values/rename', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ field, from, to })
+    });
+    showMsg(msg, `Merged into "${data.to}" — ${data.changed} registration(s) updated.`, true);
+    loadCleanupValues();
+  } catch (e) {
+    showMsg(msg, e.message, false);
+  }
+}
+
+$('cleanupLoad').addEventListener('click', loadCleanupValues);
+$('cleanupField').addEventListener('change', () => { $('cleanupList').innerHTML = '<p class="empty">Load values to see the spellings currently in use.</p>'; });
 
 if (tokenInput.value) loadData();
 </script>

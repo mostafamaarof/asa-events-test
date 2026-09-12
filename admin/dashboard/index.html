@@ -122,7 +122,7 @@ function authHeaders() {
 
 const EVENT_NAMES = { 'WGITA-35-2026': '35th Annual Meeting of INTOSAI Working Group on IT Audit', 'KSC-SC18-2026': '18th KSC Steering Committee Meeting' };
 const ROLE_NAMES = { hod:'Head of delegation', delegate:'Delegate', observer:'Observer', speaker:'Speaker', moderator:'Moderator', secretariat:'Secretariat', interpreter:'Interpreter', accompanying:'Accompanying official' };
-const DIET_NAMES = { none:'No special requirement', vegetarian:'Vegetarian', vegan:'Vegan', halal:'Halal only', gluten:'Gluten free', diabetic:'Diabetic', other:'Other' };
+const DIET_NAMES = { none:'No special requirement', vegetarian:'Vegetarian', vegan:'Vegan', halal:'Halal only', gluten:'Gluten free', diabetic:'Diabetic', other:'Other', not_specified:'Not specified' };
 const TIER_NAMES = { president: 'President', vice_president: 'Vice President', other: 'Other' };
 
 /* Which event(s) a registration covers -- module scope since both the KPI
@@ -270,6 +270,7 @@ function renderDashboard(rows) {
   const social = rows.filter(r => dset(r).social_program_attending === 'yes').length;
   const official = rows.filter(r => dset(r).accommodation_type === 'official').length;
   const own = rows.filter(r => dset(r).accommodation_type === 'own').length;
+  const accomNotDecided = rows.length - official - own;
   const presidents = rows.filter(r => r.participant_tier === 'president').length;
   const vicePresidents = rows.filter(r => r.participant_tier === 'vice_president').length;
   const accCountOf = (r) => { const d = dset(r); return (d.is_accompanied === 'yes' && Array.isArray(d.accompanying)) ? d.accompanying.length : 0; };
@@ -280,7 +281,14 @@ function renderDashboard(rows) {
   const byOrgEvent = groupCountByEvent(rows, r => r.organization_name);
   const byOrgTier = groupCountByTier(rows, r => r.organization_name);
   const byOrgParticipants = groupOrgParticipants(rows, accCountOf);
-  const byDiet = groupCountByEvent(rows, r => dset(r).dietary_requirements, DIET_NAMES);
+  /* An empty/unselected dietary field must still land somewhere, or that
+     person silently drops out of the table and its Total column stops
+     matching "Total confirmed registrations" -- which reads as a bug even
+     though it's just an optional field nobody filled in. */
+  const byDiet = groupCountByEvent(rows, r => {
+    const v = dset(r).dietary_requirements;
+    return (Array.isArray(v) && v.length) ? v : ['not_specified'];
+  }, DIET_NAMES);
   const byHotelEvent = groupCountByEvent(rows, hotelName);
   const byHotelTier = groupCountByTier(rows, hotelName);
 
@@ -316,10 +324,11 @@ function renderDashboard(rows) {
       </div>
       <div class="card">
         <h2>Accommodation</h2>
-        <p class="cap">Where confirmed participants are staying.</p>
-        <div class="kpis" style="grid-template-columns:1fr 1fr">
+        <p class="cap">Where confirmed participants are staying. Adds up to the total above.</p>
+        <div class="kpis" style="grid-template-columns:repeat(3,1fr)">
           ${kpiTile(official, 'Official hotel')}
           ${kpiTile(own, 'Own arrangement')}
+          ${kpiTile(accomNotDecided, 'Not yet decided')}
         </div>
       </div>
     </div>
@@ -385,7 +394,8 @@ function renderDashboard(rows) {
       ['Need a visa facilitation letter', visa],
       ['Joining the social programme', social],
       ['Staying at an official hotel', official],
-      ['Own accommodation arrangement', own]
+      ['Own accommodation arrangement', own],
+      ['Accommodation not yet decided', accomNotDecided]
     ],
     byEvent: [
       ['Event', 'Count'],

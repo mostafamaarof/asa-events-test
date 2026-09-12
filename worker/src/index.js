@@ -27,6 +27,9 @@ import { connect } from 'cloudflare:sockets';
      POST /v1/admin/registrations/tier    set participant_tier to president/vice_president/other, never emailed (Bearer ADMIN_TOKEN)
      POST /v1/admin/registrations/edit-token  mint an edit-link token for any reference, opens the same public
                                     edit form; the resulting save is never emailed to the registrant (Bearer ADMIN_TOKEN)
+     GET  /v1/admin/field-values?field=organization_name|official_hotel  distinct values in use, with counts (Bearer ADMIN_TOKEN)
+     POST /v1/admin/field-values/rename  merge a set of "from" spellings into one "to" value across every
+                                    matching registration, e.g. reconciling "JAZ Pyramids" vs "Jaz Pyramids Resort" (Bearer ADMIN_TOKEN)
      GET  /v1/admin/audit           recent audit-trail entries (Bearer ADMIN_TOKEN only — not VIEWER_TOKEN)
    Every error a registrant/editor/uploader can see on the public paths above
    is also written to audit_log as one 'error_shown' action (entity = which
@@ -643,6 +646,59 @@ async function adminMintEditToken(req, env, ch) {
   return json({ ok: true, reference: reg.reference, token, editUrl }, 200, ch);
 }
 
+/* organization_name and official_hotel are typed freely by whoever fills in
+   the registration form -- the same SAI or hotel can end up spelled three
+   different ways across registrations, which quietly splits one group into
+   several in every report. These two endpoints let an admin see the
+   distinct spellings in use and merge a set of them into one canonical
+   value across every matching registration. */
+const RENAMEABLE_FIELDS = {
+  organization_name: { column: 'organization_name', jsonPath: '$.organization_name' },
+  official_hotel: { column: null, jsonPath: '$.official_hotel' }
+};
+
+async function adminFieldValues(req, env, ch) {
+  if (!requireAdmin(req, env)) return fail('unauthorized', 401, ch);
+  const field = new URL(req.url).searchParams.get('field');
+  const def = RENAMEABLE_FIELDS[field];
+  if (!def) return fail('invalid_field', 400, ch);
+  const expr = def.column || `json_extract(data_json, '${def.jsonPath}')`;
+  const { results } = await env.DB.prepare(
+    `SELECT ${expr} AS value, COUNT(*) AS count FROM registrations
+     WHERE ${expr} IS NOT NULL AND TRIM(${expr}) != ''
+     GROUP BY ${expr} ORDER BY count DESC, value ASC`).all();
+  return json({ ok: true, field, values: results }, 200, ch);
+}
+
+async function adminRenameFieldValues(req, env, ch, ipHash) {
+  if (!requireAdmin(req, env)) return fail('unauthorized', 401, ch);
+  const b = await req.json().catch(() => ({}));
+  const field = String(b.field || '');
+  const def = RENAMEABLE_FIELDS[field];
+  if (!def) return fail('invalid_field', 400, ch);
+  const to = String(b.to || '').trim();
+  const from = Array.isArray(b.from) ? [...new Set(b.from.map(v => String(v || '').trim()).filter(Boolean))] : [];
+  if (!to || !from.length) return fail('missing_fields', 400, ch);
+
+  const placeholders = from.map(() => '?').join(',');
+  const matchExpr = def.column || `json_extract(data_json, '${def.jsonPath}')`;
+  const sql = def.column
+    /* Also rewrite the copy embedded in data_json -- the report page's card
+       view reads that copy, not the top-level column, and the two must
+       never disagree about a person's organisation. */
+    ? `UPDATE registrations SET ${def.column} = ?, data_json = json_set(data_json, '${def.jsonPath}', ?) WHERE ${matchExpr} IN (${placeholders})`
+    : `UPDATE registrations SET data_json = json_set(data_json, '${def.jsonPath}', ?) WHERE ${matchExpr} IN (${placeholders})`;
+  const binds = def.column ? [to, to, ...from] : [to, ...from];
+
+  const result = await env.DB.prepare(sql).bind(...binds).run();
+  const changed = result.meta ? result.meta.changes : 0;
+  const fieldLabel = field === 'organization_name' ? 'Organisation' : 'Hotel';
+  await audit(env, 'field_values_renamed', field, null, `${from.join(' | ')} → ${to} (${changed} rows)`, ipHash);
+  await notifyTelegram(env, `🏷️ <b>${fieldLabel} name merged</b>\n${esc(from.join(', '))} → <b>${esc(to)}</b> (${changed} row${changed === 1 ? '' : 's'})`);
+
+  return json({ ok: true, field, to, changed }, 200, ch);
+}
+
 async function adminExportFull(req, env, ch) {
   if (!requireAdminOrViewer(req, env)) return fail('unauthorized', 401, ch);
   const { results } = await env.DB.prepare(
@@ -805,6 +861,8 @@ export default {
       if (req.method === 'POST' && pathname === '/v1/admin/registrations/status') return await adminSetStatus(req, env, ch, ipHash);
       if (req.method === 'POST' && pathname === '/v1/admin/registrations/tier')   return await adminSetTier(req, env, ch, ipHash);
       if (req.method === 'POST' && pathname === '/v1/admin/registrations/edit-token') return await adminMintEditToken(req, env, ch);
+      if (req.method === 'GET'  && pathname === '/v1/admin/field-values')        return await adminFieldValues(req, env, ch);
+      if (req.method === 'POST' && pathname === '/v1/admin/field-values/rename') return await adminRenameFieldValues(req, env, ch, ipHash);
       if (req.method === 'GET'  && pathname === '/v1/admin/audit')              return await adminAuditLog(req, env, ch);
       if (pathname === '/v1/health') return json({ ok: true, time: new Date().toISOString() }, 200, ch);
       return fail('not_found', 404, ch);
