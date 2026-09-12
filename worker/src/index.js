@@ -341,6 +341,20 @@ function requiredFieldErrors(d) {
 }
 const fullNameOf = (d) => [d.first_name_passport, d.family_name_passport].filter(Boolean).join(' ');
 
+/* Free-text fields that every report groups people by (SAI/organisation,
+   hotel name) are the ones a stray leading/trailing space silently turns
+   into a second, invisible-in-the-UI bucket -- "OFFICE OF THE AUDITOR
+   GENERAL " and "OFFICE OF THE AUDITOR GENERAL" look identical but group
+   separately everywhere. Trim them at the point of entry so this class of
+   duplicate can't be created going forward. Mutates and returns d so the
+   same trimmed value ends up in data_json and the top-level column alike. */
+function normalizeFreeText(d) {
+  for (const k of ['organization_name', 'official_hotel', 'own_hotel_name_address']) {
+    if (typeof d[k] === 'string') d[k] = d[k].trim();
+  }
+  return d;
+}
+
 async function createRegistration(req, env, ch, ipHash) {
   const token = (req.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '');
   const s = await readSession(env, token);
@@ -348,7 +362,7 @@ async function createRegistration(req, env, ch, ipHash) {
   if (!await allow(env, 'reg:' + ipHash, 10, 3600)) { await auditError(env, 'registration_submit', 'rate_limited', s.e, ipHash); return fail('rate_limited', 429, ch); }
 
   const b = await req.json().catch(() => ({}));
-  const d = b.registration || {};
+  const d = normalizeFreeText(b.registration || {});
   const requested = Array.isArray(b.event_codes) ? [...new Set(b.event_codes.map(String))] : [];
   if (!requested.length) { await auditError(env, 'registration_submit', 'no_events_selected', s.e, ipHash); return fail('no_events_selected', 400, ch); }
   if ((b.fill_seconds || 0) < MIN_FILL_SECONDS) { await auditError(env, 'registration_submit', 'too_fast', s.e, ipHash); return fail('too_fast', 400, ch); }
@@ -490,7 +504,7 @@ async function updateRegistration(req, env, ch, ipHash) {
     .bind(reference, t.r).first();
   if (!reg) { await auditError(env, 'edit_save', 'invalid_edit_link', reference, ipHash); return fail('invalid_edit_link', 401, ch); }
 
-  const d = b.registration || {};
+  const d = normalizeFreeText(b.registration || {});
   const missing = requiredFieldErrors(d);
   if (missing.length) {
     await auditError(env, 'edit_save', 'validation_failed', `${reg.reference}: ${missing.slice(0, 12).join(', ')}`, ipHash);
@@ -664,10 +678,15 @@ async function adminFieldValues(req, env, ch) {
   const def = RENAMEABLE_FIELDS[field];
   if (!def) return fail('invalid_field', 400, ch);
   const expr = def.column || `json_extract(data_json, '${def.jsonPath}')`;
+  /* Grouped by the TRIMMED value, not the raw one -- otherwise "Org" and
+     "Org " (an invisible trailing space) list as two identical-looking
+     rows with no way to tell them apart, which is exactly the bug this
+     tool exists to fix. adminRenameFieldValues matches on TRIM() too, so
+     picking the one visible row silently catches every whitespace variant. */
   const { results } = await env.DB.prepare(
-    `SELECT ${expr} AS value, COUNT(*) AS count FROM registrations
+    `SELECT TRIM(${expr}) AS value, COUNT(*) AS count FROM registrations
      WHERE ${expr} IS NOT NULL AND TRIM(${expr}) != ''
-     GROUP BY ${expr} ORDER BY count DESC, value ASC`).all();
+     GROUP BY TRIM(${expr}) ORDER BY count DESC, value ASC`).all();
   return json({ ok: true, field, values: results }, 200, ch);
 }
 
@@ -683,12 +702,16 @@ async function adminRenameFieldValues(req, env, ch, ipHash) {
 
   const placeholders = from.map(() => '?').join(',');
   const matchExpr = def.column || `json_extract(data_json, '${def.jsonPath}')`;
+  /* TRIM() on the match side too -- "from" is already trimmed above, so a
+     row stored with extra leading/trailing whitespace still matches the
+     canonical value the admin actually selected, even though it was never
+     shown as a separate row to tick. */
   const sql = def.column
     /* Also rewrite the copy embedded in data_json -- the report page's card
        view reads that copy, not the top-level column, and the two must
        never disagree about a person's organisation. */
-    ? `UPDATE registrations SET ${def.column} = ?, data_json = json_set(data_json, '${def.jsonPath}', ?) WHERE ${matchExpr} IN (${placeholders})`
-    : `UPDATE registrations SET data_json = json_set(data_json, '${def.jsonPath}', ?) WHERE ${matchExpr} IN (${placeholders})`;
+    ? `UPDATE registrations SET ${def.column} = ?, data_json = json_set(data_json, '${def.jsonPath}', ?) WHERE TRIM(${matchExpr}) IN (${placeholders})`
+    : `UPDATE registrations SET data_json = json_set(data_json, '${def.jsonPath}', ?) WHERE TRIM(${matchExpr}) IN (${placeholders})`;
   const binds = def.column ? [to, to, ...from] : [to, ...from];
 
   const result = await env.DB.prepare(sql).bind(...binds).run();
