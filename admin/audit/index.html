@@ -72,7 +72,7 @@ td.ip{font-family:var(--f-num);font-size:11px;color:var(--rule-strong)}
     <h1>ASA Events — Audit Trail</h1>
     <p>Internal tool. Not linked from the public site or shared with report viewers. Requires the admin token.</p>
   </div>
-  <nav><a href="../">Invitation codes</a><a href="../registrations/">Registrations &amp; reports</a><a href="../report/">Full report</a></nav>
+  <nav><a href="../">Invitation codes</a><a href="../registrations/">Registrations &amp; reports</a><a href="../report/">Full report</a><a href="../reminders/">Reminders</a></nav>
 </header>
 
 <main>
@@ -139,6 +139,7 @@ const ACTIONS = {
   participant_tier_changed:    { label: 'Protocol tier changed',       pill: 'edit' },
   field_values_renamed:        { label: 'Organisation/hotel names merged', pill: 'edit' },
   edit_link_sent:              { label: 'Edit link emailed',           pill: 'info' },
+  reminder_sent:                { label: 'Missing-data reminder emailed', pill: 'info' },
   invitation_created:          { label: 'Invitation code created',     pill: 'new' },
   invitation_verified:         { label: 'Invitation code verified',    pill: 'info' },
   invitation_verify_failed:    { label: 'Invitation code check failed', pill: 'warn', warn: true },

@@ -83,7 +83,9 @@ CREATE TABLE registrations (
   source_ip_hash      TEXT,
   fill_seconds        INTEGER,
   locale              TEXT,
-  created_at          TEXT NOT NULL
+  created_at          TEXT NOT NULL,
+  reminder_sent_at    TEXT,                -- last time an admin sent a "missing data" reminder email
+  reminder_categories TEXT                 -- comma list of what that reminder covered, e.g. 'itinerary,hotel'
 );
 CREATE INDEX ix_reg_status ON registrations(status);
 

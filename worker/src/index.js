@@ -30,6 +30,9 @@ import { connect } from 'cloudflare:sockets';
      GET  /v1/admin/field-values?field=organization_name|official_hotel  distinct values in use, with counts (Bearer ADMIN_TOKEN)
      POST /v1/admin/field-values/rename  merge a set of "from" spellings into one "to" value across every
                                     matching registration, e.g. reconciling "JAZ Pyramids" vs "Jaz Pyramids Resort" (Bearer ADMIN_TOKEN)
+     POST /v1/admin/reminders/send  email one consolidated "missing data" reminder per selected registration,
+                                    covering only the admin-chosen categories (itinerary/hotel/presentation/
+                                    accompanying), with the registrant's own edit link (Bearer ADMIN_TOKEN)
      GET  /v1/admin/audit           recent audit-trail entries (Bearer ADMIN_TOKEN only — not VIEWER_TOKEN)
    Every error a registrant/editor/uploader can see on the public paths above
    is also written to audit_log as one 'error_shown' action (entity = which
@@ -723,12 +726,114 @@ async function adminRenameFieldValues(req, env, ch, ipHash) {
   return json({ ok: true, field, to, changed }, 200, ch);
 }
 
+/* Recomputed server-side at send time (never trusted from the request) so
+   a reminder always describes what's ACTUALLY still missing right now, not
+   whatever the admin's browser last happened to compute from a page they
+   might have had open for a while. */
+const ITINERARY_FIELDS = [
+  ['arrival_date', 'Arrival date'], ['arrival_time', 'Arrival time'], ['arrival_airline', 'Arrival airline'],
+  ['arrival_flight_no', 'Arrival flight number'], ['arrival_terminal', 'Arrival terminal'],
+  ['departure_date', 'Departure date'], ['departure_time', 'Departure time'], ['departure_airline', 'Departure airline'],
+  ['departure_flight_no', 'Departure flight number'], ['departure_terminal', 'Departure terminal']
+];
+function computeMissing(d) {
+  const itinerary = ITINERARY_FIELDS.filter(([k]) => !d[k]).map(([, label]) => label);
+
+  const hotel = [];
+  if (!d.accommodation_type) hotel.push('Where you will stay (official hotel or own arrangement)');
+  else if (d.accommodation_type === 'official' && !d.official_hotel) hotel.push('Official hotel name');
+  else if (d.accommodation_type === 'own' && !d.own_hotel_name_address) hotel.push('Hotel name and address');
+  if (!d.check_in_date) hotel.push('Check-in date');
+  if (!d.check_out_date) hotel.push('Check-out date');
+
+  let presentation = null;
+  if (d.wants_to_present === 'yes') {
+    presentation = [];
+    if (!d.presentation_title) presentation.push('Presentation title');
+    if (!d.presentation_abstract) presentation.push('Abstract');
+    if (!d.speaker_bio) presentation.push('Short biography');
+    if (!d.speaker_photo_key) presentation.push('Portrait photo');
+    if (!d.slides_file_key) presentation.push('Presentation slides');
+  }
+
+  let accompanying = null;
+  if (d.is_accompanied === 'yes' && Array.isArray(d.accompanying) && d.accompanying.length) {
+    accompanying = [];
+    d.accompanying.forEach((p, i) => {
+      const name = p.acc_full_name_passport || `Accompanying person ${i + 1}`;
+      const gaps = [];
+      if (!p.acc_passport_number) gaps.push('passport number');
+      if (!p.acc_passport_expiry_date) gaps.push('passport expiry date');
+      if (!p.acc_passport_copy_key) gaps.push('passport copy');
+      if (gaps.length) accompanying.push(`${name}: missing ${gaps.join(', ')}`);
+    });
+  }
+
+  return { itinerary, hotel, presentation, accompanying };
+}
+const REMINDER_CATEGORIES = ['itinerary', 'hotel', 'presentation', 'accompanying'];
+const REMINDER_LABELS = { itinerary: 'Flight itinerary', hotel: 'Accommodation', presentation: 'Presentation', accompanying: 'Accompanying persons' };
+
+/* One consolidated email per person, covering only the categories the admin
+   actually ticked for them -- never every gap at once, and never a category
+   they were never asked to fill in (presentation/accompanying only exist
+   for people who said yes to those questions). Links to the person's own
+   normal (non-admin) edit link, so saving it emails them the usual
+   "your registration has been updated" confirmation. */
+async function adminSendReminders(req, env, ch, ipHash) {
+  if (!requireAdmin(req, env)) return fail('unauthorized', 401, ch);
+  const b = await req.json().catch(() => ({}));
+  const items = Array.isArray(b.items) ? b.items : [];
+  if (!items.length) return fail('missing_fields', 400, ch);
+
+  const results = [];
+  for (const item of items) {
+    const reference = String(item.reference || '').trim().toUpperCase();
+    const categories = Array.isArray(item.categories) ? item.categories.filter(c => REMINDER_CATEGORIES.includes(c)) : [];
+    if (!reference || !categories.length) { results.push({ reference, ok: false, error: 'no_categories' }); continue; }
+    try {
+      const reg = await env.DB.prepare('SELECT * FROM registrations WHERE reference = ?').bind(reference).first();
+      if (!reg) { results.push({ reference, ok: false, error: 'not_found' }); continue; }
+      const d = JSON.parse(reg.data_json || '{}');
+      const missing = computeMissing(d);
+      const sections = categories
+        .map(c => ({ cat: c, label: REMINDER_LABELS[c], items: missing[c] || [] }))
+        .filter(s => s.items.length);
+      if (!sections.length) { results.push({ reference, ok: false, error: 'nothing_missing' }); continue; }
+
+      const { titlesEn } = await eventTitles(env, reg.event_codes);
+      const token = await signEditToken(env, reg.registration_id);
+      const editLink = `${env.FRONTEND_BASE || ''}/register/?edit=${encodeURIComponent(reg.reference)}.${encodeURIComponent(token)}`;
+      const sectionsHtml = sections.map(s =>
+        `<p style="margin:14px 0 4px;font-weight:600">${s.label}</p><ul style="margin:0 0 4px;padding-inline-start:20px">${s.items.map(x => `<li>${x}</li>`).join('')}</ul>`
+      ).join('');
+      const body = `<h2 style="font-size:18px;margin:0 0 12px">A few details are still missing</h2>
+        <p>Dear ${reg.full_name || 'colleague'},</p>
+        <p>Thank you for registering for the ${titlesEn} (reference <b>${reg.reference}</b>). A few details would help us plan for your visit — could you add them when you have a moment?</p>
+        ${sectionsHtml}
+        <p style="margin-top:18px"><a href="${editLink}" style="display:inline-block;padding:10px 22px;background:#0B2135;color:#fff;text-decoration:none;border-radius:2px">Update my registration</a></p>
+        <p style="font-size:13px;color:#556A7D;margin-top:12px">Or use this link (valid 30 days): <a href="${editLink}">${editLink}</a></p>`;
+      await sendMail(env, reg.email, `A few details still needed — ${reg.reference}`, shell(body));
+
+      const catStr = sections.map(s => s.cat).join(',');
+      await env.DB.prepare('UPDATE registrations SET reminder_sent_at = ?, reminder_categories = ? WHERE reference = ?')
+        .bind(new Date().toISOString(), catStr, reference).run();
+      await audit(env, 'reminder_sent', 'registration', reg.registration_id, `${reference}: ${catStr}`, ipHash);
+      await notifyTelegram(env, `📧 <b>Reminder sent</b>\n${esc(reg.full_name || '(no name)')} — ${esc(reference)}: ${esc(catStr)}`);
+      results.push({ reference, ok: true, categories: catStr.split(',') });
+    } catch (e) {
+      results.push({ reference, ok: false, error: 'send_failed' });
+    }
+  }
+  return json({ ok: true, results }, 200, ch);
+}
+
 async function adminExportFull(req, env, ch) {
   if (!requireAdminOrViewer(req, env)) return fail('unauthorized', 401, ch);
   const { results } = await env.DB.prepare(
     `SELECT registration_id, reference, registration_number, created_at, status, event_codes, invitation_id, email, full_name,
             organization_name, country, attendance_mode, role_in_delegation, participant_tier, visa_letter_needed,
-            flag_personal_email, flag_org_mismatch, fill_seconds, locale, data_json, consents_json
+            flag_personal_email, flag_org_mismatch, fill_seconds, locale, reminder_sent_at, reminder_categories, data_json, consents_json
      FROM registrations ORDER BY created_at DESC LIMIT 1000`).all();
   const registrations = results.map(r => ({
     ...r,
@@ -887,6 +992,7 @@ export default {
       if (req.method === 'POST' && pathname === '/v1/admin/registrations/edit-token') return await adminMintEditToken(req, env, ch);
       if (req.method === 'GET'  && pathname === '/v1/admin/field-values')        return await adminFieldValues(req, env, ch);
       if (req.method === 'POST' && pathname === '/v1/admin/field-values/rename') return await adminRenameFieldValues(req, env, ch, ipHash);
+      if (req.method === 'POST' && pathname === '/v1/admin/reminders/send')     return await adminSendReminders(req, env, ch, ipHash);
       if (req.method === 'GET'  && pathname === '/v1/admin/audit')              return await adminAuditLog(req, env, ch);
       if (pathname === '/v1/health') return json({ ok: true, time: new Date().toISOString() }, 200, ch);
       return fail('not_found', 404, ch);
