@@ -217,6 +217,7 @@ function computeRows() {
         depDate: d.departure_date || '', depTime: d.departure_time || '',
         depAirline: d.departure_airline || '', depFlight: d.departure_flight_no || '',
         depTerminal: OPT.terminal[d.departure_terminal] || d.departure_terminal || '',
+        ticketFileKey: d.ticket_file_key || '', ticketFileFilename: d.ticket_file_filename || '',
         accomType: d.accommodation_type || '', hotelName,
         roomType: OPT.roomType[d.room_type] || d.room_type || '',
         checkIn: d.check_in_date || '', checkOut: d.check_out_date || '',
@@ -253,6 +254,9 @@ function fmtDate(iso) {
 }
 function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c])); }
 function td(v, cls) { const c = v ? '' : ' muted'; return `<td class="${(cls||'') + c}">${v ? esc(v) : '—'}</td>`; }
+function dlBtn(key, filename) { return key
+  ? `<td><button type="button" class="ghost passportDlBtn" data-key="${esc(key)}" data-filename="${esc(filename)}" style="height:26px;padding:0 10px;font-size:12px">Download</button></td>`
+  : '<td class="muted">Not uploaded</td>'; }
 
 function groupBy(rows, keyFn) {
   const map = new Map();
@@ -271,8 +275,8 @@ function dateReport(rows, which) {
   const groups = groupBy(rows, r => r[dateKey] || '￿'); // undated sorts last
   const keys = [...groups.keys()].sort();
   const cols = which === 'arrival'
-    ? ['Name','Tier','Org / Country','Role','Event(s)','Mobile','Pax','Arrival time','Airline / Flight','Terminal','Connecting','Hotel','Check-in','Ref']
-    : ['Name','Tier','Org / Country','Role','Event(s)','Mobile','Pax','Departure time','Airline / Flight','Terminal','Hotel','Check-out','Ref'];
+    ? ['Name','Tier','Org / Country','Role','Event(s)','Mobile','Pax','Arrival time','Airline / Flight','Terminal','Connecting','Hotel','Check-in','Itinerary','Ref']
+    : ['Name','Tier','Org / Country','Role','Event(s)','Mobile','Pax','Departure time','Airline / Flight','Terminal','Hotel','Check-out','Itinerary','Ref'];
   return keys.map(key => {
     const items = groups.get(key).slice().sort((a, b) => (a[timeKey] || '').localeCompare(b[timeKey] || ''));
     const title = key === '￿' ? `${which === 'arrival' ? 'Arrival' : 'Departure'} date not yet provided` : fmtDate(key);
@@ -281,13 +285,13 @@ function dateReport(rows, which) {
         <td class="wrap">${esc(r.name)}</td>${td(r.tier)}${td(r.org ? r.org + (r.country ? ' · ' + r.country : '') : r.country, 'wrap')}
         ${td(r.role)}${td(r.events, 'wrap')}${td(r.mobile)}<td>${r.pax}</td>
         ${td(r.arrTime)}${td([r.arrAirline, r.arrFlight].filter(Boolean).join(' '))}${td(r.arrTerminal)}${td(r.connecting)}
-        ${td(r.hotelName, 'wrap')}${td(fmtDate(r.checkIn))}<td class="ref">${esc(r.ref)}</td>
+        ${td(r.hotelName, 'wrap')}${td(fmtDate(r.checkIn))}${dlBtn(r.ticketFileKey, r.ticketFileFilename)}<td class="ref">${esc(r.ref)}</td>
       </tr>`;
       return `<tr>
         <td class="wrap">${esc(r.name)}</td>${td(r.tier)}${td(r.org ? r.org + (r.country ? ' · ' + r.country : '') : r.country, 'wrap')}
         ${td(r.role)}${td(r.events, 'wrap')}${td(r.mobile)}<td>${r.pax}</td>
         ${td(r.depTime)}${td([r.depAirline, r.depFlight].filter(Boolean).join(' '))}${td(r.depTerminal)}
-        ${td(r.hotelName, 'wrap')}${td(fmtDate(r.checkOut))}<td class="ref">${esc(r.ref)}</td>
+        ${td(r.hotelName, 'wrap')}${td(fmtDate(r.checkOut))}${dlBtn(r.ticketFileKey, r.ticketFileFilename)}<td class="ref">${esc(r.ref)}</td>
       </tr>`;
     }).join('');
     return { title, count: items.length, cols, rowsHtml, items };
@@ -333,9 +337,7 @@ function passportReport(rows) {
       <td class="wrap">${esc(r.name)}</td>${td(r.tier)}${td(r.org ? r.org + (r.country ? ' · ' + r.country : '') : r.country, 'wrap')}
       ${td(r.passportNumber)}${td(r.passportType)}${td(r.passportPlaceOfIssue, 'wrap')}
       ${td(fmtDate(r.passportIssueDate))}${td(fmtDate(r.passportExpiryDate))}
-      ${r.passportCopyKey
-        ? `<td><button type="button" class="ghost passportDlBtn" data-key="${esc(r.passportCopyKey)}" data-filename="${esc(r.passportCopyFilename)}" style="height:26px;padding:0 10px;font-size:12px">Download</button></td>`
-        : '<td class="muted">Not uploaded</td>'}
+      ${dlBtn(r.passportCopyKey, r.passportCopyFilename)}
       <td class="ref">${esc(r.ref)}</td>
     </tr>`).join('');
     return { title, count: items.length, cols, rowsHtml, items };
@@ -370,9 +372,7 @@ function accompanyingReport(rows) {
       <td class="wrap">${esc(r.name)}</td>${td(r.relationship)}${td(r.nationality)}
       ${td(r.passportNumber)}${td(fmtDate(r.passportExpiryDate))}${td(r.visaNeeded)}${td(r.attendsSessions)}${td(r.attendsSocial)}
       ${td(r.dietary, 'wrap')}
-      ${r.passportCopyKey
-        ? `<td><button type="button" class="ghost passportDlBtn" data-key="${esc(r.passportCopyKey)}" data-filename="${esc(r.passportCopyFilename)}" style="height:26px;padding:0 10px;font-size:12px">Download</button></td>`
-        : '<td class="muted">Not uploaded</td>'}
+      ${dlBtn(r.passportCopyKey, r.passportCopyFilename)}
     </tr>`).join('');
     return { title, count: items.length, cols, rowsHtml, items };
   });
@@ -396,9 +396,6 @@ function speakersReport(rows) {
      wrote a three-sentence blurb versus a page. It's still its own column
      in the Excel export, which SPEAKERS_EXPORT_COLS (see exportCsv) covers. */
   const cols = ['Name','Tier','Org / Country','Presentation title','Photo','Slides','Ref'];
-  const dlBtn = (key, filename) => key
-    ? `<td><button type="button" class="ghost passportDlBtn" data-key="${esc(key)}" data-filename="${esc(filename)}" style="height:26px;padding:0 10px;font-size:12px">Download</button></td>`
-    : '<td class="muted">Not uploaded</td>';
   return keys.map(key => {
     const items = groups.get(key).slice().sort((a, b) => a.name.localeCompare(b.name));
     const title = TITLES[key] || key;
@@ -465,10 +462,12 @@ function exportCsv() {
     g.items.forEach(r => {
       const vals = activeTab === 'arrival'
         ? [r.name, r.tier, (r.org ? r.org + (r.country ? ' - ' + r.country : '') : r.country), r.role, r.events, r.mobile, r.pax,
-           r.arrTime, [r.arrAirline, r.arrFlight].filter(Boolean).join(' '), r.arrTerminal, r.connecting, r.hotelName, fmtDate(r.checkIn), r.ref]
+           r.arrTime, [r.arrAirline, r.arrFlight].filter(Boolean).join(' '), r.arrTerminal, r.connecting, r.hotelName, fmtDate(r.checkIn),
+           r.ticketFileKey ? (r.ticketFileFilename || 'Uploaded') : 'Not uploaded', r.ref]
         : activeTab === 'departure'
         ? [r.name, r.tier, (r.org ? r.org + (r.country ? ' - ' + r.country : '') : r.country), r.role, r.events, r.mobile, r.pax,
-           r.depTime, [r.depAirline, r.depFlight].filter(Boolean).join(' '), r.depTerminal, r.hotelName, fmtDate(r.checkOut), r.ref]
+           r.depTime, [r.depAirline, r.depFlight].filter(Boolean).join(' '), r.depTerminal, r.hotelName, fmtDate(r.checkOut),
+           r.ticketFileKey ? (r.ticketFileFilename || 'Uploaded') : 'Not uploaded', r.ref]
         : activeTab === 'hotel'
         ? [r.name, r.tier, (r.org ? r.org + (r.country ? ' - ' + r.country : '') : r.country), r.role, r.events, r.mobile, r.pax,
            r.roomType, fmtDate(r.checkIn), fmtDate(r.checkOut), r.bookingRef,
