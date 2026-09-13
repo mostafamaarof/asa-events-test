@@ -57,6 +57,13 @@ td.muted{color:var(--rule-strong);white-space:nowrap}
 .catcell input{margin-top:3px}
 .catcell .items{font-size:12px;color:var(--muted)}
 .catcell .items b{color:var(--ink);font-weight:500}
+
+.previewcard{background:var(--sheet);border:1px solid var(--rule);margin-bottom:14px}
+.previewcard .phead{padding:12px 18px;border-bottom:1px solid var(--rule);background:var(--brass-tint)}
+.previewcard .phead .to{font-weight:600;font-size:14px}
+.previewcard .phead .subj{font-size:13px;color:var(--muted);margin-top:2px}
+.previewcard iframe{display:block;width:100%;height:460px;border:0}
+.previewcard .none{padding:16px 18px;color:var(--muted);font-size:13px}
 </style>
 </head>
 <body>
@@ -83,6 +90,7 @@ td.muted{color:var(--rule-strong);white-space:nowrap}
       <button id="load">Load registrations</button>
       <button class="ghost" id="selectAll">Select all shown</button>
       <button class="ghost" id="clearAll">Clear all</button>
+      <button class="ghost" id="previewBtn">Preview selected</button>
       <button id="sendBtn">Send reminders</button>
       <span id="topMsg" class="msg"></span>
     </div>
@@ -122,6 +130,7 @@ td.muted{color:var(--rule-strong);white-space:nowrap}
     </div>
   </div>
 
+  <div id="preview"></div>
   <div id="list"></div>
 </main>
 
@@ -257,6 +266,7 @@ function fmtWhen(iso) {
 }
 
 function render() {
+  $('preview').innerHTML = ''; // the table (and its checkboxes) is about to be rebuilt, so any preview is now stale
   const rows = computeRows();
   $('rowCount').textContent = `${rows.length} of ${all.length} shown`;
   const list = $('list');
@@ -281,18 +291,54 @@ function render() {
   </table></div>`;
 }
 
-async function sendReminders() {
-  const msg = $('topMsg'); msg.className = 'msg';
+function gatherSelectedItems() {
   const checked = [...document.querySelectorAll('.remCheck:checked')];
-  if (!checked.length) { showMsg(msg, 'Tick at least one item to remind someone about.', false); return; }
-
   const byRef = new Map();
   checked.forEach(c => {
     const ref = c.dataset.ref;
     if (!byRef.has(ref)) byRef.set(ref, []);
     byRef.get(ref).push(c.dataset.cat);
   });
-  const items = [...byRef.entries()].map(([reference, categories]) => ({ reference, categories }));
+  return [...byRef.entries()].map(([reference, categories]) => ({ reference, categories }));
+}
+
+async function previewReminders() {
+  const msg = $('topMsg'); msg.className = 'msg';
+  const items = gatherSelectedItems();
+  const previewEl = $('preview');
+  if (!items.length) { showMsg(msg, 'Tick at least one item to preview.', false); previewEl.innerHTML = ''; return; }
+
+  const btn = $('previewBtn');
+  btn.disabled = true; const orig = btn.textContent; btn.textContent = 'Composing…';
+  try {
+    const data = await apiFetch('/admin/reminders/send', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ items, preview: true })
+    });
+    const results = data.results || [];
+    previewEl.innerHTML = `<div class="card" style="padding:16px 20px">
+      <h2 style="margin:0 0 4px">Preview — ${results.filter(r => r.ok).length} of ${results.length} email(s)</h2>
+      <p class="hint" style="margin:0 0 14px">Nothing has been sent. This is exactly what "Send reminders" would email right now.</p>
+      ${results.map(r => r.ok
+        ? `<div class="previewcard">
+             <div class="phead"><div class="to">${esc(r.to)}</div><div class="subj">${esc(r.subject)}</div></div>
+             <iframe srcdoc="${esc(r.html)}" sandbox=""></iframe>
+           </div>`
+        : `<div class="previewcard"><div class="none">${esc(r.reference)} — nothing to preview (${esc(r.error)})</div></div>`
+      ).join('')}
+    </div>`;
+    previewEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    showMsg(msg, `Composed ${results.filter(r => r.ok).length} preview(s).`, true);
+  } catch (e) {
+    showMsg(msg, 'Could not compose preview: ' + e.message, false);
+  } finally {
+    btn.disabled = false; btn.textContent = orig;
+  }
+}
+
+async function sendReminders() {
+  const msg = $('topMsg'); msg.className = 'msg';
+  const items = gatherSelectedItems();
+  if (!items.length) { showMsg(msg, 'Tick at least one item to remind someone about.', false); return; }
 
   if (!confirm(`Send a reminder email to ${items.length} person(s) now?`)) return;
 
@@ -308,6 +354,7 @@ async function sendReminders() {
     let text = `Sent ${okCount} of ${results.length} reminder(s).`;
     if (failed.length) text += '\nCould not send: ' + failed.map(f => `${f.reference} (${f.error})`).join(', ');
     showMsg(msg, text, failed.length === 0);
+    $('preview').innerHTML = '';
     await loadData();
   } catch (e) {
     showMsg(msg, 'Could not send reminders: ' + e.message, false);
@@ -323,6 +370,7 @@ $('fSearch').addEventListener('input', render);
 document.querySelectorAll('.catFilter').forEach(cb => cb.addEventListener('change', render));
 $('selectAll').addEventListener('click', () => document.querySelectorAll('.remCheck').forEach(c => c.checked = true));
 $('clearAll').addEventListener('click', () => document.querySelectorAll('.remCheck').forEach(c => c.checked = false));
+$('previewBtn').addEventListener('click', previewReminders);
 $('sendBtn').addEventListener('click', sendReminders);
 if (tokenInput.value) loadData();
 </script>

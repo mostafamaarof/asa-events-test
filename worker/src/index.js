@@ -32,7 +32,9 @@ import { connect } from 'cloudflare:sockets';
                                     matching registration, e.g. reconciling "JAZ Pyramids" vs "Jaz Pyramids Resort" (Bearer ADMIN_TOKEN)
      POST /v1/admin/reminders/send  email one consolidated "missing data" reminder per selected registration,
                                     covering only the admin-chosen categories (itinerary/hotel/presentation/
-                                    accompanying), with the registrant's own edit link (Bearer ADMIN_TOKEN)
+                                    accompanying), with the registrant's own edit link (Bearer ADMIN_TOKEN).
+                                    Pass preview:true to compose and return the same emails without sending
+                                    them or touching the database/audit trail.
      GET  /v1/admin/audit           recent audit-trail entries (Bearer ADMIN_TOKEN only — not VIEWER_TOKEN)
    Every error a registrant/editor/uploader can see on the public paths above
    is also written to audit_log as one 'error_shown' action (entity = which
@@ -774,16 +776,52 @@ function computeMissing(d) {
 const REMINDER_CATEGORIES = ['itinerary', 'hotel', 'presentation', 'accompanying'];
 const REMINDER_LABELS = { itinerary: 'Flight itinerary', hotel: 'Accommodation', presentation: 'Presentation', accompanying: 'Accompanying persons' };
 
+/* Builds the exact email a reminder would send, without sending it -- shared
+   by the real send and the preview endpoint so a preview can never drift
+   from what actually goes out. Mints a real edit token even in preview (it's
+   the same harmless operation adminMintEditToken already exposes), so the
+   link the admin previews is the same one the recipient would get. */
+async function buildReminderEmail(env, reg, categories) {
+  const d = JSON.parse(reg.data_json || '{}');
+  const missing = computeMissing(d);
+  const sections = categories
+    .map(c => ({ cat: c, label: REMINDER_LABELS[c], items: missing[c] || [] }))
+    .filter(s => s.items.length);
+  if (!sections.length) return { ok: false, error: 'nothing_missing' };
+
+  const { titlesEn } = await eventTitles(env, reg.event_codes);
+  const token = await signEditToken(env, reg.registration_id);
+  const editLink = `${env.FRONTEND_BASE || ''}/register/?edit=${encodeURIComponent(reg.reference)}.${encodeURIComponent(token)}`;
+  const sectionsHtml = sections.map(s =>
+    `<p style="margin:14px 0 4px;font-weight:600">${s.label}</p><ul style="margin:0 0 4px;padding-inline-start:20px">${s.items.map(x => `<li>${x}</li>`).join('')}</ul>`
+  ).join('');
+  const body = `<h2 style="font-size:18px;margin:0 0 12px">A few details are still missing</h2>
+    <p>Dear ${reg.full_name || 'colleague'},</p>
+    <p>Thank you for registering for the ${titlesEn} (reference <b>${reg.reference}</b>). A few details would help us plan for your visit — could you add them when you have a moment?</p>
+    ${sectionsHtml}
+    <p style="margin-top:18px"><a href="${editLink}" style="display:inline-block;padding:10px 22px;background:#0B2135;color:#fff;text-decoration:none;border-radius:2px">Update my registration</a></p>
+    <p style="font-size:13px;color:#556A7D;margin-top:12px">Or use this link (valid 30 days): <a href="${editLink}">${editLink}</a></p>`;
+
+  return {
+    ok: true, to: reg.email, subject: `A few details still needed — ${reg.reference}`,
+    html: shell(body), categories: sections.map(s => s.cat)
+  };
+}
+
 /* One consolidated email per person, covering only the categories the admin
    actually ticked for them -- never every gap at once, and never a category
    they were never asked to fill in (presentation/accompanying only exist
    for people who said yes to those questions). Links to the person's own
    normal (non-admin) edit link, so saving it emails them the usual
-   "your registration has been updated" confirmation. */
+   "your registration has been updated" confirmation.
+   b.preview: true composes and returns the emails without sending them or
+   touching the database/audit trail -- lets the admin see exactly what
+   would go out (subject, body, edit link) before committing to a send. */
 async function adminSendReminders(req, env, ch, ipHash) {
   if (!requireAdmin(req, env)) return fail('unauthorized', 401, ch);
   const b = await req.json().catch(() => ({}));
   const items = Array.isArray(b.items) ? b.items : [];
+  const preview = b.preview === true;
   if (!items.length) return fail('missing_fields', 400, ch);
 
   const results = [];
@@ -794,38 +832,27 @@ async function adminSendReminders(req, env, ch, ipHash) {
     try {
       const reg = await env.DB.prepare('SELECT * FROM registrations WHERE reference = ?').bind(reference).first();
       if (!reg) { results.push({ reference, ok: false, error: 'not_found' }); continue; }
-      const d = JSON.parse(reg.data_json || '{}');
-      const missing = computeMissing(d);
-      const sections = categories
-        .map(c => ({ cat: c, label: REMINDER_LABELS[c], items: missing[c] || [] }))
-        .filter(s => s.items.length);
-      if (!sections.length) { results.push({ reference, ok: false, error: 'nothing_missing' }); continue; }
 
-      const { titlesEn } = await eventTitles(env, reg.event_codes);
-      const token = await signEditToken(env, reg.registration_id);
-      const editLink = `${env.FRONTEND_BASE || ''}/register/?edit=${encodeURIComponent(reg.reference)}.${encodeURIComponent(token)}`;
-      const sectionsHtml = sections.map(s =>
-        `<p style="margin:14px 0 4px;font-weight:600">${s.label}</p><ul style="margin:0 0 4px;padding-inline-start:20px">${s.items.map(x => `<li>${x}</li>`).join('')}</ul>`
-      ).join('');
-      const body = `<h2 style="font-size:18px;margin:0 0 12px">A few details are still missing</h2>
-        <p>Dear ${reg.full_name || 'colleague'},</p>
-        <p>Thank you for registering for the ${titlesEn} (reference <b>${reg.reference}</b>). A few details would help us plan for your visit — could you add them when you have a moment?</p>
-        ${sectionsHtml}
-        <p style="margin-top:18px"><a href="${editLink}" style="display:inline-block;padding:10px 22px;background:#0B2135;color:#fff;text-decoration:none;border-radius:2px">Update my registration</a></p>
-        <p style="font-size:13px;color:#556A7D;margin-top:12px">Or use this link (valid 30 days): <a href="${editLink}">${editLink}</a></p>`;
-      await sendMail(env, reg.email, `A few details still needed — ${reg.reference}`, shell(body));
+      const email = await buildReminderEmail(env, reg, categories);
+      if (!email.ok) { results.push({ reference, ok: false, error: email.error }); continue; }
 
-      const catStr = sections.map(s => s.cat).join(',');
+      if (preview) {
+        results.push({ reference, ok: true, preview: true, to: email.to, subject: email.subject, html: email.html, categories: email.categories });
+        continue;
+      }
+
+      await sendMail(env, email.to, email.subject, email.html);
+      const catStr = email.categories.join(',');
       await env.DB.prepare('UPDATE registrations SET reminder_sent_at = ?, reminder_categories = ? WHERE reference = ?')
         .bind(new Date().toISOString(), catStr, reference).run();
       await audit(env, 'reminder_sent', 'registration', reg.registration_id, `${reference}: ${catStr}`, ipHash);
       await notifyTelegram(env, `📧 <b>Reminder sent</b>\n${esc(reg.full_name || '(no name)')} — ${esc(reference)}: ${esc(catStr)}`);
-      results.push({ reference, ok: true, categories: catStr.split(',') });
+      results.push({ reference, ok: true, categories: email.categories });
     } catch (e) {
       results.push({ reference, ok: false, error: 'send_failed' });
     }
   }
-  return json({ ok: true, results }, 200, ch);
+  return json({ ok: true, preview, results }, 200, ch);
 }
 
 async function adminExportFull(req, env, ch) {
