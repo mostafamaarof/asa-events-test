@@ -131,6 +131,7 @@ td.muted{color:var(--rule-strong)}
       <div class="tab" data-tab="passport">Passport report</div>
       <div class="tab" data-tab="accompanying">Accompanying persons</div>
       <div class="tab" data-tab="speakers">Speakers</div>
+      <div class="tab" data-tab="attachments">Attachments</div>
     </div>
   </div>
 
@@ -257,6 +258,14 @@ function td(v, cls) { const c = v ? '' : ' muted'; return `<td class="${(cls||''
 function dlBtn(key, filename) { return key
   ? `<td><button type="button" class="ghost passportDlBtn" data-key="${esc(key)}" data-filename="${esc(filename)}" style="height:26px;padding:0 10px;font-size:12px">Download</button></td>`
   : '<td class="muted">Not uploaded</td>'; }
+/* Like dlBtn, but for a field that only applies to some people (the photo
+   and slides only apply to speakers) -- "not applicable" reads very
+   differently from "outstanding," and conflating them would make this
+   report's "missing something" grouping chase people for uploads they were
+   never asked to provide. */
+function dlBtnOrNA(key, filename, applicable) {
+  return applicable ? dlBtn(key, filename) : '<td class="muted">—</td>';
+}
 
 function groupBy(rows, keyFn) {
   const map = new Map();
@@ -412,6 +421,39 @@ function speakersReport(rows) {
 }
 const SPEAKERS_EXPORT_COLS = ['Name','Tier','Org / Country','Presentation title','Abstract','Photo','Slides','Ref'];
 
+/* ---------- Attachments: every file a person can upload, in one place, so
+   nobody has to piece it together from the passport/speakers tabs. Grouped
+   by whether anything they were actually asked for is still missing --
+   photo/slides only count against a speaker, since nobody else is asked
+   for them -- so the follow-up list stays a real to-do list, not noise. ---------- */
+function attachmentsReport(rows) {
+  const groups = groupBy(rows, r => {
+    const missing = !r.passportCopyKey || !r.ticketFileKey ||
+      (r.wantsToPresent && (!r.speakerPhotoKey || !r.slidesFileKey));
+    return missing ? 'A__missing' : 'B__complete';
+  });
+  const keys = [...groups.keys()].sort();
+  const cols = ['Name','Tier','Org / Country','Passport copy','Flight itinerary','Portrait photo','Slides','Accompanying passports','Ref'];
+  return keys.map(key => {
+    const items = groups.get(key).slice().sort((a, b) => a.name.localeCompare(b.name));
+    const title = key === 'A__missing' ? 'One or more attachments missing' : 'All attachments provided';
+    const rowsHtml = items.map(r => {
+      const accUploaded = r.accompanying.filter(p => p.acc_passport_copy_key).length;
+      const accCell = r.accompanying.length
+        ? td(`${accUploaded} of ${r.accompanying.length} uploaded`)
+        : '<td class="muted">—</td>';
+      return `<tr>
+        <td class="wrap">${esc(r.name)}</td>${td(r.tier)}${td(r.org ? r.org + (r.country ? ' · ' + r.country : '') : r.country, 'wrap')}
+        ${dlBtn(r.passportCopyKey, r.passportCopyFilename)}${dlBtn(r.ticketFileKey, r.ticketFileFilename)}
+        ${dlBtnOrNA(r.speakerPhotoKey, r.speakerPhotoFilename, r.wantsToPresent)}${dlBtnOrNA(r.slidesFileKey, r.slidesFileFilename, r.wantsToPresent)}
+        ${accCell}
+        <td class="ref">${esc(r.ref)}</td>
+      </tr>`;
+    }).join('');
+    return { title, count: items.length, cols, rowsHtml, items };
+  });
+}
+
 let lastGroups = [];
 
 function render() {
@@ -425,7 +467,8 @@ function render() {
     : activeTab === 'hotel' ? hotelReport(rows)
     : activeTab === 'passport' ? passportReport(rows)
     : activeTab === 'accompanying' ? accompanyingReport(rows)
-    : speakersReport(rows);
+    : activeTab === 'speakers' ? speakersReport(rows)
+    : attachmentsReport(rows);
 
   if (!lastGroups.length) {
     const emptyMsg = activeTab === 'accompanying' ? 'No accompanying persons for this selection.'
@@ -481,10 +524,18 @@ function exportCsv() {
         ? [r.name, r.relationship, r.nationality, r.passportNumber, fmtDate(r.passportExpiryDate),
            r.visaNeeded, r.attendsSessions, r.attendsSocial, r.dietary,
            r.passportCopyKey ? (r.passportCopyFilename || 'Uploaded') : 'Not uploaded']
-        : [r.name, r.tier, (r.org ? r.org + (r.country ? ' - ' + r.country : '') : r.country),
+        : activeTab === 'speakers'
+        ? [r.name, r.tier, (r.org ? r.org + (r.country ? ' - ' + r.country : '') : r.country),
            r.presentationTitle, r.presentationAbstract,
            r.speakerPhotoKey ? (r.speakerPhotoFilename || 'Uploaded') : 'Not uploaded',
-           r.slidesFileKey ? (r.slidesFileFilename || 'Uploaded') : 'Not uploaded', r.ref];
+           r.slidesFileKey ? (r.slidesFileFilename || 'Uploaded') : 'Not uploaded', r.ref]
+        : [r.name, r.tier, (r.org ? r.org + (r.country ? ' - ' + r.country : '') : r.country),
+           r.passportCopyKey ? (r.passportCopyFilename || 'Uploaded') : 'Not uploaded',
+           r.ticketFileKey ? (r.ticketFileFilename || 'Uploaded') : 'Not uploaded',
+           r.wantsToPresent ? (r.speakerPhotoKey ? (r.speakerPhotoFilename || 'Uploaded') : 'Not uploaded') : 'N/A',
+           r.wantsToPresent ? (r.slidesFileKey ? (r.slidesFileFilename || 'Uploaded') : 'Not uploaded') : 'N/A',
+           r.accompanying.length ? `${r.accompanying.filter(p => p.acc_passport_copy_key).length} of ${r.accompanying.length} uploaded` : '',
+           r.ref];
       aoa.push([g.title, ...vals]);
     });
   });
@@ -494,7 +545,7 @@ function exportCsv() {
   const wb = XLSX.utils.book_new();
   const sheetName = activeTab === 'arrival' ? 'By arrival date' : activeTab === 'departure' ? 'By departure date'
     : activeTab === 'hotel' ? 'By hotel' : activeTab === 'passport' ? 'Passport report'
-    : activeTab === 'accompanying' ? 'Accompanying persons' : 'Speakers';
+    : activeTab === 'accompanying' ? 'Accompanying persons' : activeTab === 'speakers' ? 'Speakers' : 'Attachments';
   XLSX.utils.book_append_sheet(wb, ws, sheetName);
   XLSX.writeFile(wb, `asa-logistics-${activeTab}.xlsx`);
 }
