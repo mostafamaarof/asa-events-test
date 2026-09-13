@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow, noarchive">
+<title>Badges — ASA Events Admin</title>
+<style>
+:root{
+  --ink:#0B2135; --ink-soft:#1C3A56; --surface:#EEF2F6; --sheet:#FFFFFF;
+  --rule:#CBD6E0; --rule-strong:#93A6B8; --muted:#556A7D;
+  --brass:#A8842C; --brass-tint:#F3EBD8;
+  --ok:#1D6B4C; --ok-tint:#E9F4EE; --err:#A02226; --err-tint:#FAECEC;
+  --f-body:"IBM Plex Sans",system-ui,sans-serif; --f-num:ui-monospace,Consolas,monospace;
+  --wgita:#2A78D6; --wgita-tint:#E4EFFB;
+  --ksc:#D9642C; --ksc-tint:#FBEBE0;
+}
+*,*::before,*::after{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{font-family:var(--f-body);font-size:15px;line-height:1.55;color:var(--ink);background:var(--surface)}
+header{background:var(--ink);color:#fff;padding:16px 24px}
+header h1{margin:0;font-size:18px;font-weight:500}
+header p{margin:4px 0 0;font-size:13px;color:#A9BDD0}
+main{max-width:1200px;margin:0 auto;padding:24px 20px 64px;display:grid;gap:20px}
+.card{background:var(--sheet);border:1px solid var(--rule);padding:20px 24px}
+.card h2{font-size:16px;margin:0 0 16px}
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px 20px}
+@media (max-width:640px){.grid{grid-template-columns:1fr}}
+.f{display:flex;flex-direction:column;gap:5px}
+label{font-size:13px;font-weight:500}
+input,select{font:inherit;font-size:14px;padding:8px 10px;border:1px solid var(--rule-strong);border-radius:2px;background:#fff;color:var(--ink)}
+.hint{font-size:12px;color:var(--muted);margin-top:2px}
+.actions{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+button{font:inherit;font-size:14px;font-weight:500;padding:10px 20px;border-radius:2px;border:1px solid transparent;background:var(--ink);color:#fff;cursor:pointer}
+button:hover{background:var(--ink-soft)}
+button.ghost{background:transparent;color:var(--ink);border-color:var(--rule-strong)}
+button.ghost:hover{background:#F1F5F8}
+.msg{font-size:13px;padding:10px 12px;border-radius:2px;display:none}
+.msg.ok{display:block;background:var(--ok-tint);color:var(--ok)}
+.msg.err{display:block;background:var(--err-tint);color:var(--err)}
+.filters{display:flex;gap:12px;flex-wrap:wrap;align-items:end}
+.filters .f{min-width:170px}
+.count{font-size:13px;color:var(--muted)}
+.empty{color:var(--muted);font-size:13px;padding:8px 0}
+
+/* ---------- Badge sheet ---------- */
+#sheet{display:flex;flex-wrap:wrap;gap:6mm;justify-content:flex-start}
+.badgecard{
+  width:92mm;height:56mm;flex:0 0 auto;position:relative;
+  border:1px solid var(--rule-strong);border-radius:3mm;background:#fff;color:#0B2135;
+  padding:5mm 6mm;display:flex;flex-direction:column;
+  break-inside:avoid;page-break-inside:avoid;
+  font-family:var(--f-body);
+}
+.badgecard .pick{position:absolute;top:3mm;inset-inline-end:3mm;width:16px;height:16px}
+.badgecard .top{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.badgecard .seal{height:9mm;width:auto;object-fit:contain}
+.badgecard .evtag{
+  font-size:10.5px;font-weight:700;letter-spacing:.04em;padding:2.5px 9px;border-radius:9px;
+}
+.evtag.wgita{background:var(--wgita-tint);color:var(--wgita)}
+.evtag.ksc{background:var(--ksc-tint);color:var(--ksc)}
+.badgecard .tier{
+  position:absolute;top:5mm;inset-inline-start:6mm;font-size:9.5px;font-weight:700;
+  letter-spacing:.06em;color:var(--brass);text-transform:uppercase;
+}
+.badgecard .name{font-size:18px;font-weight:700;margin-top:6mm;line-height:1.15;text-wrap:balance}
+.badgecard .org{font-size:11.5px;color:#334;margin-top:2mm;line-height:1.3}
+.badgecard .country{font-size:11px;color:#5A6B78;margin-top:1mm}
+.badgecard .role{
+  margin-top:auto;padding-top:2mm;display:flex;justify-content:space-between;align-items:flex-end;
+  border-top:1px solid #E3E8ED;
+}
+.badgecard .role .r{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.03em}
+.badgecard .role .meta{text-align:end}
+.badgecard .role .regnum{font-family:var(--f-num);font-size:12.5px;font-weight:600}
+.badgecard .role .ref{font-family:var(--f-num);font-size:9px;color:#8A98A3}
+.badgecard .qr{width:14mm;height:14mm;image-rendering:pixelated}
+.badgecard .evfull{position:absolute;bottom:2mm;inset-inline-start:6mm;font-size:8px;color:#9AA7B0}
+
+@media print{
+  header,.card.controls{display:none}
+  body{background:#fff}
+  main{max-width:none;padding:0}
+  #sheet{gap:0}
+  .badgecard{margin:3mm}
+  .badgecard .pick{display:none}
+  #sheet .badgecard:has(.pick:not(:checked)){display:none}
+  @page{size:A4;margin:10mm}
+}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>ASA Events — Badges</h1>
+  <p>Internal tool. Not linked from the public site. Requires an access token.</p>
+</header>
+
+<main>
+  <div class="card controls">
+    <h2>Access token</h2>
+    <div class="grid">
+      <div class="f" style="grid-column:1/-1">
+        <label for="token">Access token <span style="color:var(--brass)">*</span></label>
+        <input type="password" id="token" autocomplete="off" placeholder="paste your token">
+        <span class="hint">Kept only in this browser tab (sessionStorage). Same token as the Full Report page.</span>
+      </div>
+    </div>
+    <div class="actions" style="margin-top:14px">
+      <button id="load">Load participants</button>
+      <button class="ghost" id="selectAll">Select all shown</button>
+      <button class="ghost" id="clearAll">Clear all</button>
+      <button id="printBtn">Print badges</button>
+      <span id="topMsg" class="msg"></span>
+    </div>
+    <div class="filters" style="margin-top:16px;margin-bottom:0">
+      <div class="f">
+        <label for="fEvent">Event</label>
+        <select id="fEvent">
+          <option value="">All events</option>
+          <option value="WGITA-35-2026">35th Annual Meeting of INTOSAI Working Group on IT Audit</option>
+          <option value="KSC-SC18-2026">18th KSC Steering Committee Meeting</option>
+        </select>
+      </div>
+      <div class="f">
+        <label for="fTier">Tier</label>
+        <select id="fTier">
+          <option value="">All tiers</option>
+          <option value="president">President</option>
+          <option value="vice_president">Vice President</option>
+          <option value="other">Other</option>
+        </select>
+      </div>
+      <div class="f" style="flex:1;min-width:220px">
+        <label for="fSearch">Search (name, organization)</label>
+        <input type="text" id="fSearch" placeholder="type to filter...">
+      </div>
+      <span class="count" id="rowCount"></span>
+    </div>
+    <p class="hint" style="margin-top:10px">
+      A participant attending both events gets one badge <b>per event</b> — two separate cards,
+      each scoped to that event's own access. Untick the checkbox on any card to leave it out
+      of the printed sheet.
+    </p>
+  </div>
+
+  <div id="sheet"></div>
+</main>
+
+<script>
+const CONFIG = { apiBase: 'https://asa-events-api.mostafamaarof.workers.dev/v1' };
+const $ = (id) => document.getElementById(id);
+const tokenInput = $('token');
+tokenInput.value = sessionStorage.getItem('asa_report_token') || '';
+tokenInput.addEventListener('input', () => sessionStorage.setItem('asa_report_token', tokenInput.value));
+
+function showMsg(el, text, ok) { el.textContent = text; el.className = 'msg ' + (ok ? 'ok' : 'err'); }
+function authHeaders() {
+  const token = tokenInput.value.trim();
+  if (!token) throw new Error('Enter the access token first.');
+  return { 'Authorization': 'Bearer ' + token };
+}
+function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c])); }
+
+const O = (pairs) => Object.fromEntries(pairs);
+const OPT = {
+  delRole: O([['hod','Head of Delegation'],['delegate','Delegate'],['observer','Observer'],['speaker','Speaker'],
+    ['moderator','Moderator'],['secretariat','Secretariat'],['interpreter','Interpreter'],['accompanying','Accompanying Official']]),
+  tier: O([['president','President'],['vice_president','Vice President'],['other','']])
+};
+const COUNTRIES_RAW = "AF:Afghanistan|AL:Albania|DZ:Algeria|AS:American Samoa|AD:Andorra|AO:Angola|AI:Anguilla|AQ:Antarctica|AG:Antigua and Barbuda|AR:Argentina|AM:Armenia|AW:Aruba|AU:Australia|AT:Austria|AZ:Azerbaijan|BS:Bahamas|BH:Bahrain|BD:Bangladesh|BB:Barbados|BY:Belarus|BE:Belgium|BZ:Belize|BJ:Benin|BM:Bermuda|BT:Bhutan|BO:Bolivia|BQ:Bonaire, Sint Eustatius and Saba|BA:Bosnia and Herzegovina|BW:Botswana|BV:Bouvet Island|BR:Brazil|IO:British Indian Ocean Territory|BN:Brunei Darussalam|BG:Bulgaria|BF:Burkina Faso|BI:Burundi|CV:Cabo Verde|KH:Cambodia|CM:Cameroon|CA:Canada|KY:Cayman Islands|CF:Central African Republic|TD:Chad|CL:Chile|CN:China|CX:Christmas Island|CC:Cocos (Keeling) Islands|CO:Colombia|KM:Comoros|CG:Congo|CD:Congo, The Democratic Republic of the|CK:Cook Islands|CR:Costa Rica|HR:Croatia|CU:Cuba|CW:Curaçao|CY:Cyprus|CZ:Czechia|CI:Côte d'Ivoire|DK:Denmark|DJ:Djibouti|DM:Dominica|DO:Dominican Republic|EC:Ecuador|EG:Egypt|SV:El Salvador|GQ:Equatorial Guinea|ER:Eritrea|EE:Estonia|SZ:Eswatini|ET:Ethiopia|FK:Falkland Islands (Malvinas)|FO:Faroe Islands|FJ:Fiji|FI:Finland|FR:France|GF:French Guiana|PF:French Polynesia|TF:French Southern Territories|GA:Gabon|GM:Gambia|GE:Georgia|DE:Germany|GH:Ghana|GI:Gibraltar|GR:Greece|GL:Greenland|GD:Grenada|GP:Guadeloupe|GU:Guam|GT:Guatemala|GG:Guernsey|GN:Guinea|GW:Guinea-Bissau|GY:Guyana|HT:Haiti|HM:Heard Island and McDonald Islands|VA:Holy See (Vatican City State)|HN:Honduras|HK:Hong Kong|HU:Hungary|IS:Iceland|IN:India|ID:Indonesia|IR:Iran|IQ:Iraq|IE:Ireland|IM:Isle of Man|IL:Israel|IT:Italy|JM:Jamaica|JP:Japan|JE:Jersey|JO:Jordan|KZ:Kazakhstan|KE:Kenya|KI:Kiribati|KP:North Korea|KR:South Korea|KW:Kuwait|KG:Kyrgyzstan|LA:Laos|LV:Latvia|LB:Lebanon|LS:Lesotho|LR:Liberia|LY:Libya|LI:Liechtenstein|LT:Lithuania|LU:Luxembourg|MO:Macao|MG:Madagascar|MW:Malawi|MY:Malaysia|MV:Maldives|ML:Mali|MT:Malta|MH:Marshall Islands|MQ:Martinique|MR:Mauritania|MU:Mauritius|YT:Mayotte|MX:Mexico|FM:Micronesia, Federated States of|MD:Moldova|MC:Monaco|MN:Mongolia|ME:Montenegro|MS:Montserrat|MA:Morocco|MZ:Mozambique|MM:Myanmar|NA:Namibia|NR:Nauru|NP:Nepal|NL:Netherlands|NC:New Caledonia|NZ:New Zealand|NI:Nicaragua|NE:Niger|NG:Nigeria|NU:Niue|NF:Norfolk Island|MK:North Macedonia|MP:Northern Mariana Islands|NO:Norway|OM:Oman|PK:Pakistan|PW:Palau|PS:Palestine, State of|PA:Panama|PG:Papua New Guinea|PY:Paraguay|PE:Peru|PH:Philippines|PN:Pitcairn|PL:Poland|PT:Portugal|PR:Puerto Rico|QA:Qatar|RO:Romania|RU:Russian Federation|RW:Rwanda|RE:Réunion|BL:Saint Barthélemy|SH:Saint Helena, Ascension and Tristan da Cunha|KN:Saint Kitts and Nevis|LC:Saint Lucia|MF:Saint Martin (French part)|PM:Saint Pierre and Miquelon|VC:Saint Vincent and the Grenadines|WS:Samoa|SM:San Marino|ST:Sao Tome and Principe|SA:Saudi Arabia|SN:Senegal|RS:Serbia|SC:Seychelles|SL:Sierra Leone|SG:Singapore|SX:Sint Maarten (Dutch part)|SK:Slovakia|SI:Slovenia|SB:Solomon Islands|SO:Somalia|ZA:South Africa|GS:South Georgia and the South Sandwich Islands|SS:South Sudan|ES:Spain|LK:Sri Lanka|SD:Sudan|SR:Suriname|SJ:Svalbard and Jan Mayen|SE:Sweden|CH:Switzerland|SY:Syria|TW:Taiwan|TJ:Tajikistan|TZ:Tanzania|TH:Thailand|TL:Timor-Leste|TG:Togo|TK:Tokelau|TO:Tonga|TT:Trinidad and Tobago|TN:Tunisia|TM:Turkmenistan|TC:Turks and Caicos Islands|TV:Tuvalu|TR:Türkiye|UG:Uganda|UA:Ukraine|AE:United Arab Emirates|GB:United Kingdom|US:United States|UM:United States Minor Outlying Islands|UY:Uruguay|UZ:Uzbekistan|VU:Vanuatu|VE:Venezuela|VN:Vietnam|VG:Virgin Islands, British|VI:Virgin Islands, U.S.|WF:Wallis and Futuna|EH:Western Sahara|YE:Yemen|ZM:Zambia|ZW:Zimbabwe|AX:Åland Islands";
+OPT.country = O(COUNTRIES_RAW.split('|').map(s => { const i = s.indexOf(':'); return [s.slice(0,i), s.slice(i+1)]; }));
+
+const EVENT_META = {
+  'WGITA-35-2026': { short: 'WGITA', cls: 'wgita', title: '35th Annual Meeting of INTOSAI Working Group on IT Audit', dates: '28–29 September 2026' },
+  'KSC-SC18-2026':  { short: 'KSC',   cls: 'ksc',   title: '18th KSC Steering Committee Meeting',                     dates: '30 September 2026' }
+};
+
+let all = [];
+
+async function loadData() {
+  const msg = $('topMsg'); msg.className = 'msg';
+  try {
+    const res = await fetch(CONFIG.apiBase + '/admin/export.json', { headers: authHeaders() });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || data.ok === false) throw new Error(data.error || ('HTTP ' + res.status));
+    all = (data.registrations || []).filter(r => r.status === 'approved');
+    showMsg(msg, `Loaded ${all.length} approved registration(s).`, true);
+    render();
+  } catch (e) {
+    showMsg(msg, e.message, false);
+  }
+}
+
+/* One badge per (person, event) -- a person on both events gets two
+   separate cards, each scoped to only that event's identity. */
+function computeBadges() {
+  const evFilter = $('fEvent').value;
+  const tierFilter = $('fTier').value;
+  const search = $('fSearch').value.trim().toLowerCase();
+
+  const badges = [];
+  all.forEach(r => {
+    const codes = (r.event_codes || '').split(',').filter(Boolean);
+    codes.forEach(code => {
+      const meta = EVENT_META[code];
+      if (!meta) return;
+      badges.push({
+        ref: r.reference,
+        regnum: r.registration_number || r.reference,
+        name: r.full_name || '(no name)',
+        org: r.organization_name || '',
+        country: OPT.country[r.country] || r.country || '',
+        role: OPT.delRole[r.role_in_delegation] || r.role_in_delegation || '',
+        tier: r.participant_tier || 'other',
+        eventCode: code, meta
+      });
+    });
+  });
+
+  return badges
+    .filter(b => !evFilter || b.eventCode === evFilter)
+    .filter(b => !tierFilter || b.tier === tierFilter)
+    .filter(b => !search || b.name.toLowerCase().includes(search) || b.org.toLowerCase().includes(search))
+    .sort((a, b) => a.name.localeCompare(b.name) || a.eventCode.localeCompare(b.eventCode));
+}
+
+function badgeCard(b) {
+  const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${encodeURIComponent(b.regnum)}`;
+  return `<div class="badgecard">
+    <input type="checkbox" class="pick" checked>
+    ${b.tier !== 'other' ? `<div class="tier">${esc(OPT.tier[b.tier])}</div>` : ''}
+    <div class="top">
+      <img class="seal" src="../../register/asa-logo.jpg" alt="">
+      <span class="evtag ${b.meta.cls}">${esc(b.meta.short)}</span>
+    </div>
+    <div class="name">${esc(b.name)}</div>
+    <div class="org">${esc(b.org)}</div>
+    <div class="country">${esc(b.country)}</div>
+    <div class="role">
+      <span class="r">${esc(b.role)}</span>
+      <span class="meta">
+        <img class="qr" src="${qrUrl}" alt="">
+        <div class="regnum">${esc(b.regnum)}</div>
+        <div class="ref">${esc(b.ref)}</div>
+      </span>
+    </div>
+    <div class="evfull">${esc(b.meta.title)} · ${esc(b.meta.dates)}</div>
+  </div>`;
+}
+
+function render() {
+  const badges = computeBadges();
+  const people = new Set(badges.map(b => b.ref));
+  const both = badges.reduce((m, b) => { m[b.ref] = (m[b.ref] || 0) + 1; return m; }, {});
+  const bothCount = Object.values(both).filter(n => n > 1).length;
+  $('rowCount').textContent = `${badges.length} badge(s) for ${people.size} participant(s)${bothCount ? ` · ${bothCount} attending both events` : ''}`;
+
+  const sheet = $('sheet');
+  if (!badges.length) { sheet.innerHTML = '<p class="empty">No matching participants. Load the data and adjust filters.</p>'; return; }
+  sheet.innerHTML = badges.map(badgeCard).join('');
+}
+
+$('load').addEventListener('click', loadData);
+$('fEvent').addEventListener('change', render);
+$('fTier').addEventListener('change', render);
+$('fSearch').addEventListener('input', render);
+$('selectAll').addEventListener('click', () => document.querySelectorAll('.pick').forEach(c => c.checked = true));
+$('clearAll').addEventListener('click', () => document.querySelectorAll('.pick').forEach(c => c.checked = false));
+$('printBtn').addEventListener('click', () => window.print());
+if (tokenInput.value) loadData();
+</script>
+</body>
+</html>
