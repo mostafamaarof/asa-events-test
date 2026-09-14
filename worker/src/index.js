@@ -49,6 +49,10 @@ import { connect } from 'cloudflare:sockets';
                                     reached another endpoint (a bad invitation code or email caught by the
                                     gate page's own validation, no event selected, etc.) -- flow/code must be
                                     on the fixed allowlist (CLIENT_ERROR_CODES) or the call is silently ignored
+     GET  /v1/admin/backups         list disaster-recovery snapshots held in R2, newest first (Bearer ADMIN_TOKEN)
+     GET  /v1/admin/backups/download?key=...  download one snapshot (Bearer ADMIN_TOKEN)
+     POST /v1/admin/backups/run     take an on-demand snapshot right now, same as the nightly Cron Trigger
+                                    (see the scheduled() export) (Bearer ADMIN_TOKEN)
    Every error a registrant/editor/uploader can see on the public paths above
    is also written to audit_log as one 'error_shown' action (entity = which
    flow, entity_id = the error code, detail = whatever identifies who hit it).
@@ -56,6 +60,11 @@ import { connect } from 'cloudflare:sockets';
    change, invalid code, new invitation code, edit-link request, every error)
    also fire a Telegram message when TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID are
    set (secrets) — silently a no-op otherwise.
+   Every admin-write request may carry an X-Actor-Name header (the "Your
+   name" field stored in the admin pages' localStorage) -- self-reported,
+   never trusted for authorization, just a label so the audit trail and
+   Telegram alerts show who at the desk did something, not only which
+   shared token they were holding.
    Nothing here trusts the browser: every rule in the form is re-checked.
    ============================================================================= */
 
@@ -154,9 +163,14 @@ async function allow(env, key, limit, windowSec) {
   return true;
 }
 
-async function audit(env, action, entity, entityId, detail, ipHash) {
-  await env.DB.prepare('INSERT INTO audit_log (action,entity,entity_id,detail,ip_hash,created_at) VALUES (?,?,?,?,?,?)')
-    .bind(action, entity || null, entityId || null, detail || null, ipHash || null, new Date().toISOString()).run();
+/* actor is optional and only ever admin-supplied (see the X-Actor-Name
+   header, read once in the router below) -- ADMIN_TOKEN/VIEWER_TOKEN are
+   shared secrets, not per-person logins, so without it every admin action
+   in the trail is attributed to "whoever had the token" and nothing more.
+   Public, registrant-facing actions never carry one. */
+async function audit(env, action, entity, entityId, detail, ipHash, actor) {
+  await env.DB.prepare('INSERT INTO audit_log (action,entity,entity_id,detail,ip_hash,actor,created_at) VALUES (?,?,?,?,?,?,?)')
+    .bind(action, entity || null, entityId || null, detail || null, ipHash || null, actor || null, new Date().toISOString()).run();
 }
 
 /* Every error message a registrant (or someone editing/uploading) can actually
@@ -599,7 +613,7 @@ async function adminAttachments(req, env, ch) {
   return json({ ok: true, attachments: extractAttachments(JSON.parse(reg.data_json || '{}')) }, 200, ch);
 }
 
-async function adminSetStatus(req, env, ch, ipHash) {
+async function adminSetStatus(req, env, ch, ipHash, actor) {
   if (!requireAdmin(req, env)) return fail('unauthorized', 401, ch);
   const b = await req.json().catch(() => ({}));
   const reference = String(b.reference || '').trim().toUpperCase();
@@ -621,8 +635,8 @@ async function adminSetStatus(req, env, ch, ipHash) {
 
   await env.DB.prepare('UPDATE registrations SET status = ?, registration_number = ? WHERE reference = ?')
     .bind(status, regNumber || null, reference).run();
-  await audit(env, 'registration_status_changed', 'registration', reg.registration_id, `${reference}:${status}`, ipHash);
-  await notifyTelegram(env, `📋 <b>Status changed</b>\n${esc(reg.full_name || '(no name)')} — ${esc(reference)} → <b>${esc(status)}</b>`);
+  await audit(env, 'registration_status_changed', 'registration', reg.registration_id, `${reference}:${status}`, ipHash, actor);
+  await notifyTelegram(env, `📋 <b>Status changed</b>\n${esc(reg.full_name || '(no name)')} — ${esc(reference)} → <b>${esc(status)}</b>${actor ? `\nby ${esc(actor)}` : ''}`);
 
   if (status === 'approved' || status === 'rejected') {
     const { titlesEn } = await eventTitles(env, reg.event_codes);
@@ -645,7 +659,7 @@ const TIER_LABELS = { president: 'President', vice_president: 'Vice President', 
 
 /* Protocol tier -- purely an internal admin classification for logistics/
    seating/escort planning. Never emailed to the registrant, unlike status. */
-async function adminSetTier(req, env, ch, ipHash) {
+async function adminSetTier(req, env, ch, ipHash, actor) {
   if (!requireAdmin(req, env)) return fail('unauthorized', 401, ch);
   const b = await req.json().catch(() => ({}));
   const reference = String(b.reference || '').trim().toUpperCase();
@@ -656,8 +670,8 @@ async function adminSetTier(req, env, ch, ipHash) {
   if (!reg) return fail('not_found', 404, ch);
 
   await env.DB.prepare('UPDATE registrations SET participant_tier = ? WHERE reference = ?').bind(tier, reference).run();
-  await audit(env, 'participant_tier_changed', 'registration', reg.registration_id, `${reference}:${tier}`, ipHash);
-  await notifyTelegram(env, `🎖️ <b>Tier changed</b>\n${esc(reg.full_name || '(no name)')} — ${esc(reference)} → <b>${esc(TIER_LABELS[tier])}</b>`);
+  await audit(env, 'participant_tier_changed', 'registration', reg.registration_id, `${reference}:${tier}`, ipHash, actor);
+  await notifyTelegram(env, `🎖️ <b>Tier changed</b>\n${esc(reg.full_name || '(no name)')} — ${esc(reference)} → <b>${esc(TIER_LABELS[tier])}</b>${actor ? `\nby ${esc(actor)}` : ''}`);
 
   return json({ ok: true, reference, tier }, 200, ch);
 }
@@ -708,7 +722,7 @@ async function adminFieldValues(req, env, ch) {
   return json({ ok: true, field, values: results }, 200, ch);
 }
 
-async function adminRenameFieldValues(req, env, ch, ipHash) {
+async function adminRenameFieldValues(req, env, ch, ipHash, actor) {
   if (!requireAdmin(req, env)) return fail('unauthorized', 401, ch);
   const b = await req.json().catch(() => ({}));
   const field = String(b.field || '');
@@ -735,8 +749,8 @@ async function adminRenameFieldValues(req, env, ch, ipHash) {
   const result = await env.DB.prepare(sql).bind(...binds).run();
   const changed = result.meta ? result.meta.changes : 0;
   const fieldLabel = field === 'organization_name' ? 'Organisation' : 'Hotel';
-  await audit(env, 'field_values_renamed', field, null, `${from.join(' | ')} → ${to} (${changed} rows)`, ipHash);
-  await notifyTelegram(env, `🏷️ <b>${fieldLabel} name merged</b>\n${esc(from.join(', '))} → <b>${esc(to)}</b> (${changed} row${changed === 1 ? '' : 's'})`);
+  await audit(env, 'field_values_renamed', field, null, `${from.join(' | ')} → ${to} (${changed} rows)`, ipHash, actor);
+  await notifyTelegram(env, `🏷️ <b>${fieldLabel} name merged</b>\n${esc(from.join(', '))} → <b>${esc(to)}</b> (${changed} row${changed === 1 ? '' : 's'})${actor ? `\nby ${esc(actor)}` : ''}`);
 
   return json({ ok: true, field, to, changed }, 200, ch);
 }
@@ -830,7 +844,7 @@ async function buildReminderEmail(env, reg, categories) {
    b.preview: true composes and returns the emails without sending them or
    touching the database/audit trail -- lets the admin see exactly what
    would go out (subject, body, edit link) before committing to a send. */
-async function adminSendReminders(req, env, ch, ipHash) {
+async function adminSendReminders(req, env, ch, ipHash, actor) {
   if (!requireAdmin(req, env)) return fail('unauthorized', 401, ch);
   const b = await req.json().catch(() => ({}));
   const items = Array.isArray(b.items) ? b.items : [];
@@ -858,8 +872,8 @@ async function adminSendReminders(req, env, ch, ipHash) {
       const catStr = email.categories.join(',');
       await env.DB.prepare('UPDATE registrations SET reminder_sent_at = ?, reminder_categories = ? WHERE reference = ?')
         .bind(new Date().toISOString(), catStr, reference).run();
-      await audit(env, 'reminder_sent', 'registration', reg.registration_id, `${reference}: ${catStr}`, ipHash);
-      await notifyTelegram(env, `📧 <b>Reminder sent</b>\n${esc(reg.full_name || '(no name)')} — ${esc(reference)}: ${esc(catStr)}`);
+      await audit(env, 'reminder_sent', 'registration', reg.registration_id, `${reference}: ${catStr}`, ipHash, actor);
+      await notifyTelegram(env, `📧 <b>Reminder sent</b>\n${esc(reg.full_name || '(no name)')} — ${esc(reference)}: ${esc(catStr)}${actor ? `\nby ${esc(actor)}` : ''}`);
       results.push({ reference, ok: true, categories: email.categories });
     } catch (e) {
       results.push({ reference, ok: false, error: 'send_failed' });
@@ -879,7 +893,7 @@ async function adminSendReminders(req, env, ch, ipHash) {
    a caller that doesn't. One consolidated audit entry per send (not one per
    recipient) -- a broadcast to 200 people is one event with a recipient
    list, not 200 separate happenings. */
-async function adminSendAnnouncement(req, env, ch, ipHash) {
+async function adminSendAnnouncement(req, env, ch, ipHash, actor) {
   if (!requireAdmin(req, env)) return fail('unauthorized', 401, ch);
   const b = await req.json().catch(() => ({}));
   const subject = String(b.subject || '').trim();
@@ -917,8 +931,8 @@ async function adminSendAnnouncement(req, env, ch, ipHash) {
     const sent = results.filter(r => r.ok).length;
     const failed = results.filter(r => !r.ok);
     await audit(env, 'announcement_sent', 'announcement', null,
-      `"${subject}" — ${sent} of ${references.length} sent${failed.length ? ' (failed: ' + failed.map(f => f.reference).join(', ') + ')' : ''}`, ipHash);
-    await notifyTelegram(env, `📣 <b>Announcement sent</b>\n"${esc(subject)}" — ${sent} of ${references.length} recipient(s)`);
+      `"${subject}" — ${sent} of ${references.length} sent${failed.length ? ' (failed: ' + failed.map(f => f.reference).join(', ') + ')' : ''}`, ipHash, actor);
+    await notifyTelegram(env, `📣 <b>Announcement sent</b>\n"${esc(subject)}" — ${sent} of ${references.length} recipient(s)${actor ? `\nby ${esc(actor)}` : ''}`);
   }
   return json({ ok: true, preview, results }, 200, ch);
 }
@@ -951,7 +965,7 @@ async function adminExportFull(req, env, ch) {
 async function adminAuditLog(req, env, ch) {
   if (!requireAdmin(req, env)) return fail('unauthorized', 401, ch);
   const { results } = await env.DB.prepare(
-    `SELECT id, action, entity, entity_id, detail, ip_hash, created_at
+    `SELECT id, action, entity, entity_id, detail, ip_hash, actor, created_at
      FROM audit_log ORDER BY id DESC LIMIT 2000`).all();
   return json({ ok: true, count: results.length, entries: results }, 200, ch);
 }
@@ -964,7 +978,7 @@ async function adminAuditLog(req, env, ch) {
    returns the original timestamp with already:true instead of erroring or
    writing a second row/audit entry, so a nervous re-scan at a busy desk is
    harmless. */
-async function adminCheckin(req, env, ch, ipHash) {
+async function adminCheckin(req, env, ch, ipHash, actor) {
   if (!requireAdminOrViewer(req, env)) return fail('unauthorized', 401, ch);
   const b = await req.json().catch(() => ({}));
   const code = String(b.code || '').trim();
@@ -1011,8 +1025,8 @@ async function adminCheckin(req, env, ch, ipHash) {
   if (!already) {
     await env.DB.prepare('INSERT INTO checkins (reference, event_code, checked_in_at) VALUES (?,?,?)')
       .bind(reg.reference, eventCode, checkedInAt).run();
-    await audit(env, 'checked_in', 'registration', reg.registration_id, `${reg.reference}:${eventCode}`, ipHash);
-    await notifyTelegram(env, `✅ <b>Checked in</b>\n${esc(reg.full_name || '(no name)')} — ${esc(reg.reference)} · ${esc(eventCode)}`);
+    await audit(env, 'checked_in', 'registration', reg.registration_id, `${reg.reference}:${eventCode}`, ipHash, actor);
+    await notifyTelegram(env, `✅ <b>Checked in</b>\n${esc(reg.full_name || '(no name)')} — ${esc(reg.reference)} · ${esc(eventCode)}${actor ? `\nby ${esc(actor)}` : ''}`);
   }
 
   return json({
@@ -1037,7 +1051,7 @@ async function adminListCheckins(req, env, ch) {
    itself (ADMIN_TOKEN or VIEWER_TOKEN) rather than admin-only -- this is
    the same category of action reception is already trusted to do, just in
    reverse, not a step up in sensitivity like the medical report. */
-async function adminUndoCheckin(req, env, ch, ipHash) {
+async function adminUndoCheckin(req, env, ch, ipHash, actor) {
   if (!requireAdminOrViewer(req, env)) return fail('unauthorized', 401, ch);
   const b = await req.json().catch(() => ({}));
   const reference = String(b.reference || '').trim().toUpperCase();
@@ -1050,8 +1064,8 @@ async function adminUndoCheckin(req, env, ch, ipHash) {
 
   const reg = await env.DB.prepare('SELECT registration_id, full_name FROM registrations WHERE reference = ?').bind(reference).first();
   await env.DB.prepare('DELETE FROM checkins WHERE reference = ? AND event_code = ?').bind(reference, eventCode).run();
-  await audit(env, 'checkin_undone', 'registration', reg ? reg.registration_id : null, `${reference}:${eventCode}`, ipHash);
-  await notifyTelegram(env, `↩️ <b>Check-in undone</b>\n${esc(reg ? reg.full_name : reference) || '(no name)'} — ${esc(reference)} · ${esc(eventCode)}`);
+  await audit(env, 'checkin_undone', 'registration', reg ? reg.registration_id : null, `${reference}:${eventCode}`, ipHash, actor);
+  await notifyTelegram(env, `↩️ <b>Check-in undone</b>\n${esc(reg ? reg.full_name : reference) || '(no name)'} — ${esc(reference)} · ${esc(eventCode)}${actor ? `\nby ${esc(actor)}` : ''}`);
 
   return json({ ok: true, reference, event_code: eventCode }, 200, ch);
 }
@@ -1070,6 +1084,76 @@ function requireAdminOrViewer(req, env) {
   return !!env.VIEWER_TOKEN && token === env.VIEWER_TOKEN;
 }
 
+/* Disaster-recovery snapshot of every table that can't be trivially
+   regenerated (registrations, invitations, checkins, audit_log) as one
+   JSON object in R2 -- runs nightly via a Cron Trigger and on demand from
+   the admin hub. Admin-token only to list/download: the file itself holds
+   everything a full export would, including the welfare fields that are
+   otherwise redacted from export.json for a viewer token, since a backup
+   is the registrar's own copy, not a report handed to someone else. */
+const BACKUP_PREFIX = 'backups/';
+const BACKUP_KEEP = 30; // most recent snapshots kept; older ones pruned automatically after each run
+
+async function runBackupSnapshot(env) {
+  const [registrations, invitations, invitationEvents, checkins, auditLog] = await Promise.all([
+    env.DB.prepare('SELECT * FROM registrations').all().then(r => r.results),
+    env.DB.prepare('SELECT * FROM invitations').all().then(r => r.results),
+    env.DB.prepare('SELECT * FROM invitation_events').all().then(r => r.results),
+    env.DB.prepare('SELECT * FROM checkins').all().then(r => r.results),
+    env.DB.prepare('SELECT * FROM audit_log').all().then(r => r.results)
+  ]);
+  const generatedAt = new Date().toISOString();
+  const snapshot = {
+    generated_at: generatedAt,
+    counts: { registrations: registrations.length, invitations: invitations.length, checkins: checkins.length, audit_log: auditLog.length },
+    registrations, invitations, invitation_events: invitationEvents, checkins, audit_log: auditLog
+  };
+  const key = `${BACKUP_PREFIX}${generatedAt.replace(/[:.]/g, '-')}.json`;
+  await env.FILES.put(key, JSON.stringify(snapshot), { httpMetadata: { contentType: 'application/json' } });
+
+  /* Prune beyond BACKUP_KEEP -- ISO-timestamped filenames sort chronologically
+     as plain strings, so the oldest are just the first N once sorted. */
+  const listing = await env.FILES.list({ prefix: BACKUP_PREFIX });
+  const keys = listing.objects.map(o => o.key).sort();
+  const toDelete = keys.slice(0, Math.max(0, keys.length - BACKUP_KEEP));
+  if (toDelete.length) await env.FILES.delete(toDelete);
+
+  return { key, counts: snapshot.counts, pruned: toDelete.length };
+}
+
+async function adminListBackups(req, env, ch) {
+  if (!requireAdmin(req, env)) return fail('unauthorized', 401, ch);
+  const listing = await env.FILES.list({ prefix: BACKUP_PREFIX });
+  const backups = listing.objects
+    .map(o => ({ key: o.key, size: o.size, uploaded: o.uploaded }))
+    .sort((a, b) => b.key.localeCompare(a.key));
+  return json({ ok: true, count: backups.length, backups }, 200, ch);
+}
+
+async function adminDownloadBackup(req, env, ch) {
+  if (!requireAdmin(req, env)) return fail('unauthorized', 401, ch);
+  const key = new URL(req.url).searchParams.get('key') || '';
+  if (!key.startsWith(BACKUP_PREFIX)) return fail('invalid_key', 400, ch);
+  const obj = await env.FILES.get(key);
+  if (!obj) return fail('not_found', 404, ch);
+  const filename = key.split('/').pop();
+  return new Response(obj.body, { headers: {
+    'Content-Type': 'application/json',
+    'Content-Disposition': `attachment; filename="${filename}"`,
+    ...ch
+  } });
+}
+
+async function adminRunBackup(req, env, ch, ipHash, actor) {
+  if (!requireAdmin(req, env)) return fail('unauthorized', 401, ch);
+  const result = await runBackupSnapshot(env);
+  await audit(env, 'backup_run', 'backup', result.key,
+    `${result.counts.registrations} registrations, ${result.counts.invitations} invitations, ${result.counts.checkins} check-ins` +
+    (result.pruned ? `; pruned ${result.pruned} old snapshot(s)` : ''), ipHash, actor);
+  await notifyTelegram(env, `💾 <b>Backup snapshot created</b>\n${esc(result.key)} — ${result.counts.registrations} registrations${actor ? `\nby ${esc(actor)}` : ''}`);
+  return json({ ok: true, ...result }, 200, ch);
+}
+
 async function adminListInvitations(req, env, ch) {
   if (!requireAdmin(req, env)) return fail('unauthorized', 401, ch);
   const { results } = await env.DB.prepare(
@@ -1082,7 +1166,7 @@ async function adminListInvitations(req, env, ch) {
   return json({ ok: true, count: invitations.length, invitations }, 200, ch);
 }
 
-async function adminCreateInvitation(req, env, ch, ipHash) {
+async function adminCreateInvitation(req, env, ch, ipHash, actor) {
   if (!requireAdmin(req, env)) return fail('unauthorized', 401, ch);
   const b = await req.json().catch(() => ({}));
   const eventCodes = [...new Set((Array.isArray(b.event_codes) ? b.event_codes : [b.event_code])
@@ -1120,8 +1204,8 @@ async function adminCreateInvitation(req, env, ch, ipHash) {
   await env.DB.batch(eventCodes.map(ec =>
     env.DB.prepare('INSERT INTO invitation_events (invitation_id, event_code) VALUES (?,?)').bind(id, ec)));
 
-  await audit(env, 'invitation_created', 'invitation', id, code, ipHash);
-  await notifyTelegram(env, `🔑 <b>Invitation code created</b>\n${esc(code)} — ${esc(orgName)}`);
+  await audit(env, 'invitation_created', 'invitation', id, code, ipHash, actor);
+  await notifyTelegram(env, `🔑 <b>Invitation code created</b>\n${esc(code)} — ${esc(orgName)}${actor ? `\nby ${esc(actor)}` : ''}`);
   return json({ ok: true, invitation_id: id, code, event_codes: eventCodes }, 201, ch);
 }
 
@@ -1200,6 +1284,12 @@ export default {
     if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: ch });
     const { pathname } = new URL(req.url);
     const ipHash = await sha256((req.headers.get('CF-Connecting-IP') || '0') + (env.SESSION_SECRET || ''));
+    /* Self-reported by the admin's browser (see the "Your name" field
+       stored in localStorage on the admin pages) -- never trusted for
+       anything but a label in the audit trail, since there's no real login
+       behind it. Capped and blank-if-absent, same as every other free-text
+       audit detail. */
+    const actor = String(req.headers.get('X-Actor-Name') || '').trim().slice(0, 60) || null;
 
     try {
       if (req.method === 'POST' && pathname === '/v1/invitations/verify') return await verifyInvitation(req, env, ch, ipHash);
@@ -1211,22 +1301,25 @@ export default {
       if (req.method === 'GET'  && pathname === '/v1/admin/export.csv')   return await adminRead(req, env, ch, true);
       if (req.method === 'GET'  && pathname === '/v1/admin/export.json')  return await adminExportFull(req, env, ch);
       if (req.method === 'GET'  && pathname === '/v1/admin/invitations')  return await adminListInvitations(req, env, ch);
-      if (req.method === 'POST' && pathname === '/v1/admin/invitations')  return await adminCreateInvitation(req, env, ch, ipHash);
+      if (req.method === 'POST' && pathname === '/v1/admin/invitations')  return await adminCreateInvitation(req, env, ch, ipHash, actor);
       if (req.method === 'POST' && pathname === '/v1/uploads')            return await uploadFile(req, env, ch, ipHash);
       if (req.method === 'POST' && pathname === '/v1/client-error')       return await logClientError(req, env, ch, ipHash);
       if (req.method === 'GET'  && pathname === '/v1/admin/files')        return await adminGetFile(req, env, ch);
       if (req.method === 'GET'  && pathname === '/v1/admin/attachments')  return await adminAttachments(req, env, ch);
-      if (req.method === 'POST' && pathname === '/v1/admin/registrations/status') return await adminSetStatus(req, env, ch, ipHash);
-      if (req.method === 'POST' && pathname === '/v1/admin/registrations/tier')   return await adminSetTier(req, env, ch, ipHash);
+      if (req.method === 'POST' && pathname === '/v1/admin/registrations/status') return await adminSetStatus(req, env, ch, ipHash, actor);
+      if (req.method === 'POST' && pathname === '/v1/admin/registrations/tier')   return await adminSetTier(req, env, ch, ipHash, actor);
       if (req.method === 'POST' && pathname === '/v1/admin/registrations/edit-token') return await adminMintEditToken(req, env, ch);
       if (req.method === 'GET'  && pathname === '/v1/admin/field-values')        return await adminFieldValues(req, env, ch);
-      if (req.method === 'POST' && pathname === '/v1/admin/field-values/rename') return await adminRenameFieldValues(req, env, ch, ipHash);
-      if (req.method === 'POST' && pathname === '/v1/admin/reminders/send')     return await adminSendReminders(req, env, ch, ipHash);
-      if (req.method === 'POST' && pathname === '/v1/admin/announce/send')      return await adminSendAnnouncement(req, env, ch, ipHash);
+      if (req.method === 'POST' && pathname === '/v1/admin/field-values/rename') return await adminRenameFieldValues(req, env, ch, ipHash, actor);
+      if (req.method === 'POST' && pathname === '/v1/admin/reminders/send')     return await adminSendReminders(req, env, ch, ipHash, actor);
+      if (req.method === 'POST' && pathname === '/v1/admin/announce/send')      return await adminSendAnnouncement(req, env, ch, ipHash, actor);
       if (req.method === 'GET'  && pathname === '/v1/admin/audit')              return await adminAuditLog(req, env, ch);
-      if (req.method === 'POST' && pathname === '/v1/admin/checkin')              return await adminCheckin(req, env, ch, ipHash);
+      if (req.method === 'POST' && pathname === '/v1/admin/checkin')              return await adminCheckin(req, env, ch, ipHash, actor);
       if (req.method === 'GET'  && pathname === '/v1/admin/checkins')             return await adminListCheckins(req, env, ch);
-      if (req.method === 'POST' && pathname === '/v1/admin/checkin/undo')         return await adminUndoCheckin(req, env, ch, ipHash);
+      if (req.method === 'POST' && pathname === '/v1/admin/checkin/undo')         return await adminUndoCheckin(req, env, ch, ipHash, actor);
+      if (req.method === 'GET'  && pathname === '/v1/admin/backups')              return await adminListBackups(req, env, ch);
+      if (req.method === 'GET'  && pathname === '/v1/admin/backups/download')     return await adminDownloadBackup(req, env, ch);
+      if (req.method === 'POST' && pathname === '/v1/admin/backups/run')          return await adminRunBackup(req, env, ch, ipHash, actor);
       if (pathname === '/v1/health') return json({ ok: true, time: new Date().toISOString() }, 200, ch);
       return fail('not_found', 404, ch);
     } catch (e) {
@@ -1237,5 +1330,19 @@ export default {
       if (PUBLIC_PATHS.has(pathname)) await auditError(env, 'server', 'server_error', pathname, ipHash);
       return fail('server_error', 500, ch);
     }
+  },
+
+  /* Cron Trigger (see wrangler.toml [triggers]) -- nightly backup snapshot,
+     no admin action required. A failed run still alerts Telegram instead of
+     failing silently, since nobody is watching a scheduled job's logs. */
+  async scheduled(controller, env, ctx) {
+    ctx.waitUntil((async () => {
+      try {
+        const result = await runBackupSnapshot(env);
+        await notifyTelegram(env, `💾 <b>Nightly backup completed</b>\n${esc(result.key)} — ${result.counts.registrations} registrations, ${result.counts.invitations} invitations, ${result.counts.checkins} check-ins`);
+      } catch (e) {
+        await notifyTelegram(env, `❗ <b>Nightly backup FAILED</b>\n${esc(String((e && e.message) || e))}`);
+      }
+    })());
   }
 };

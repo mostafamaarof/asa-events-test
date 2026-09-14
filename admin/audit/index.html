@@ -143,6 +143,7 @@ const ACTIONS = {
   announcement_sent:             { label: 'Announcement broadcast',       pill: 'info' },
   checked_in:                   { label: 'Checked in at reception',      pill: 'new' },
   checkin_undone:                { label: 'Check-in undone',              pill: 'warn', warn: true },
+  backup_run:                    { label: 'Backup snapshot taken',        pill: 'info' },
   invitation_created:          { label: 'Invitation code created',     pill: 'new' },
   invitation_verified:         { label: 'Invitation code verified',    pill: 'info' },
   invitation_verify_failed:    { label: 'Invitation code check failed', pill: 'warn', warn: true },
@@ -357,7 +358,7 @@ function render() {
   if (!rows.length) { list.innerHTML = '<p class="empty">No matching audit entries. Load the trail and adjust filters.</p>'; return; }
 
   list.innerHTML = `<div class="tblwrap"><table>
-    <thead><tr><th>Time</th><th>Action</th><th>Person</th><th>SAI / Organisation</th><th>Details</th><th>IP hash</th></tr></thead>
+    <thead><tr><th>Time</th><th>Action</th><th>Person</th><th>SAI / Organisation</th><th>Details</th><th>By</th><th>IP hash</th></tr></thead>
     <tbody>${rows.map(e => {
       const m = actionMeta(e.action);
       const t = e.created_at ? new Date(e.created_at).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' }) : '';
@@ -367,6 +368,7 @@ function render() {
         <td class="wrap">${esc(person(e)) || '—'}</td>
         <td class="wrap">${esc(org(e)) || '—'}</td>
         <td class="wrap">${esc(describe(e))}</td>
+        <td class="wrap">${esc(e.actor || '') || '—'}</td>
         <td class="ip">${esc((e.ip_hash || '').slice(0, 12))}</td>
       </tr>`;
     }).join('')}</tbody>
@@ -376,9 +378,9 @@ function render() {
 function exportToExcel() {
   const rows = filteredRows();
   if (!rows.length) { alert('Load the audit trail first.'); return; }
-  const header = ['Time', 'Action', 'Person', 'SAI / Organisation', 'Detail', 'Entity', 'Entity ID', 'IP hash'];
+  const header = ['Time', 'Action', 'Person', 'SAI / Organisation', 'Detail', 'By', 'Entity', 'Entity ID', 'IP hash'];
   const aoa = [header, ...rows.map(e => [
-    e.created_at || '', actionMeta(e.action).label, person(e), org(e), describe(e), e.entity || '', e.entity_id || '', e.ip_hash || ''
+    e.created_at || '', actionMeta(e.action).label, person(e), org(e), describe(e), e.actor || '', e.entity || '', e.entity_id || '', e.ip_hash || ''
   ])];
   const ws = XLSX.utils.aoa_to_sheet(aoa);
   ws['!cols'] = header.map((h, i) => ({ wch: Math.min(50, Math.max(10, h.length, ...aoa.slice(1).map(r => String(r[i] ?? '').length))) }));

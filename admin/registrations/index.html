@@ -78,6 +78,11 @@ td.ref{font-family:var(--f-num)}
         <input type="password" id="token" autocomplete="off" placeholder="paste ADMIN_TOKEN">
         <span class="hint">Kept only in this browser tab (sessionStorage), shared with the invitation-codes page.</span>
       </div>
+      <div class="f wide">
+        <label for="actorName">Your name (optional)</label>
+        <input type="text" id="actorName" autocomplete="off" placeholder="e.g. Mostafa">
+        <span class="hint">Remembered on this device. Shown next to any status/tier change or merge you make in the Audit Trail and Telegram alerts.</span>
+      </div>
     </div>
     <div class="actions" style="margin-top:14px">
       <button id="load">Load registrations</button>
@@ -177,6 +182,9 @@ const $ = (id) => document.getElementById(id);
 const tokenInput = $('token');
 tokenInput.value = sessionStorage.getItem('asa_admin_token') || '';
 tokenInput.addEventListener('input', () => sessionStorage.setItem('asa_admin_token', tokenInput.value));
+const actorInput = $('actorName');
+actorInput.value = localStorage.getItem('asa_actor_name') || '';
+actorInput.addEventListener('input', () => localStorage.setItem('asa_actor_name', actorInput.value));
 
 let all = [];
 const wrap0 = $('tableWrap');
@@ -186,7 +194,10 @@ function showMsg(el, text, ok) { el.textContent = text; el.className = 'msg ' + 
 function authHeaders() {
   const token = tokenInput.value.trim();
   if (!token) throw new Error('Enter the admin token first.');
-  return { 'Authorization': 'Bearer ' + token };
+  const h = { 'Authorization': 'Bearer ' + token };
+  const actor = actorInput.value.trim();
+  if (actor) h['X-Actor-Name'] = actor;
+  return h;
 }
 
 async function apiFetch(path, opts) {

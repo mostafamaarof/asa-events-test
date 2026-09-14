@@ -114,6 +114,8 @@ CREATE TABLE audit_log (
   entity_id  TEXT,
   detail     TEXT,
   ip_hash    TEXT,
+  actor      TEXT,    -- self-reported "Your name" from the admin's browser (X-Actor-Name header); never
+                       -- trusted for authorization, just a label since ADMIN_TOKEN/VIEWER_TOKEN are shared
   created_at TEXT NOT NULL
 );
 

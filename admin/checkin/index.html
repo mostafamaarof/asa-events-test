@@ -95,6 +95,11 @@ td.num{font-family:var(--f-num)}
         <input type="password" id="token" autocomplete="off" placeholder="paste your token">
         <span class="hint">Kept only in this browser tab (sessionStorage). Same token as the Full Report / Badges pages.</span>
       </div>
+      <div class="f" style="grid-column:1/-1">
+        <label for="actorName">Your name (optional)</label>
+        <input type="text" id="actorName" autocomplete="off" placeholder="e.g. Mostafa">
+        <span class="hint">Remembered on this device (not this tab). Shown next to every check-in you record in the Audit Trail and Telegram alerts — several people may be scanning at once.</span>
+      </div>
     </div>
     <div class="actions" style="margin-top:14px">
       <button id="startCam">Start camera</button>
@@ -173,12 +178,22 @@ const $ = (id) => document.getElementById(id);
 const tokenInput = $('token');
 tokenInput.value = sessionStorage.getItem('asa_report_token') || '';
 tokenInput.addEventListener('input', () => sessionStorage.setItem('asa_report_token', tokenInput.value));
+/* Device-wide (not per-tab, unlike the token), since it's just a display
+   label the audit trail attaches to whatever this browser does -- not a
+   credential, so localStorage is fine and more convenient than re-typing
+   it every time the tab is reopened. */
+const actorInput = $('actorName');
+actorInput.value = localStorage.getItem('asa_actor_name') || '';
+actorInput.addEventListener('input', () => localStorage.setItem('asa_actor_name', actorInput.value));
 
 function showMsg(el, text, ok) { el.textContent = text; el.className = 'msg ' + (ok ? 'ok' : 'err'); }
 function authHeaders() {
   const token = tokenInput.value.trim();
   if (!token) throw new Error('Enter the access token first.');
-  return { 'Authorization': 'Bearer ' + token };
+  const h = { 'Authorization': 'Bearer ' + token };
+  const actor = actorInput.value.trim();
+  if (actor) h['X-Actor-Name'] = actor;
+  return h;
 }
 function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c])); }
 

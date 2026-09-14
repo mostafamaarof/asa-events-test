@@ -72,6 +72,11 @@ td.code{font-family:var(--f-num)}
         <input type="password" id="token" autocomplete="off" placeholder="paste ADMIN_TOKEN">
         <span class="hint">Kept only in this browser tab (sessionStorage), never sent anywhere but the API below.</span>
       </div>
+      <div class="f wide">
+        <label for="actorName">Your name (optional)</label>
+        <input type="text" id="actorName" autocomplete="off" placeholder="e.g. Mostafa">
+        <span class="hint">Remembered on this device. Shown next to any code you generate in the Audit Trail and Telegram alert.</span>
+      </div>
     </div>
   </div>
 
@@ -146,6 +151,9 @@ const $ = (id) => document.getElementById(id);
 const tokenInput = $('token');
 tokenInput.value = sessionStorage.getItem('asa_admin_token') || '';
 tokenInput.addEventListener('input', () => sessionStorage.setItem('asa_admin_token', tokenInput.value));
+const actorInput = $('actorName');
+actorInput.value = localStorage.getItem('asa_actor_name') || '';
+actorInput.addEventListener('input', () => localStorage.setItem('asa_actor_name', actorInput.value));
 
 function showMsg(el, text, ok) {
   el.textContent = text;
@@ -155,10 +163,10 @@ function showMsg(el, text, ok) {
 async function callApi(path, opts) {
   const token = tokenInput.value.trim();
   if (!token) throw new Error('Enter the admin token first.');
-  const res = await fetch(CONFIG.apiBase + path, {
-    ...opts,
-    headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json', ...(opts && opts.headers) }
-  });
+  const headers = { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json', ...(opts && opts.headers) };
+  const actor = actorInput.value.trim();
+  if (actor) headers['X-Actor-Name'] = actor;
+  const res = await fetch(CONFIG.apiBase + path, { ...opts, headers });
   const data = await res.json().catch(() => ({}));
   if (!res.ok || data.ok === false) throw new Error(data.error || ('HTTP ' + res.status));
   return data;

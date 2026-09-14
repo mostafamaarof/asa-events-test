@@ -73,7 +73,7 @@ td.muted{color:var(--rule-strong);white-space:nowrap}
     <h1>ASA Events — Reminders</h1>
     <p>Internal tool. Not linked from the public site. Requires the admin token.</p>
   </div>
-  <nav><a href="../">All tools</a><a href="../announce/">Announcements</a><a href="../invitations/">Invitation codes</a><a href="../registrations/">Registrations &amp; reports</a><a href="../audit/">Audit trail</a></nav>
+  <nav><a href="../">All tools</a><a href="../announce/">Announcements</a><a href="../invitations/">Invitation codes</a><a href="../registrations/">Registrations &amp; reports</a><a href="../audit/">Audit trail</a><a href="../backups/">Backups</a></nav>
 </header>
 
 <main>
@@ -84,6 +84,11 @@ td.muted{color:var(--rule-strong);white-space:nowrap}
         <label for="token">Admin token <span style="color:var(--brass)">*</span></label>
         <input type="password" id="token" autocomplete="off" placeholder="paste your admin token">
         <span class="hint">Kept only in this browser tab (sessionStorage). This page sends real email to registrants, so it accepts the admin token only.</span>
+      </div>
+      <div class="f" style="grid-column:1/-1">
+        <label for="actorName">Your name (optional)</label>
+        <input type="text" id="actorName" autocomplete="off" placeholder="e.g. Mostafa">
+        <span class="hint">Remembered on this device. Shown next to each reminder in the Audit Trail and Telegram alert.</span>
       </div>
     </div>
     <div class="actions" style="margin-top:14px">
@@ -140,12 +145,18 @@ const $ = (id) => document.getElementById(id);
 const tokenInput = $('token');
 tokenInput.value = sessionStorage.getItem('asa_admin_token') || '';
 tokenInput.addEventListener('input', () => sessionStorage.setItem('asa_admin_token', tokenInput.value));
+const actorInput = $('actorName');
+actorInput.value = localStorage.getItem('asa_actor_name') || '';
+actorInput.addEventListener('input', () => localStorage.setItem('asa_actor_name', actorInput.value));
 
 function showMsg(el, text, ok) { el.textContent = text; el.className = 'msg ' + (ok ? 'ok' : 'err'); }
 function authHeaders() {
   const token = tokenInput.value.trim();
   if (!token) throw new Error('Enter the admin token first.');
-  return { 'Authorization': 'Bearer ' + token };
+  const h = { 'Authorization': 'Bearer ' + token };
+  const actor = actorInput.value.trim();
+  if (actor) h['X-Actor-Name'] = actor;
+  return h;
 }
 async function apiFetch(path, opts) {
   const res = await fetch(CONFIG.apiBase + path, { ...opts, headers: { ...authHeaders(), ...(opts && opts.headers) } });

@@ -11,6 +11,12 @@ database_id = "173ebad5-1462-486f-b086-11620891dafb"
 binding = "FILES"
 bucket_name = "asa-events-files"
 
+# Nightly disaster-recovery snapshot (registrations/invitations/checkins/
+# audit_log) to R2 -- see runBackupSnapshot() and the scheduled() export.
+# 23:00 UTC = 01:00 Cairo (Egypt has stayed on UTC+2 year-round since 2016).
+[triggers]
+crons = ["0 23 * * *"]
+
 [vars]
 ALLOWED_ORIGINS = "https://register.saiegyptevents.com,https://www.saiegyptevents.com,https://saiegyptevents.com,https://mostafamaarof.com,https://www.mostafamaarof.com,https://events.mostafamaarof.com,https://mostafamaarof.github.io,http://localhost:8000"
 MAIL_FROM = "ASA Events <events@mostafamaarof.com>"
