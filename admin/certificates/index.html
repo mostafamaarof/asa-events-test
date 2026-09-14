@@ -172,7 +172,7 @@ let all = [];
 async function loadData() {
   const msg = $('topMsg'); msg.className = 'msg';
   try {
-    const res = await fetch(CONFIG.apiBase + '/admin/checkins', { headers: authHeaders() });
+    const res = await fetch(CONFIG.apiBase + '/admin/checkins?src=certificates', { headers: authHeaders() });
     const data = await res.json().catch(() => ({}));
     if (!res.ok || data.ok === false) throw new Error(data.error || ('HTTP ' + res.status));
     all = data.checkins || [];

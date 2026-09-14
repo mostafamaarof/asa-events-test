@@ -17,7 +17,11 @@ import { connect } from 'cloudflare:sockets';
      POST /v1/registrations/edit        update it in place (reference + token)
      GET  /v1/admin/registrations  read the data back (Bearer ADMIN_TOKEN)
      GET  /v1/admin/export.csv     same data as CSV (summary columns only)
-     GET  /v1/admin/export.json    full submissions incl. every form field (Bearer ADMIN_TOKEN or VIEWER_TOKEN)
+     GET  /v1/admin/export.json    full submissions incl. every form field (Bearer ADMIN_TOKEN or VIEWER_TOKEN).
+                                    Pass ?src=<page> (report/dashboard/logistics/badges) so a viewer/named-token
+                                    access gets logged as 'report_accessed' with which page it was; skipped for
+                                    ADMIN_TOKEN traffic, since logging the admin's own every page load would
+                                    just flood the audit trail with nothing anyone needs to see.
      GET  /v1/admin/invitations    list invitation codes (Bearer ADMIN_TOKEN)
      POST /v1/admin/invitations    generate a new invitation code (Bearer ADMIN_TOKEN)
      POST /v1/uploads               store one attachment in R2 (Bearer session), returns its key
@@ -959,9 +963,10 @@ async function adminSendAnnouncement(req, env, ch, access, ipHash, actor) {
 const SENSITIVE_WELFARE_FIELDS = ['emergency_contact_name', 'emergency_contact_relation',
   'emergency_contact_phone', 'emergency_contact_email', 'allergies', 'medical_notes_emergency'];
 
-async function adminExportFull(req, env, ch, access) {
+async function adminExportFull(req, env, ch, access, ipHash) {
   if (!hasScope(access, ...ALL_SCOPES)) return fail('unauthorized', 401, ch);
   const isFullAdmin = access.tier === 'admin';
+  await logReportAccess(env, access, new URL(req.url).searchParams.get('src'), ipHash);
   const { results } = await env.DB.prepare(
     `SELECT registration_id, reference, registration_number, created_at, status, event_codes, invitation_id, email, full_name,
             organization_name, country, attendance_mode, role_in_delegation, participant_tier, visa_letter_needed,
@@ -1050,12 +1055,16 @@ async function adminCheckin(req, env, ch, access, ipHash, actor) {
   }, 200, ch);
 }
 
-async function adminListCheckins(req, env, ch, access) {
+async function adminListCheckins(req, env, ch, access, ipHash) {
   /* Read by three different pages (Reception Check-in, Certificates,
      Announcements' check-in-status filter) -- any authenticated scope can
      read it, same as export.json, since attendance data alone isn't
-     sensitive enough to warrant its own scope. */
+     sensitive enough to warrant its own scope. Only logged as a report
+     access when Certificates is the one calling it (src=certificates) --
+     the reception desk and Announcements poll this constantly as an
+     operational tool, not "viewing a report." */
   if (!hasScope(access, ...ALL_SCOPES)) return fail('unauthorized', 401, ch);
+  if (new URL(req.url).searchParams.get('src') === 'certificates') await logReportAccess(env, access, 'certificates', ipHash);
   const { results } = await env.DB.prepare(
     `SELECT c.reference, c.event_code, c.checked_in_at, r.full_name, r.organization_name, r.country, r.participant_tier
      FROM checkins c JOIN registrations r ON r.reference = c.reference
@@ -1125,6 +1134,20 @@ async function resolveAccess(req, env) {
 }
 function hasScope(access, ...allowed) {
   return !!(access && access.scopes && allowed.some(s => access.scopes.has(s)));
+}
+
+/* A register of who actually looked at a report and when -- distinct from
+   the write-action entries elsewhere in audit_log. Deliberately skips the
+   admin's own ADMIN_TOKEN traffic (every page load would otherwise flood
+   the trail with entries nobody needs, since the admin already knows they
+   opened the page); only viewer-tier and named-token access is worth a
+   record, since those are exactly the tokens handed to someone else --
+   SAI India, reception staff, whoever a named token was created for. */
+async function logReportAccess(env, access, page, ipHash) {
+  if (!access || access.tier === 'admin' || access.tier === null) return;
+  const who = access.tier === 'named' ? access.name : 'Shared viewer token';
+  try { await audit(env, 'report_accessed', 'access', page || 'unknown', who, ipHash, access.tier === 'named' ? access.name : null); }
+  catch (e) { /* logging must never break the real response */ }
 }
 
 /* Lets a page work out what it's allowed to do with whatever token was
@@ -1406,7 +1429,7 @@ export default {
       if (req.method === 'POST' && pathname === '/v1/registrations/edit')       return await updateRegistration(req, env, ch, ipHash);
       if (req.method === 'GET'  && pathname === '/v1/admin/registrations')return await adminRead(req, env, ch, false, access);
       if (req.method === 'GET'  && pathname === '/v1/admin/export.csv')   return await adminRead(req, env, ch, true, access);
-      if (req.method === 'GET'  && pathname === '/v1/admin/export.json')  return await adminExportFull(req, env, ch, access);
+      if (req.method === 'GET'  && pathname === '/v1/admin/export.json')  return await adminExportFull(req, env, ch, access, ipHash);
       if (req.method === 'GET'  && pathname === '/v1/admin/invitations')  return await adminListInvitations(req, env, ch, access);
       if (req.method === 'POST' && pathname === '/v1/admin/invitations')  return await adminCreateInvitation(req, env, ch, access, ipHash, actor);
       if (req.method === 'POST' && pathname === '/v1/uploads')            return await uploadFile(req, env, ch, ipHash);
@@ -1422,7 +1445,7 @@ export default {
       if (req.method === 'POST' && pathname === '/v1/admin/announce/send')      return await adminSendAnnouncement(req, env, ch, access, ipHash, actor);
       if (req.method === 'GET'  && pathname === '/v1/admin/audit')              return await adminAuditLog(req, env, ch, access);
       if (req.method === 'POST' && pathname === '/v1/admin/checkin')              return await adminCheckin(req, env, ch, access, ipHash, actor);
-      if (req.method === 'GET'  && pathname === '/v1/admin/checkins')             return await adminListCheckins(req, env, ch, access);
+      if (req.method === 'GET'  && pathname === '/v1/admin/checkins')             return await adminListCheckins(req, env, ch, access, ipHash);
       if (req.method === 'POST' && pathname === '/v1/admin/checkin/undo')         return await adminUndoCheckin(req, env, ch, access, ipHash, actor);
       if (req.method === 'GET'  && pathname === '/v1/admin/backups')              return await adminListBackups(req, env, ch, access);
       if (req.method === 'GET'  && pathname === '/v1/admin/backups/download')     return await adminDownloadBackup(req, env, ch, access);

@@ -338,7 +338,7 @@ buildSectionToggles();
 async function loadReport() {
   const msg = $('topMsg'); msg.className = 'msg';
   try {
-    const res = await fetch(CONFIG.apiBase + '/admin/export.json', { headers: authHeaders() });
+    const res = await fetch(CONFIG.apiBase + '/admin/export.json?src=report', { headers: authHeaders() });
     const data = await res.json().catch(() => ({}));
     if (!res.ok || data.ok === false) throw new Error(data.error || ('HTTP ' + res.status));
     // This report is for confirmed participants only -- rejected and

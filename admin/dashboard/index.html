@@ -244,7 +244,7 @@ let lastDashboard = null;
 async function loadDashboard() {
   const msg = $('topMsg'); msg.className = 'msg';
   try {
-    const res = await fetch(CONFIG.apiBase + '/admin/export.json', { headers: authHeaders() });
+    const res = await fetch(CONFIG.apiBase + '/admin/export.json?src=dashboard', { headers: authHeaders() });
     const data = await res.json().catch(() => ({}));
     if (!res.ok || data.ok === false) throw new Error(data.error || ('HTTP ' + res.status));
     const rows = (data.registrations || []).filter(r => r.status === 'approved');
