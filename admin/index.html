@@ -10,7 +10,7 @@
   --ink:#0B2135; --ink-soft:#1C3A56; --surface:#EEF2F6; --sheet:#FFFFFF;
   --rule:#CBD6E0; --rule-strong:#93A6B8; --muted:#556A7D;
   --brass:#A8842C; --brass-tint:#F3EBD8;
-  --ok:#1D6B4C; --ok-tint:#E9F4EE;
+  --ok:#1D6B4C; --ok-tint:#E9F4EE; --err:#A02226; --err-tint:#FAECEC;
   --f-body:"IBM Plex Sans",system-ui,sans-serif; --f-num:ui-monospace,Consolas,monospace;
 }
 *,*::before,*::after{box-sizing:border-box}
@@ -32,6 +32,27 @@ a.card .tag{align-self:flex-start;font-size:11px;text-transform:uppercase;letter
 a.card .tag.admin{background:var(--brass-tint);color:var(--brass)}
 a.card .tag.report{background:var(--ok-tint);color:var(--ok)}
 footer{max-width:980px;margin:0 auto;padding:0 20px 48px;font-size:12px;color:var(--muted)}
+
+.card{background:var(--sheet);border:1px solid var(--rule);padding:20px 24px}
+.card h2{font-size:16px;margin:0 0 16px;text-transform:none;letter-spacing:normal;color:var(--ink);font-weight:600}
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px 20px}
+@media (max-width:640px){.grid{grid-template-columns:1fr}}
+.f{display:flex;flex-direction:column;gap:5px}
+.f.wide{grid-column:1/-1}
+label{font-size:13px;font-weight:500}
+input{font:inherit;font-size:14px;padding:8px 10px;border:1px solid var(--rule-strong);border-radius:2px;background:#fff;color:var(--ink)}
+.hint{font-size:12px;color:var(--muted);margin-top:2px}
+.actions{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+button{font:inherit;font-size:14px;font-weight:500;padding:10px 20px;border-radius:2px;border:1px solid transparent;background:var(--ink);color:#fff;cursor:pointer}
+button:hover{background:var(--ink-soft)}
+button.ghost{background:transparent;color:var(--ink);border-color:var(--rule-strong)}
+button.ghost:hover{background:#F1F5F8}
+.msg{font-size:13px;padding:10px 12px;border-radius:2px;display:none}
+.msg.ok{display:block;background:var(--ok-tint);color:var(--ok)}
+.msg.err{display:block;background:var(--err-tint);color:var(--err)}
+.whoami{font-size:13.5px;color:var(--ink-soft);display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.whoami b{color:var(--ink)}
+.empty{color:var(--muted);font-size:13px;padding:8px 0}
 </style>
 </head>
 <body>
@@ -44,81 +65,147 @@ footer{max-width:980px;margin:0 auto;padding:0 20px 48px;font-size:12px;color:va
 </header>
 
 <main>
-  <section>
-    <h2>Admin tools</h2>
-    <p class="lede">Need the admin token — manage invitations, registrations, reminders and the audit trail.</p>
-    <div class="cards">
-      <a class="card" href="invitations/">
-        <span class="tag admin">Admin token</span>
-        <span class="t">Invitation Codes</span>
-        <span class="d">Generate and track the codes SAIs use to unlock the registration form.</span>
-      </a>
-      <a class="card" href="registrations/">
-        <span class="tag admin">Admin token</span>
-        <span class="t">Registrations &amp; Reports</span>
-        <span class="d">Approve or decline, set protocol tier, edit anyone's form, download files, and merge duplicate organisation/hotel spellings.</span>
-      </a>
-      <a class="card" href="reminders/">
-        <span class="tag admin">Admin token</span>
-        <span class="t">Reminders</span>
-        <span class="d">Email participants about missing itinerary, hotel, presentation or accompanying-person details — preview before sending.</span>
-      </a>
-      <a class="card" href="announce/">
-        <span class="tag admin">Admin token</span>
-        <span class="t">Announcements</span>
-        <span class="d">Broadcast a free-form message to any selected group of confirmed participants — filter by event or check-in status, preview before sending.</span>
-      </a>
-      <a class="card" href="audit/">
-        <span class="tag admin">Admin token</span>
-        <span class="t">Audit Trail</span>
-        <span class="d">Every registration, edit, status change, invitation and error — searchable, with a Telegram alert on the events that matter.</span>
-      </a>
-      <a class="card" href="checkin/">
-        <span class="tag report">Admin or report token</span>
-        <span class="t">Reception Check-in</span>
-        <span class="d">Scan a badge's QR code with the camera to check a participant in — one scan per event, live attendance counts and a recent-scans feed.</span>
-      </a>
-      <a class="card" href="backups/">
-        <span class="tag admin">Admin token</span>
-        <span class="t">Backups</span>
-        <span class="d">Disaster-recovery snapshots of every registration, invitation, check-in and audit-log row — taken nightly, or on demand before a risky change.</span>
-      </a>
+  <div class="card" id="gateCard">
+    <h2>Access token</h2>
+    <div class="grid">
+      <div class="f wide">
+        <label for="token">Access token</label>
+        <input type="password" id="token" autocomplete="off" placeholder="paste your token">
+        <span class="hint">Works for the admin token, the shared viewer token, or a named token created on the Access Tokens page. Kept only in this browser tab (sessionStorage).</span>
+      </div>
     </div>
-  </section>
+    <div class="actions" style="margin-top:14px">
+      <button id="go">Continue</button>
+      <span id="topMsg" class="msg"></span>
+    </div>
+    <div class="whoami" id="whoami" style="margin-top:14px;display:none"></div>
+  </div>
 
-  <section>
-    <h2>Reports</h2>
-    <p class="lede">Accept the admin token or the separate, narrower report/viewer token — safe to share with people who shouldn't see the tools above.</p>
-    <div class="cards">
-      <a class="card" href="report/">
-        <span class="tag report">Admin or report token</span>
-        <span class="t">Full Report</span>
-        <span class="d">Every confirmed participant's complete submitted data, one card each, plus a compact summary table grouped by event.</span>
-      </a>
-      <a class="card" href="dashboard/">
-        <span class="tag report">Admin or report token</span>
-        <span class="t">Leadership Dashboard</span>
-        <span class="d">KPI figures and rows-by-columns tables — by event, tier, role, organisation, hotel and more.</span>
-      </a>
-      <a class="card" href="logistics/">
-        <span class="tag report">Admin or report token</span>
-        <span class="t">Logistics Reports</span>
-        <span class="d">Grouped by arrival date, departure date, hotel, passport status, accompanying persons, speakers and attachments.</span>
-      </a>
-      <a class="card" href="badges/">
-        <span class="tag report">Admin or report token</span>
-        <span class="t">Badges</span>
-        <span class="d">Print name badges — one per participant per event, so anyone attending both gets a badge for each.</span>
-      </a>
-      <a class="card" href="certificates/">
-        <span class="tag report">Admin or report token</span>
-        <span class="t">Certificates</span>
-        <span class="d">Print or export certificates of attendance — one per person actually checked in at reception, per event.</span>
-      </a>
-    </div>
-  </section>
+  <div id="sections"></div>
 </main>
 
-<footer>Each page keeps its own token in that browser tab only (sessionStorage) and never shares it with the others.</footer>
+<footer>Each page keeps its own token in that browser tab only (sessionStorage) and never shares it with the others. This hub only ever shows the pages your token can actually open — every page enforces that itself as well.</footer>
+
+<script>
+const CONFIG = { apiBase: 'https://asa-events-api.mostafamaarof.workers.dev/v1' };
+const $ = (id) => document.getElementById(id);
+const tokenInput = $('token');
+function showMsg(el, text, ok) { el.textContent = text; el.className = 'msg ' + (ok ? 'ok' : 'err'); }
+function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c])); }
+
+/* section groups which heading a card sits under; tag is just the badge
+   text ("Admin token" vs "Admin or report token") -- Reception Check-in is
+   grouped with the admin tools but still accepts a report-tier token,
+   same split as before this page became dynamic. */
+const CARDS = [
+  { scope: 'invitations',  section: 'tools',   tag: 'admin',  title: 'Invitation Codes', url: 'invitations/',
+    desc: 'Generate and track the codes SAIs use to unlock the registration form.' },
+  { scope: 'registrations', section: 'tools',  tag: 'admin',  title: 'Registrations & Reports', url: 'registrations/',
+    desc: "Approve or decline, set protocol tier, edit anyone's form, download files, and merge duplicate organisation/hotel spellings." },
+  { scope: 'reminders',     section: 'tools',  tag: 'admin',  title: 'Reminders', url: 'reminders/',
+    desc: 'Email participants about missing itinerary, hotel, presentation or accompanying-person details — preview before sending.' },
+  { scope: 'announce',      section: 'tools',  tag: 'admin',  title: 'Announcements', url: 'announce/',
+    desc: 'Broadcast a free-form message to any selected group of confirmed participants — filter by event or check-in status, preview before sending.' },
+  { scope: 'audit',         section: 'tools',  tag: 'admin',  title: 'Audit Trail', url: 'audit/',
+    desc: 'Every registration, edit, status change, invitation and error — searchable, with a Telegram alert on the events that matter.' },
+  { scope: 'checkin',       section: 'tools',  tag: 'report', title: 'Reception Check-in', url: 'checkin/',
+    desc: "Scan a badge's QR code with the camera to check a participant in — one scan per event, live attendance counts and a recent-scans feed." },
+  { scope: 'backups',       section: 'tools',  tag: 'admin',  title: 'Backups', url: 'backups/',
+    desc: 'Disaster-recovery snapshots of every registration, invitation, check-in and audit-log row — taken nightly, or on demand before a risky change.' },
+  { scope: 'report',        section: 'reports', tag: 'report', title: 'Full Report', url: 'report/',
+    desc: "Every confirmed participant's complete submitted data, one card each, plus a compact summary table grouped by event." },
+  { scope: 'dashboard',     section: 'reports', tag: 'report', title: 'Leadership Dashboard', url: 'dashboard/',
+    desc: 'KPI figures and rows-by-columns tables — by event, tier, role, organisation, hotel and more.' },
+  { scope: 'logistics',     section: 'reports', tag: 'report', title: 'Logistics Reports', url: 'logistics/',
+    desc: 'Grouped by arrival date, departure date, hotel, passport status, accompanying persons, speakers and attachments.' },
+  { scope: 'badges',        section: 'reports', tag: 'report', title: 'Badges', url: 'badges/',
+    desc: 'Print name badges — one per participant per event, so anyone attending both gets a badge for each.' },
+  { scope: 'certificates',  section: 'reports', tag: 'report', title: 'Certificates', url: 'certificates/',
+    desc: 'Print or export certificates of attendance — one per person actually checked in at reception, per event.' }
+];
+/* Managing tokens is itself admin-only and isn't gated by any scope -- it
+   only ever appears for the real ADMIN_TOKEN, never a named token no
+   matter how broad. */
+const TOKENS_CARD = { section: 'tools', tag: 'admin', title: 'Access Tokens', url: 'tokens/',
+  desc: 'Create and revoke named, scoped tokens for external stakeholders or specific staff roles — such as sharing reports with SAI India.' };
+
+function cardHtml(c) {
+  return `<a class="card" href="${c.url}">
+    <span class="tag ${c.tag}">${c.tag === 'admin' ? 'Admin token' : 'Admin or report token'}</span>
+    <span class="t">${esc(c.title)}</span>
+    <span class="d">${esc(c.desc)}</span>
+  </a>`;
+}
+
+function renderSections(access) {
+  const scopeSet = new Set(access.scopes || []);
+  const allowed = CARDS.filter(c => access.tier === 'admin' || scopeSet.has(c.scope));
+  const tools = allowed.filter(c => c.section === 'tools');
+  const reports = allowed.filter(c => c.section === 'reports');
+  if (access.tier === 'admin') tools.push(TOKENS_CARD);
+
+  const sections = $('sections');
+  if (!tools.length && !reports.length) {
+    sections.innerHTML = '<div class="card"><p class="empty">This token doesn\'t grant access to any page. Check it was typed correctly, or ask whoever created it which scopes it has.</p></div>';
+    return;
+  }
+  sections.innerHTML = `
+    ${tools.length ? `<section>
+      <h2>Admin tools</h2>
+      <p class="lede">The tools your token can open.</p>
+      <div class="cards">${tools.map(cardHtml).join('')}</div>
+    </section>` : ''}
+    ${reports.length ? `<section>
+      <h2>Reports</h2>
+      <p class="lede">Safe to share the token that grants only these with people who shouldn't see the tools above.</p>
+      <div class="cards">${reports.map(cardHtml).join('')}</div>
+    </section>` : ''}
+  `;
+}
+
+async function checkAccess(token) {
+  const msg = $('topMsg'); msg.className = 'msg';
+  const who = $('whoami'); who.style.display = 'none';
+  try {
+    const res = await fetch(CONFIG.apiBase + '/admin/whoami', { headers: { 'Authorization': 'Bearer ' + token } });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || data.ok === false) throw new Error(data.error || ('HTTP ' + res.status));
+
+    /* Stored under both keys so whichever page this token opens picks it
+       up automatically -- a named token can carry a mix of report-tier and
+       admin-tier scopes, and each individual page only ever reads its own
+       expected key. */
+    sessionStorage.setItem('asa_admin_token', token);
+    sessionStorage.setItem('asa_report_token', token);
+
+    const tierLabel = data.tier === 'admin' ? 'Full admin token' : data.tier === 'viewer' ? 'Shared viewer token' : (data.name || 'Named token');
+    who.style.display = 'flex';
+    who.innerHTML = `<span>Signed in as <b>${esc(tierLabel)}</b></span><button class="ghost" id="switchBtn" style="height:28px;padding:0 12px;font-size:12.5px">Use a different token</button>`;
+    $('switchBtn').addEventListener('click', () => {
+      sessionStorage.removeItem('asa_admin_token'); sessionStorage.removeItem('asa_report_token');
+      tokenInput.value = ''; who.style.display = 'none'; $('sections').innerHTML = ''; msg.className = 'msg';
+      tokenInput.focus();
+    });
+
+    renderSections(data);
+    msg.className = 'msg';
+  } catch (e) {
+    $('sections').innerHTML = '';
+    showMsg(msg, e.message === 'unauthorized' ? 'That token isn\'t recognised — check it was typed/pasted correctly.' : e.message, false);
+  }
+}
+
+$('go').addEventListener('click', () => {
+  const t = tokenInput.value.trim();
+  if (!t) { showMsg($('topMsg'), 'Paste a token first.', false); return; }
+  checkAccess(t);
+});
+tokenInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') $('go').click(); });
+
+/* Reuse whatever token this browser tab already has, from either key --
+   picking up wherever the user last left off without re-typing it. */
+const existing = sessionStorage.getItem('asa_admin_token') || sessionStorage.getItem('asa_report_token');
+if (existing) { tokenInput.value = existing; checkAccess(existing); }
+</script>
 </body>
 </html>

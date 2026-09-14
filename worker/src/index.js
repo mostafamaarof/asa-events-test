@@ -53,6 +53,20 @@ import { connect } from 'cloudflare:sockets';
      GET  /v1/admin/backups/download?key=...  download one snapshot (Bearer ADMIN_TOKEN)
      POST /v1/admin/backups/run     take an on-demand snapshot right now, same as the nightly Cron Trigger
                                     (see the scheduled() export) (Bearer ADMIN_TOKEN)
+     GET  /v1/admin/whoami          which tier (admin/viewer/named) and which scopes the supplied token
+                                    grants -- the admin hub uses this to show only the pages a token can use
+     GET  /v1/admin/access-tokens   list named access tokens (name, scopes, active, last used) (Bearer ADMIN_TOKEN)
+     POST /v1/admin/access-tokens   create a named token with an explicit scope subset (see ALL_SCOPES);
+                                    the plaintext token is returned exactly once and never stored (Bearer ADMIN_TOKEN)
+     POST /v1/admin/access-tokens/revoke  deactivate one named token by id (Bearer ADMIN_TOKEN)
+   Everywhere above marked "Bearer ADMIN_TOKEN or VIEWER_TOKEN" also accepts
+   a named access token carrying the scope that endpoint needs (see
+   ALL_SCOPES/resolveAccess() below) -- ADMIN_TOKEN implicitly has every
+   scope, VIEWER_TOKEN implicitly has every report-tier scope, a named
+   token has exactly whatever it was created with. Endpoints marked
+   "Bearer ADMIN_TOKEN" only accept the real admin token or a named token
+   scoped to that specific page (e.g. reminders/send needs the 'reminders'
+   scope) -- never satisfiable by VIEWER_TOKEN or an unrelated scope.
    Every error a registrant/editor/uploader can see on the public paths above
    is also written to audit_log as one 'error_shown' action (entity = which
    flow, entity_id = the error code, detail = whatever identifies who hit it).
@@ -571,9 +585,8 @@ async function updateRegistration(req, env, ch, ipHash) {
   return json({ ok: true, status: reg.status, registration_number: reg.registration_number || null, reference: reg.reference, event_codes: codes }, 200, ch);
 }
 
-async function adminRead(req, env, ch, csv) {
-  const token = (req.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '');
-  if (!env.ADMIN_TOKEN || token !== env.ADMIN_TOKEN) return fail('unauthorized', 401, ch);
+async function adminRead(req, env, ch, csv, access) {
+  if (!hasScope(access, 'registrations')) return fail('unauthorized', 401, ch);
   const { results } = await env.DB.prepare(
     `SELECT reference, registration_number, created_at, status, event_codes, full_name, email, organization_name, country,
             attendance_mode, role_in_delegation, participant_tier, visa_letter_needed, flag_personal_email, flag_org_mismatch
@@ -605,16 +618,16 @@ function extractAttachments(data) {
   return out;
 }
 
-async function adminAttachments(req, env, ch) {
-  if (!requireAdminOrViewer(req, env)) return fail('unauthorized', 401, ch);
+async function adminAttachments(req, env, ch, access) {
+  if (!hasScope(access, ...ALL_SCOPES)) return fail('unauthorized', 401, ch);
   const reference = (new URL(req.url).searchParams.get('reference') || '').toUpperCase();
   const reg = await env.DB.prepare('SELECT data_json FROM registrations WHERE reference = ?').bind(reference).first();
   if (!reg) return fail('not_found', 404, ch);
   return json({ ok: true, attachments: extractAttachments(JSON.parse(reg.data_json || '{}')) }, 200, ch);
 }
 
-async function adminSetStatus(req, env, ch, ipHash, actor) {
-  if (!requireAdmin(req, env)) return fail('unauthorized', 401, ch);
+async function adminSetStatus(req, env, ch, access, ipHash, actor) {
+  if (!hasScope(access, 'registrations')) return fail('unauthorized', 401, ch);
   const b = await req.json().catch(() => ({}));
   const reference = String(b.reference || '').trim().toUpperCase();
   const status = String(b.status || '').trim();
@@ -659,8 +672,8 @@ const TIER_LABELS = { president: 'President', vice_president: 'Vice President', 
 
 /* Protocol tier -- purely an internal admin classification for logistics/
    seating/escort planning. Never emailed to the registrant, unlike status. */
-async function adminSetTier(req, env, ch, ipHash, actor) {
-  if (!requireAdmin(req, env)) return fail('unauthorized', 401, ch);
+async function adminSetTier(req, env, ch, access, ipHash, actor) {
+  if (!hasScope(access, 'registrations')) return fail('unauthorized', 401, ch);
   const b = await req.json().catch(() => ({}));
   const reference = String(b.reference || '').trim().toUpperCase();
   const tier = String(b.tier || '').trim();
@@ -680,8 +693,8 @@ async function adminSetTier(req, env, ch, ipHash, actor) {
    uses via their emailed link -- no separate admin-only form to build and
    keep in sync with the real one. The minted token is flagged admin:true
    (see signEditToken) so the eventual save doesn't email the registrant. */
-async function adminMintEditToken(req, env, ch) {
-  if (!requireAdmin(req, env)) return fail('unauthorized', 401, ch);
+async function adminMintEditToken(req, env, ch, access) {
+  if (!hasScope(access, 'registrations')) return fail('unauthorized', 401, ch);
   const b = await req.json().catch(() => ({}));
   const reference = String(b.reference || '').trim().toUpperCase();
   const reg = await env.DB.prepare('SELECT registration_id, reference FROM registrations WHERE reference = ?').bind(reference).first();
@@ -704,8 +717,8 @@ const RENAMEABLE_FIELDS = {
   own_hotel_name_address: { column: null, jsonPath: '$.own_hotel_name_address' }
 };
 
-async function adminFieldValues(req, env, ch) {
-  if (!requireAdmin(req, env)) return fail('unauthorized', 401, ch);
+async function adminFieldValues(req, env, ch, access) {
+  if (!hasScope(access, 'registrations')) return fail('unauthorized', 401, ch);
   const field = new URL(req.url).searchParams.get('field');
   const def = RENAMEABLE_FIELDS[field];
   if (!def) return fail('invalid_field', 400, ch);
@@ -722,8 +735,8 @@ async function adminFieldValues(req, env, ch) {
   return json({ ok: true, field, values: results }, 200, ch);
 }
 
-async function adminRenameFieldValues(req, env, ch, ipHash, actor) {
-  if (!requireAdmin(req, env)) return fail('unauthorized', 401, ch);
+async function adminRenameFieldValues(req, env, ch, access, ipHash, actor) {
+  if (!hasScope(access, 'registrations')) return fail('unauthorized', 401, ch);
   const b = await req.json().catch(() => ({}));
   const field = String(b.field || '');
   const def = RENAMEABLE_FIELDS[field];
@@ -844,8 +857,8 @@ async function buildReminderEmail(env, reg, categories) {
    b.preview: true composes and returns the emails without sending them or
    touching the database/audit trail -- lets the admin see exactly what
    would go out (subject, body, edit link) before committing to a send. */
-async function adminSendReminders(req, env, ch, ipHash, actor) {
-  if (!requireAdmin(req, env)) return fail('unauthorized', 401, ch);
+async function adminSendReminders(req, env, ch, access, ipHash, actor) {
+  if (!hasScope(access, 'reminders')) return fail('unauthorized', 401, ch);
   const b = await req.json().catch(() => ({}));
   const items = Array.isArray(b.items) ? b.items : [];
   const preview = b.preview === true;
@@ -893,8 +906,8 @@ async function adminSendReminders(req, env, ch, ipHash, actor) {
    a caller that doesn't. One consolidated audit entry per send (not one per
    recipient) -- a broadcast to 200 people is one event with a recipient
    list, not 200 separate happenings. */
-async function adminSendAnnouncement(req, env, ch, ipHash, actor) {
-  if (!requireAdmin(req, env)) return fail('unauthorized', 401, ch);
+async function adminSendAnnouncement(req, env, ch, access, ipHash, actor) {
+  if (!hasScope(access, 'announce')) return fail('unauthorized', 401, ch);
   const b = await req.json().catch(() => ({}));
   const subject = String(b.subject || '').trim();
   const bodyText = String(b.body || '').trim();
@@ -946,9 +959,9 @@ async function adminSendAnnouncement(req, env, ch, ipHash, actor) {
 const SENSITIVE_WELFARE_FIELDS = ['emergency_contact_name', 'emergency_contact_relation',
   'emergency_contact_phone', 'emergency_contact_email', 'allergies', 'medical_notes_emergency'];
 
-async function adminExportFull(req, env, ch) {
-  if (!requireAdminOrViewer(req, env)) return fail('unauthorized', 401, ch);
-  const isFullAdmin = requireAdmin(req, env);
+async function adminExportFull(req, env, ch, access) {
+  if (!hasScope(access, ...ALL_SCOPES)) return fail('unauthorized', 401, ch);
+  const isFullAdmin = access.tier === 'admin';
   const { results } = await env.DB.prepare(
     `SELECT registration_id, reference, registration_number, created_at, status, event_codes, invitation_id, email, full_name,
             organization_name, country, attendance_mode, role_in_delegation, participant_tier, visa_letter_needed,
@@ -962,8 +975,8 @@ async function adminExportFull(req, env, ch) {
   return json({ ok: true, isAdmin: isFullAdmin, count: registrations.length, exported_at: new Date().toISOString(), registrations }, 200, ch);
 }
 
-async function adminAuditLog(req, env, ch) {
-  if (!requireAdmin(req, env)) return fail('unauthorized', 401, ch);
+async function adminAuditLog(req, env, ch, access) {
+  if (!hasScope(access, 'audit')) return fail('unauthorized', 401, ch);
   const { results } = await env.DB.prepare(
     `SELECT id, action, entity, entity_id, detail, ip_hash, actor, created_at
      FROM audit_log ORDER BY id DESC LIMIT 2000`).all();
@@ -978,8 +991,8 @@ async function adminAuditLog(req, env, ch) {
    returns the original timestamp with already:true instead of erroring or
    writing a second row/audit entry, so a nervous re-scan at a busy desk is
    harmless. */
-async function adminCheckin(req, env, ch, ipHash, actor) {
-  if (!requireAdminOrViewer(req, env)) return fail('unauthorized', 401, ch);
+async function adminCheckin(req, env, ch, access, ipHash, actor) {
+  if (!hasScope(access, 'checkin')) return fail('unauthorized', 401, ch);
   const b = await req.json().catch(() => ({}));
   const code = String(b.code || '').trim();
   const eventOverride = String(b.event_code || '').trim();
@@ -1037,8 +1050,12 @@ async function adminCheckin(req, env, ch, ipHash, actor) {
   }, 200, ch);
 }
 
-async function adminListCheckins(req, env, ch) {
-  if (!requireAdminOrViewer(req, env)) return fail('unauthorized', 401, ch);
+async function adminListCheckins(req, env, ch, access) {
+  /* Read by three different pages (Reception Check-in, Certificates,
+     Announcements' check-in-status filter) -- any authenticated scope can
+     read it, same as export.json, since attendance data alone isn't
+     sensitive enough to warrant its own scope. */
+  if (!hasScope(access, ...ALL_SCOPES)) return fail('unauthorized', 401, ch);
   const { results } = await env.DB.prepare(
     `SELECT c.reference, c.event_code, c.checked_in_at, r.full_name, r.organization_name, r.country, r.participant_tier
      FROM checkins c JOIN registrations r ON r.reference = c.reference
@@ -1047,12 +1064,11 @@ async function adminListCheckins(req, env, ch) {
 }
 
 /* Corrects a mis-scan (wrong badge, wrong desk's event) without leaving a
-   phantom "checked in" record behind. Same access level as the check-in
-   itself (ADMIN_TOKEN or VIEWER_TOKEN) rather than admin-only -- this is
+   phantom "checked in" record behind. Same scope as checking in -- this is
    the same category of action reception is already trusted to do, just in
    reverse, not a step up in sensitivity like the medical report. */
-async function adminUndoCheckin(req, env, ch, ipHash, actor) {
-  if (!requireAdminOrViewer(req, env)) return fail('unauthorized', 401, ch);
+async function adminUndoCheckin(req, env, ch, access, ipHash, actor) {
+  if (!hasScope(access, 'checkin')) return fail('unauthorized', 401, ch);
   const b = await req.json().catch(() => ({}));
   const reference = String(b.reference || '').trim().toUpperCase();
   const eventCode = String(b.event_code || '').trim();
@@ -1074,14 +1090,102 @@ function requireAdmin(req, env) {
   const token = (req.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '');
   return !!env.ADMIN_TOKEN && token === env.ADMIN_TOKEN;
 }
-/* A second, deliberately narrower token: valid only for the read-only report
-   endpoints (full data, attachment listing/download), never for generating
-   invitation codes or changing a registration's status. Meant to be handed
-   to someone who should see the report and nothing else in the admin tools. */
-function requireAdminOrViewer(req, env) {
-  if (requireAdmin(req, env)) return true;
+
+/* ---------- named, scoped access tokens ---------- */
+/* One scope per admin/report page. ADMIN_TOKEN implicitly has all of them;
+   VIEWER_TOKEN (a single shared secret, kept only for backward compatibility
+   with whoever already has it) implicitly has every report-tier scope. A
+   named token (access_tokens table, managed from admin/tokens) carries an
+   explicit, admin-assigned subset instead -- e.g. "SAI India" might get
+   exactly [report, dashboard, logistics], so Reminders/Announcements/
+   Invitations/Backups/Audit/registration edits simply 401 for that token,
+   and the admin hub only ever shows them the three pages they can use.
+   The five pure "view a report" scopes (report/dashboard/logistics/badges/
+   certificates) all draw from the same underlying registration data feed
+   (export.json) -- a token scoped to only one of them still technically
+   could call that shared feed directly, though the hub would only ever
+   show it the one page. Every write action and every admin-tool scope is
+   strictly and separately enforced; this shared-feed nuance is the one
+   accepted exception, not a general rule. */
+const ALL_SCOPES = ['report', 'dashboard', 'logistics', 'badges', 'certificates', 'checkin',
+  'invitations', 'registrations', 'reminders', 'announce', 'audit', 'backups'];
+const REPORT_SCOPES = ['report', 'dashboard', 'logistics', 'badges', 'certificates', 'checkin'];
+
+async function resolveAccess(req, env) {
   const token = (req.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '');
-  return !!env.VIEWER_TOKEN && token === env.VIEWER_TOKEN;
+  if (!token) return { tier: null, scopes: null, name: null };
+  if (env.ADMIN_TOKEN && token === env.ADMIN_TOKEN) return { tier: 'admin', scopes: new Set(ALL_SCOPES), name: null };
+  if (env.VIEWER_TOKEN && token === env.VIEWER_TOKEN) return { tier: 'viewer', scopes: new Set(REPORT_SCOPES), name: null };
+  const hash = await sha256(token);
+  const row = await env.DB.prepare('SELECT token_id, name, scopes FROM access_tokens WHERE token_hash = ? AND is_active = 1').bind(hash).first();
+  if (!row) return { tier: null, scopes: null, name: null };
+  /* Best-effort, never blocks the real request on a slow/failed write. */
+  env.DB.prepare('UPDATE access_tokens SET last_used_at = ? WHERE token_id = ?').bind(new Date().toISOString(), row.token_id).run().catch(() => {});
+  return { tier: 'named', tokenId: row.token_id, name: row.name, scopes: new Set(row.scopes.split(',').filter(Boolean)) };
+}
+function hasScope(access, ...allowed) {
+  return !!(access && access.scopes && allowed.some(s => access.scopes.has(s)));
+}
+
+/* Lets a page work out what it's allowed to do with whatever token was
+   pasted in -- the admin hub uses this to show only the cards a token can
+   actually use, and every other page could use it the same way instead of
+   just failing on first load. No scope of its own: anything with SOME
+   valid token can ask what that token can see. */
+async function adminWhoami(req, env, ch, access) {
+  if (!access || !access.tier) return fail('unauthorized', 401, ch);
+  return json({ ok: true, tier: access.tier, name: access.name, scopes: [...access.scopes] }, 200, ch);
+}
+
+/* Managing named tokens is itself admin-only -- checked against the raw
+   ADMIN_TOKEN directly (requireAdmin), never satisfiable by a named token's
+   scopes no matter how broad, so a token can never be used to mint or see
+   other tokens, including itself. */
+function randomAccessToken() {
+  const alphabet = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
+  const raw = [...crypto.getRandomValues(new Uint8Array(28))].map(x => alphabet[x % alphabet.length]).join('');
+  return `ASA-ACCESS-${raw}`;
+}
+
+async function adminListAccessTokens(req, env, ch) {
+  if (!requireAdmin(req, env)) return fail('unauthorized', 401, ch);
+  const { results } = await env.DB.prepare(
+    `SELECT token_id, name, scopes, is_active, created_at, last_used_at
+     FROM access_tokens ORDER BY created_at DESC`).all();
+  const tokens = results.map(r => ({ ...r, scopes: (r.scopes || '').split(',').filter(Boolean), is_active: !!r.is_active }));
+  return json({ ok: true, count: tokens.length, tokens }, 200, ch);
+}
+
+async function adminCreateAccessToken(req, env, ch, ipHash, actor) {
+  if (!requireAdmin(req, env)) return fail('unauthorized', 401, ch);
+  const b = await req.json().catch(() => ({}));
+  const name = String(b.name || '').trim().slice(0, 80);
+  const scopes = [...new Set((Array.isArray(b.scopes) ? b.scopes : []).filter(s => ALL_SCOPES.includes(s)))];
+  if (!name || !scopes.length) return fail('missing_fields', 400, ch);
+
+  const tokenId = 'tok-' + crypto.randomUUID();
+  const token = randomAccessToken();
+  const hash = await sha256(token);
+  await env.DB.prepare('INSERT INTO access_tokens (token_id, name, token_hash, scopes, is_active, created_at) VALUES (?,?,?,?,1,?)')
+    .bind(tokenId, name, hash, scopes.join(','), new Date().toISOString()).run();
+  await audit(env, 'access_token_created', 'access_token', tokenId, `${name}: ${scopes.join(', ')}`, ipHash, actor);
+  await notifyTelegram(env, `🔐 <b>Access token created</b>\n${esc(name)} — ${esc(scopes.join(', '))}${actor ? `\nby ${esc(actor)}` : ''}`);
+  /* The only moment the plaintext token exists outside this function --
+     never stored, never retrievable again, same principle as an app
+     password or an API key from any other provider. */
+  return json({ ok: true, token_id: tokenId, name, scopes, token }, 201, ch);
+}
+
+async function adminRevokeAccessToken(req, env, ch, ipHash, actor) {
+  if (!requireAdmin(req, env)) return fail('unauthorized', 401, ch);
+  const b = await req.json().catch(() => ({}));
+  const tokenId = String(b.token_id || '').trim();
+  const row = await env.DB.prepare('SELECT name FROM access_tokens WHERE token_id = ?').bind(tokenId).first();
+  if (!row) return fail('not_found', 404, ch);
+  await env.DB.prepare('UPDATE access_tokens SET is_active = 0 WHERE token_id = ?').bind(tokenId).run();
+  await audit(env, 'access_token_revoked', 'access_token', tokenId, row.name, ipHash, actor);
+  await notifyTelegram(env, `🔐 <b>Access token revoked</b>\n${esc(row.name)}${actor ? `\nby ${esc(actor)}` : ''}`);
+  return json({ ok: true, token_id: tokenId }, 200, ch);
 }
 
 /* Disaster-recovery snapshot of every table that can't be trivially
@@ -1121,8 +1225,8 @@ async function runBackupSnapshot(env) {
   return { key, counts: snapshot.counts, pruned: toDelete.length };
 }
 
-async function adminListBackups(req, env, ch) {
-  if (!requireAdmin(req, env)) return fail('unauthorized', 401, ch);
+async function adminListBackups(req, env, ch, access) {
+  if (!hasScope(access, 'backups')) return fail('unauthorized', 401, ch);
   const listing = await env.FILES.list({ prefix: BACKUP_PREFIX });
   const backups = listing.objects
     .map(o => ({ key: o.key, size: o.size, uploaded: o.uploaded }))
@@ -1130,8 +1234,8 @@ async function adminListBackups(req, env, ch) {
   return json({ ok: true, count: backups.length, backups }, 200, ch);
 }
 
-async function adminDownloadBackup(req, env, ch) {
-  if (!requireAdmin(req, env)) return fail('unauthorized', 401, ch);
+async function adminDownloadBackup(req, env, ch, access) {
+  if (!hasScope(access, 'backups')) return fail('unauthorized', 401, ch);
   const key = new URL(req.url).searchParams.get('key') || '';
   if (!key.startsWith(BACKUP_PREFIX)) return fail('invalid_key', 400, ch);
   const obj = await env.FILES.get(key);
@@ -1144,8 +1248,8 @@ async function adminDownloadBackup(req, env, ch) {
   } });
 }
 
-async function adminRunBackup(req, env, ch, ipHash, actor) {
-  if (!requireAdmin(req, env)) return fail('unauthorized', 401, ch);
+async function adminRunBackup(req, env, ch, access, ipHash, actor) {
+  if (!hasScope(access, 'backups')) return fail('unauthorized', 401, ch);
   const result = await runBackupSnapshot(env);
   await audit(env, 'backup_run', 'backup', result.key,
     `${result.counts.registrations} registrations, ${result.counts.invitations} invitations, ${result.counts.checkins} check-ins` +
@@ -1154,8 +1258,8 @@ async function adminRunBackup(req, env, ch, ipHash, actor) {
   return json({ ok: true, ...result }, 200, ch);
 }
 
-async function adminListInvitations(req, env, ch) {
-  if (!requireAdmin(req, env)) return fail('unauthorized', 401, ch);
+async function adminListInvitations(req, env, ch, access) {
+  if (!hasScope(access, 'invitations')) return fail('unauthorized', 401, ch);
   const { results } = await env.DB.prepare(
     `SELECT i.invitation_id, i.code, i.organization_name, i.country, i.org_type, i.liaison_email,
             i.max_uses, i.used_count, i.allow_free_email, i.expires_at, i.is_active,
@@ -1166,8 +1270,8 @@ async function adminListInvitations(req, env, ch) {
   return json({ ok: true, count: invitations.length, invitations }, 200, ch);
 }
 
-async function adminCreateInvitation(req, env, ch, ipHash, actor) {
-  if (!requireAdmin(req, env)) return fail('unauthorized', 401, ch);
+async function adminCreateInvitation(req, env, ch, access, ipHash, actor) {
+  if (!hasScope(access, 'invitations')) return fail('unauthorized', 401, ch);
   const b = await req.json().catch(() => ({}));
   const eventCodes = [...new Set((Array.isArray(b.event_codes) ? b.event_codes : [b.event_code])
     .map(c => String(c || '').trim()).filter(Boolean))];
@@ -1263,8 +1367,8 @@ async function logClientError(req, env, ch, ipHash) {
   return json({ ok: true }, 200, ch);
 }
 
-async function adminGetFile(req, env, ch) {
-  if (!requireAdminOrViewer(req, env)) return fail('unauthorized', 401, ch);
+async function adminGetFile(req, env, ch, access) {
+  if (!hasScope(access, ...ALL_SCOPES)) return fail('unauthorized', 401, ch);
   const key = new URL(req.url).searchParams.get('key') || '';
   if (!key.startsWith('regs/')) return fail('invalid_key', 400, ch);
   const obj = await env.FILES.get(key);
@@ -1284,12 +1388,15 @@ export default {
     if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: ch });
     const { pathname } = new URL(req.url);
     const ipHash = await sha256((req.headers.get('CF-Connecting-IP') || '0') + (env.SESSION_SECRET || ''));
-    /* Self-reported by the admin's browser (see the "Your name" field
-       stored in localStorage on the admin pages) -- never trusted for
-       anything but a label in the audit trail, since there's no real login
-       behind it. Capped and blank-if-absent, same as every other free-text
-       audit detail. */
-    const actor = String(req.headers.get('X-Actor-Name') || '').trim().slice(0, 60) || null;
+    /* Resolved once per request (admin / viewer / named-token / none) and
+       handed to every admin handler instead of each one re-checking a raw
+       token -- see resolveAccess()/hasScope() above. */
+    const access = await resolveAccess(req, env);
+    /* A named token's registered name is real accountability (tied to the
+       credential itself, can't be mistyped or spoofed); the self-reported
+       "Your name" field is a fallback for the shared ADMIN_TOKEN/VIEWER_TOKEN,
+       which have no identity of their own. */
+    const actor = access.tier === 'named' ? access.name : (String(req.headers.get('X-Actor-Name') || '').trim().slice(0, 60) || null);
 
     try {
       if (req.method === 'POST' && pathname === '/v1/invitations/verify') return await verifyInvitation(req, env, ch, ipHash);
@@ -1297,29 +1404,33 @@ export default {
       if (req.method === 'POST' && pathname === '/v1/registrations/edit-link')  return await requestEditLink(req, env, ch, ipHash);
       if (req.method === 'POST' && pathname === '/v1/registrations/edit-fetch') return await fetchForEdit(req, env, ch, ipHash);
       if (req.method === 'POST' && pathname === '/v1/registrations/edit')       return await updateRegistration(req, env, ch, ipHash);
-      if (req.method === 'GET'  && pathname === '/v1/admin/registrations')return await adminRead(req, env, ch, false);
-      if (req.method === 'GET'  && pathname === '/v1/admin/export.csv')   return await adminRead(req, env, ch, true);
-      if (req.method === 'GET'  && pathname === '/v1/admin/export.json')  return await adminExportFull(req, env, ch);
-      if (req.method === 'GET'  && pathname === '/v1/admin/invitations')  return await adminListInvitations(req, env, ch);
-      if (req.method === 'POST' && pathname === '/v1/admin/invitations')  return await adminCreateInvitation(req, env, ch, ipHash, actor);
+      if (req.method === 'GET'  && pathname === '/v1/admin/registrations')return await adminRead(req, env, ch, false, access);
+      if (req.method === 'GET'  && pathname === '/v1/admin/export.csv')   return await adminRead(req, env, ch, true, access);
+      if (req.method === 'GET'  && pathname === '/v1/admin/export.json')  return await adminExportFull(req, env, ch, access);
+      if (req.method === 'GET'  && pathname === '/v1/admin/invitations')  return await adminListInvitations(req, env, ch, access);
+      if (req.method === 'POST' && pathname === '/v1/admin/invitations')  return await adminCreateInvitation(req, env, ch, access, ipHash, actor);
       if (req.method === 'POST' && pathname === '/v1/uploads')            return await uploadFile(req, env, ch, ipHash);
       if (req.method === 'POST' && pathname === '/v1/client-error')       return await logClientError(req, env, ch, ipHash);
-      if (req.method === 'GET'  && pathname === '/v1/admin/files')        return await adminGetFile(req, env, ch);
-      if (req.method === 'GET'  && pathname === '/v1/admin/attachments')  return await adminAttachments(req, env, ch);
-      if (req.method === 'POST' && pathname === '/v1/admin/registrations/status') return await adminSetStatus(req, env, ch, ipHash, actor);
-      if (req.method === 'POST' && pathname === '/v1/admin/registrations/tier')   return await adminSetTier(req, env, ch, ipHash, actor);
-      if (req.method === 'POST' && pathname === '/v1/admin/registrations/edit-token') return await adminMintEditToken(req, env, ch);
-      if (req.method === 'GET'  && pathname === '/v1/admin/field-values')        return await adminFieldValues(req, env, ch);
-      if (req.method === 'POST' && pathname === '/v1/admin/field-values/rename') return await adminRenameFieldValues(req, env, ch, ipHash, actor);
-      if (req.method === 'POST' && pathname === '/v1/admin/reminders/send')     return await adminSendReminders(req, env, ch, ipHash, actor);
-      if (req.method === 'POST' && pathname === '/v1/admin/announce/send')      return await adminSendAnnouncement(req, env, ch, ipHash, actor);
-      if (req.method === 'GET'  && pathname === '/v1/admin/audit')              return await adminAuditLog(req, env, ch);
-      if (req.method === 'POST' && pathname === '/v1/admin/checkin')              return await adminCheckin(req, env, ch, ipHash, actor);
-      if (req.method === 'GET'  && pathname === '/v1/admin/checkins')             return await adminListCheckins(req, env, ch);
-      if (req.method === 'POST' && pathname === '/v1/admin/checkin/undo')         return await adminUndoCheckin(req, env, ch, ipHash, actor);
-      if (req.method === 'GET'  && pathname === '/v1/admin/backups')              return await adminListBackups(req, env, ch);
-      if (req.method === 'GET'  && pathname === '/v1/admin/backups/download')     return await adminDownloadBackup(req, env, ch);
-      if (req.method === 'POST' && pathname === '/v1/admin/backups/run')          return await adminRunBackup(req, env, ch, ipHash, actor);
+      if (req.method === 'GET'  && pathname === '/v1/admin/files')        return await adminGetFile(req, env, ch, access);
+      if (req.method === 'GET'  && pathname === '/v1/admin/attachments')  return await adminAttachments(req, env, ch, access);
+      if (req.method === 'POST' && pathname === '/v1/admin/registrations/status') return await adminSetStatus(req, env, ch, access, ipHash, actor);
+      if (req.method === 'POST' && pathname === '/v1/admin/registrations/tier')   return await adminSetTier(req, env, ch, access, ipHash, actor);
+      if (req.method === 'POST' && pathname === '/v1/admin/registrations/edit-token') return await adminMintEditToken(req, env, ch, access);
+      if (req.method === 'GET'  && pathname === '/v1/admin/field-values')        return await adminFieldValues(req, env, ch, access);
+      if (req.method === 'POST' && pathname === '/v1/admin/field-values/rename') return await adminRenameFieldValues(req, env, ch, access, ipHash, actor);
+      if (req.method === 'POST' && pathname === '/v1/admin/reminders/send')     return await adminSendReminders(req, env, ch, access, ipHash, actor);
+      if (req.method === 'POST' && pathname === '/v1/admin/announce/send')      return await adminSendAnnouncement(req, env, ch, access, ipHash, actor);
+      if (req.method === 'GET'  && pathname === '/v1/admin/audit')              return await adminAuditLog(req, env, ch, access);
+      if (req.method === 'POST' && pathname === '/v1/admin/checkin')              return await adminCheckin(req, env, ch, access, ipHash, actor);
+      if (req.method === 'GET'  && pathname === '/v1/admin/checkins')             return await adminListCheckins(req, env, ch, access);
+      if (req.method === 'POST' && pathname === '/v1/admin/checkin/undo')         return await adminUndoCheckin(req, env, ch, access, ipHash, actor);
+      if (req.method === 'GET'  && pathname === '/v1/admin/backups')              return await adminListBackups(req, env, ch, access);
+      if (req.method === 'GET'  && pathname === '/v1/admin/backups/download')     return await adminDownloadBackup(req, env, ch, access);
+      if (req.method === 'POST' && pathname === '/v1/admin/backups/run')          return await adminRunBackup(req, env, ch, access, ipHash, actor);
+      if (req.method === 'GET'  && pathname === '/v1/admin/whoami')               return await adminWhoami(req, env, ch, access);
+      if (req.method === 'GET'  && pathname === '/v1/admin/access-tokens')        return await adminListAccessTokens(req, env, ch);
+      if (req.method === 'POST' && pathname === '/v1/admin/access-tokens')        return await adminCreateAccessToken(req, env, ch, ipHash, actor);
+      if (req.method === 'POST' && pathname === '/v1/admin/access-tokens/revoke') return await adminRevokeAccessToken(req, env, ch, ipHash, actor);
       if (pathname === '/v1/health') return json({ ok: true, time: new Date().toISOString() }, 200, ch);
       return fail('not_found', 404, ch);
     } catch (e) {

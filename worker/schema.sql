@@ -4,6 +4,7 @@
 DROP TABLE IF EXISTS throttle;
 DROP TABLE IF EXISTS otps;
 DROP TABLE IF EXISTS checkins;
+DROP TABLE IF EXISTS access_tokens;
 DROP TABLE IF EXISTS registrations;
 DROP TABLE IF EXISTS invitation_events;
 DROP TABLE IF EXISTS invitations;
@@ -99,6 +100,21 @@ CREATE TABLE checkins (
   event_code    TEXT NOT NULL,
   checked_in_at TEXT NOT NULL,
   UNIQUE(reference, event_code)
+);
+
+-- Named, scoped tokens -- an alternative to the two shared secrets
+-- (ADMIN_TOKEN/VIEWER_TOKEN) for handing access to one external recipient
+-- or one staff role without giving them everything a viewer/admin token
+-- would. Managed from admin/tokens; see ALL_SCOPES/resolveAccess() in the
+-- worker. The token itself is never stored, only its SHA-256 hash.
+CREATE TABLE access_tokens (
+  token_id     TEXT PRIMARY KEY,
+  name         TEXT NOT NULL,
+  token_hash   TEXT NOT NULL UNIQUE,
+  scopes       TEXT NOT NULL,          -- comma list, e.g. "report,dashboard,logistics"
+  is_active    INTEGER NOT NULL DEFAULT 1,
+  created_at   TEXT NOT NULL,
+  last_used_at TEXT
 );
 
 CREATE TABLE throttle (
