@@ -113,6 +113,7 @@ button.ghost:hover{background:#F1F5F8}
       <button class="ghost" id="selectAll">Select all shown</button>
       <button class="ghost" id="clearAll">Clear all</button>
       <button id="printBtn">Print badges</button>
+      <button class="ghost" id="pngBtn">Export as PNG</button>
       <span id="topMsg" class="msg"></span>
     </div>
     <div class="filters" style="margin-top:16px;margin-bottom:0">
@@ -149,6 +150,8 @@ button.ghost:hover{background:#F1F5F8}
   <div id="sheet"></div>
 </main>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script>
 const CONFIG = { apiBase: 'https://asa-events-api.mostafamaarof.workers.dev/v1' };
 const $ = (id) => document.getElementById(id);
@@ -232,7 +235,7 @@ function computeBadges() {
 
 function badgeCard(b) {
   const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${encodeURIComponent(b.regnum)}`;
-  return `<div class="badgecard">
+  return `<div class="badgecard" data-ref="${esc(b.ref)}" data-event="${esc(b.meta.short)}" data-file="${esc(b.regnum)}-${esc(b.meta.short)}">
     <input type="checkbox" class="pick" checked>
     <div class="top">
       <img class="seal" src="${b.meta.logo}" onerror="this.onerror=null;this.src='../../register/asa-logo.jpg'" alt="">
@@ -268,6 +271,56 @@ function render() {
   sheet.innerHTML = badges.map(badgeCard).join('');
 }
 
+/* Renders each selected card off-screen at high scale so the exported PNG
+   is print-quality; the .pick checkbox itself is excluded from the capture. */
+async function cardToBlob(card) {
+  const canvas = await html2canvas(card, {
+    scale: 4, useCORS: true, backgroundColor: '#ffffff',
+    ignoreElements: el => el.classList && el.classList.contains('pick')
+  });
+  return new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+}
+
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+async function exportPngs() {
+  const btn = $('pngBtn');
+  const cards = Array.from(document.querySelectorAll('.badgecard')).filter(c => c.querySelector('.pick').checked);
+  if (!cards.length) { showMsg($('topMsg'), 'No badges selected — tick at least one card.', false); return; }
+
+  const origLabel = btn.textContent;
+  btn.disabled = true;
+  try {
+    if (cards.length === 1) {
+      btn.textContent = 'Rendering…';
+      const blob = await cardToBlob(cards[0]);
+      downloadBlob(blob, `${cards[0].dataset.file}.png`);
+    } else {
+      const zip = new JSZip();
+      for (let i = 0; i < cards.length; i++) {
+        btn.textContent = `Rendering ${i + 1} of ${cards.length}…`;
+        const blob = await cardToBlob(cards[i]);
+        zip.file(`${cards[i].dataset.file}.png`, blob);
+      }
+      btn.textContent = 'Zipping…';
+      const zipBlob = await zip.generateAsync({ type: 'blob' });
+      downloadBlob(zipBlob, 'badges.zip');
+    }
+    showMsg($('topMsg'), `Exported ${cards.length} badge image(s).`, true);
+  } catch (e) {
+    showMsg($('topMsg'), 'PNG export failed: ' + e.message, false);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = origLabel;
+  }
+}
+
 $('load').addEventListener('click', loadData);
 $('fEvent').addEventListener('change', render);
 $('fTier').addEventListener('change', render);
@@ -275,6 +328,7 @@ $('fSearch').addEventListener('input', render);
 $('selectAll').addEventListener('click', () => document.querySelectorAll('.pick').forEach(c => c.checked = true));
 $('clearAll').addEventListener('click', () => document.querySelectorAll('.pick').forEach(c => c.checked = false));
 $('printBtn').addEventListener('click', () => window.print());
+$('pngBtn').addEventListener('click', exportPngs);
 if (tokenInput.value) loadData();
 </script>
 </body>
