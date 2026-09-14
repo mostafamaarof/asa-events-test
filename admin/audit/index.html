@@ -158,7 +158,10 @@ const FLOW_LABELS = {
   edit_save: 'saving an edit',
   upload: 'uploading a file',
   server: 'an unexpected server error',
-  checkin: 'scanning a badge at reception'
+  checkin: 'scanning a badge at reception',
+  gate: 'the invitation code / email step',
+  events_pick: 'choosing which event(s) to register for',
+  edit_request: 'requesting an edit link (own-browser validation)'
 };
 /* Error codes plain enough to skip a label; these earn a friendlier one. */
 const ERROR_LABELS = {
@@ -167,6 +170,11 @@ const ERROR_LABELS = {
   not_approved: 'Registration is not approved',
   event_mismatch: "Badge's event doesn't match the registration",
   event_required: 'Badge has no event encoded and the person covers more than one',
+  missing_code: 'Left the invitation code blank',
+  missing_email: 'Left the email blank',
+  missing_reference: 'Left the submission reference blank',
+  invalid_email: 'Email not in a valid format',
+  disposable_email: 'Disposable email domain rejected',
   session_expired: 'Session expired',
   too_fast: 'Form filled suspiciously fast (bot check)',
   invalid_code_format: 'Invitation code not in the expected format',

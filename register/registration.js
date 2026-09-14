@@ -874,6 +874,20 @@ async function call(path, body) {
   if (!r.ok) throw new Error(j.error || 'request_failed');
   return j;
 }
+/* A few validation failures (bad invitation code format, malformed email, no
+   event picked) are caught entirely in the browser and never reach another
+   endpoint -- without this they'd never show up in the audit trail. Best-
+   effort and silent: never awaited, never lets a network hiccup affect the
+   real form. */
+function reportClientError(flow, code, detail) {
+  if (CONFIG.MOCK) return;
+  try {
+    fetch(CONFIG.apiBase + '/client-error', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ flow, code, detail: detail || null })
+    }).catch(() => {});
+  } catch (e) { /* telemetry must never break the real flow */ }
+}
 function mock(path, body) {
   return new Promise((res, rej) => setTimeout(() => {
     if (path === '/invitations/verify') {
@@ -1043,8 +1057,9 @@ async function submitEditRequest() {
   const e = {};
   const ref = (state.data.__editRef || '').trim();
   const mail = (state.data.__editMail || '').trim();
-  if (!ref) e.editReference = T('errRequired');
-  if (!mail) e.editEmail = T('errRequired'); else if (!RE.email.test(mail)) e.editEmail = T('errEmail');
+  if (!ref) { e.editReference = T('errRequired'); reportClientError('edit_request', 'missing_reference'); }
+  if (!mail) { e.editEmail = T('errRequired'); reportClientError('edit_request', 'missing_email'); }
+  else if (!RE.email.test(mail)) { e.editEmail = T('errEmail'); reportClientError('edit_request', 'invalid_email', mail); }
   state.errors = e;
   if (Object.keys(e).length) return renderEditRequest();
   try {
@@ -1058,10 +1073,11 @@ async function submitGate(btn) {
   if (state._gateBusy) return;                                 // ignore extra clicks while a request is in flight
   const e = {};
   const c = state.data.invitation_code || '', m = state.data.institutional_email || '';
-  if (!c) e.invitation_code = T('errRequired'); else if (!RE.code.test(c)) e.invitation_code = T('errCode');
-  if (!m) e.institutional_email = T('errRequired');
-  else if (!RE.email.test(m)) e.institutional_email = T('errEmail');
-  else if (DISPOSABLE.includes(domainOf(m))) e.institutional_email = T('errDisposable');
+  if (!c) { e.invitation_code = T('errRequired'); reportClientError('gate', 'missing_code'); }
+  else if (!RE.code.test(c)) { e.invitation_code = T('errCode'); reportClientError('gate', 'invalid_code_format', c); }
+  if (!m) { e.institutional_email = T('errRequired'); reportClientError('gate', 'missing_email'); }
+  else if (!RE.email.test(m)) { e.institutional_email = T('errEmail'); reportClientError('gate', 'invalid_email', m); }
+  else if (DISPOSABLE.includes(domainOf(m))) { e.institutional_email = T('errDisposable'); reportClientError('gate', 'disposable_email', m); }
   // A personal address is not rejected here. Only the invitation record knows
   // whether one is permitted, so the decision belongs to the server.
   // Honeypot: a real bot fills every field it can see in the markup, since it
@@ -1136,7 +1152,7 @@ function renderEventsPick() {
     el('button', { class: 'btn', onclick: confirmEventsPick }, T('next')));
 }
 function confirmEventsPick() {
-  if (!state.selectedEventCodes.length) { state.errors = { events: T('errNoEvents') }; renderEventsPick(); return; }
+  if (!state.selectedEventCodes.length) { state.errors = { events: T('errNoEvents') }; reportClientError('events_pick', 'no_events_selected'); renderEventsPick(); return; }
   state.events = state.selectedEventCodes.map(c => EVENTS[c]).filter(Boolean);
   proceedToForm();
 }

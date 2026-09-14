@@ -40,6 +40,10 @@ import { connect } from 'cloudflare:sockets';
                                     manual {regnum, event_code} pair, records a check-in the first time and
                                     returns the same participant data either way (Bearer ADMIN_TOKEN or VIEWER_TOKEN)
      GET  /v1/admin/checkins        recent check-ins across both events, newest first (Bearer ADMIN_TOKEN or VIEWER_TOKEN)
+     POST /v1/client-error          log one error the browser caught and showed to a registrant before it ever
+                                    reached another endpoint (a bad invitation code or email caught by the
+                                    gate page's own validation, no event selected, etc.) -- flow/code must be
+                                    on the fixed allowlist (CLIENT_ERROR_CODES) or the call is silently ignored
    Every error a registrant/editor/uploader can see on the public paths above
    is also written to audit_log as one 'error_shown' action (entity = which
    flow, entity_id = the error code, detail = whatever identifies who hit it).
@@ -62,7 +66,7 @@ const UPLOAD_ACCEPT = {
 };
 const UPLOAD_MAX_MB = { any: 15, image: 10, doc: 50 };
 const PUBLIC_PATHS = new Set(['/v1/invitations/verify', '/v1/registrations', '/v1/registrations/edit-link',
-  '/v1/registrations/edit-fetch', '/v1/registrations/edit', '/v1/uploads']);
+  '/v1/registrations/edit-fetch', '/v1/registrations/edit', '/v1/uploads', '/v1/client-error']);
 
 /* ---------- small helpers ---------- */
 const now = () => Math.floor(Date.now() / 1000);
@@ -1058,6 +1062,30 @@ async function uploadFile(req, env, ch, ipHash) {
   return json({ ok: true, key, filename: file.name, size: file.size, mime: file.type }, 201, ch);
 }
 
+/* A handful of validation failures happen entirely in the browser before any
+   other endpoint is ever called -- an invitation code that fails its format
+   check, a malformed or disposable email, no event picked -- and would
+   otherwise never reach the audit trail at all. Fixed allowlist (not free
+   text) and rate-limited, since this is the one endpoint anyone can call
+   with no session or invitation at all; always answers ok so a logging
+   hiccup never surfaces as an error to a real applicant. */
+const CLIENT_ERROR_CODES = {
+  gate: ['missing_code', 'invalid_code_format', 'missing_email', 'invalid_email', 'disposable_email'],
+  events_pick: ['no_events_selected'],
+  edit_request: ['missing_reference', 'missing_email', 'invalid_email']
+};
+async function logClientError(req, env, ch, ipHash) {
+  const b = await req.json().catch(() => ({}));
+  const flow = String(b.flow || '').trim();
+  const code = String(b.code || '').trim();
+  const detail = String(b.detail || '').slice(0, 200) || null;
+  const allowed = CLIENT_ERROR_CODES[flow];
+  if (allowed && allowed.includes(code) && await allow(env, 'clienterr:' + ipHash, 40, 3600)) {
+    await auditError(env, flow, code, detail, ipHash);
+  }
+  return json({ ok: true }, 200, ch);
+}
+
 async function adminGetFile(req, env, ch) {
   if (!requireAdminOrViewer(req, env)) return fail('unauthorized', 401, ch);
   const key = new URL(req.url).searchParams.get('key') || '';
@@ -1092,6 +1120,7 @@ export default {
       if (req.method === 'GET'  && pathname === '/v1/admin/invitations')  return await adminListInvitations(req, env, ch);
       if (req.method === 'POST' && pathname === '/v1/admin/invitations')  return await adminCreateInvitation(req, env, ch, ipHash);
       if (req.method === 'POST' && pathname === '/v1/uploads')            return await uploadFile(req, env, ch, ipHash);
+      if (req.method === 'POST' && pathname === '/v1/client-error')       return await logClientError(req, env, ch, ipHash);
       if (req.method === 'GET'  && pathname === '/v1/admin/files')        return await adminGetFile(req, env, ch);
       if (req.method === 'GET'  && pathname === '/v1/admin/attachments')  return await adminAttachments(req, env, ch);
       if (req.method === 'POST' && pathname === '/v1/admin/registrations/status') return await adminSetStatus(req, env, ch, ipHash);
