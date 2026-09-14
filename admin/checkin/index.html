@@ -201,6 +201,15 @@ async function startCam() {
   try { authHeaders(); } catch (e) { showMsg($('topMsg'), e.message, false); return; }
   if (typeof QrScanner !== 'function') { showMsg($('topMsg'), 'QR scanner library failed to load.', false); return; }
   const video = $('video');
+  /* QrScanner.start() only resolves once the <video> is actually decoding
+     frames -- most browsers never play a display:none video, so the video
+     must be revealed BEFORE start() is awaited, not after. Doing it after
+     (the original bug here) deadlocks start() forever even though the
+     camera light is already on, since getUserMedia succeeds independently
+     of whether the video element ever plays. */
+  video.hidden = false;
+  $('cammsg').hidden = true;
+  $('startCam').disabled = true;
   try {
     qrScanner = new QrScanner(video, (result) => onDecode(result.data), {
       returnDetailedScanResult: true,
@@ -209,15 +218,16 @@ async function startCam() {
       preferredCamera: 'environment',
       maxScansPerSecond: 5
     });
-    await qrScanner.start();
+    const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('timed out starting the camera preview')), 12000));
+    await Promise.race([qrScanner.start(), timeout]);
   } catch (e) {
     showMsg($('topMsg'), 'Could not access the camera: ' + e.message, false);
-    qrScanner = null;
+    if (qrScanner) { qrScanner.stop(); qrScanner.destroy(); qrScanner = null; }
+    video.hidden = true;
+    $('cammsg').hidden = false;
+    $('startCam').disabled = false;
     return;
   }
-  video.hidden = false;
-  $('cammsg').hidden = true;
-  $('startCam').disabled = true;
   $('stopCam').disabled = false;
   scanLocked = false;
 }
