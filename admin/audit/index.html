@@ -140,6 +140,7 @@ const ACTIONS = {
   field_values_renamed:        { label: 'Organisation/hotel names merged', pill: 'edit' },
   edit_link_sent:              { label: 'Edit link emailed',           pill: 'info' },
   reminder_sent:                { label: 'Missing-data reminder emailed', pill: 'info' },
+  checked_in:                   { label: 'Checked in at reception',      pill: 'new' },
   invitation_created:          { label: 'Invitation code created',     pill: 'new' },
   invitation_verified:         { label: 'Invitation code verified',    pill: 'info' },
   invitation_verify_failed:    { label: 'Invitation code check failed', pill: 'warn', warn: true },
@@ -156,11 +157,15 @@ const FLOW_LABELS = {
   edit_fetch: 'opening the edit link',
   edit_save: 'saving an edit',
   upload: 'uploading a file',
-  server: 'an unexpected server error'
+  server: 'an unexpected server error',
+  checkin: 'scanning a badge at reception'
 };
 /* Error codes plain enough to skip a label; these earn a friendlier one. */
 const ERROR_LABELS = {
   rate_limited: 'Too many attempts, temporarily blocked',
+  not_found: 'No matching registration found',
+  not_approved: 'Registration is not approved',
+  event_mismatch: "Badge's event doesn't match the registration",
   session_expired: 'Session expired',
   too_fast: 'Form filled suspiciously fast (bot check)',
   invalid_code_format: 'Invitation code not in the expected format',
@@ -226,6 +231,10 @@ function describe(e) {
       return `Reference ${ref || e.entity_id} → ${TIER_LABELS[tier] || tier || '?'}`;
     }
     case 'edit_link_sent': return `Reference ${e.detail || e.entity_id} — link emailed to the registrant`;
+    case 'checked_in': {
+      const [ref, ev] = String(e.detail || '').split(':');
+      return `Reference ${ref || e.entity_id} — ${ev || '?'}`;
+    }
     case 'invitation_created': return `Code ${e.detail || e.entity_id} generated`;
     case 'invitation_verified': return `Code used to open the registration form (email entered: ${e.detail || 'not recorded'})`;
     case 'invitation_verify_failed': return `Code "${e.entity_id}" typed — not found or inactive`;

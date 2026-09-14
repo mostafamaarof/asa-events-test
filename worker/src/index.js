@@ -36,6 +36,10 @@ import { connect } from 'cloudflare:sockets';
                                     Pass preview:true to compose and return the same emails without sending
                                     them or touching the database/audit trail.
      GET  /v1/admin/audit           recent audit-trail entries (Bearer ADMIN_TOKEN only — not VIEWER_TOKEN)
+     POST /v1/admin/checkin         reception scan/lookup: resolves a badge QR ("regnum|event_code") or a
+                                    manual {regnum, event_code} pair, records a check-in the first time and
+                                    returns the same participant data either way (Bearer ADMIN_TOKEN or VIEWER_TOKEN)
+     GET  /v1/admin/checkins        recent check-ins across both events, newest first (Bearer ADMIN_TOKEN or VIEWER_TOKEN)
    Every error a registrant/editor/uploader can see on the public paths above
    is also written to audit_log as one 'error_shown' action (entity = which
    flow, entity_id = the error code, detail = whatever identifies who hit it).
@@ -879,6 +883,64 @@ async function adminAuditLog(req, env, ch) {
   return json({ ok: true, count: results.length, entries: results }, 200, ch);
 }
 
+/* Reception check-in. Each badge's QR encodes "<regnum>|<event_code>" (see
+   admin/badges) rather than just the registration number, because a
+   dual-event participant's two cards otherwise carry the exact same
+   regnum -- the event_code is what tells the scanner which day's badge was
+   actually shown. Idempotent: re-scanning an already-checked-in badge
+   returns the original timestamp with already:true instead of erroring or
+   writing a second row/audit entry, so a nervous re-scan at a busy desk is
+   harmless. */
+async function adminCheckin(req, env, ch, ipHash) {
+  if (!requireAdminOrViewer(req, env)) return fail('unauthorized', 401, ch);
+  const b = await req.json().catch(() => ({}));
+  const code = String(b.code || '').trim();
+  let regnum, eventCode;
+  if (code.includes('|')) {
+    const i = code.lastIndexOf('|');
+    regnum = code.slice(0, i).trim();
+    eventCode = code.slice(i + 1).trim();
+  } else {
+    regnum = String(b.regnum || '').trim();
+    eventCode = String(b.event_code || '').trim();
+  }
+  if (!regnum || !eventCode) { await auditError(env, 'checkin', 'invalid_code', `${regnum}|${eventCode}`, ipHash); return fail('invalid_code', 400, ch); }
+
+  const reg = await env.DB.prepare(
+    `SELECT * FROM registrations WHERE registration_number = ? OR reference = ?`).bind(regnum, regnum).first();
+  if (!reg) { await auditError(env, 'checkin', 'not_found', `${regnum}|${eventCode}`, ipHash); return fail('not_found', 404, ch); }
+  if (reg.status !== 'approved') { await auditError(env, 'checkin', 'not_approved', `${reg.reference}|${eventCode}`, ipHash); return fail('not_approved', 409, ch); }
+  const codes = (reg.event_codes || '').split(',').filter(Boolean);
+  if (!codes.includes(eventCode)) { await auditError(env, 'checkin', 'event_mismatch', `${reg.reference}|${eventCode}`, ipHash); return fail('event_mismatch', 409, ch); }
+
+  const existing = await env.DB.prepare('SELECT checked_in_at FROM checkins WHERE reference = ? AND event_code = ?')
+    .bind(reg.reference, eventCode).first();
+  const already = !!existing;
+  let checkedInAt = existing ? existing.checked_in_at : new Date().toISOString();
+  if (!already) {
+    await env.DB.prepare('INSERT INTO checkins (reference, event_code, checked_in_at) VALUES (?,?,?)')
+      .bind(reg.reference, eventCode, checkedInAt).run();
+    await audit(env, 'checked_in', 'registration', reg.registration_id, `${reg.reference}:${eventCode}`, ipHash);
+    await notifyTelegram(env, `✅ <b>Checked in</b>\n${esc(reg.full_name || '(no name)')} — ${esc(reg.reference)} · ${esc(eventCode)}`);
+  }
+
+  return json({
+    ok: true, already, checked_in_at: checkedInAt,
+    reference: reg.reference, registration_number: reg.registration_number || null,
+    event_code: eventCode, full_name: reg.full_name, organization_name: reg.organization_name,
+    country: reg.country, role_in_delegation: reg.role_in_delegation, participant_tier: reg.participant_tier
+  }, 200, ch);
+}
+
+async function adminListCheckins(req, env, ch) {
+  if (!requireAdminOrViewer(req, env)) return fail('unauthorized', 401, ch);
+  const { results } = await env.DB.prepare(
+    `SELECT c.reference, c.event_code, c.checked_in_at, r.full_name, r.organization_name, r.country, r.participant_tier
+     FROM checkins c JOIN registrations r ON r.reference = c.reference
+     ORDER BY c.checked_in_at DESC LIMIT 1000`).all();
+  return json({ ok: true, count: results.length, checkins: results }, 200, ch);
+}
+
 function requireAdmin(req, env) {
   const token = (req.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '');
   return !!env.ADMIN_TOKEN && token === env.ADMIN_TOKEN;
@@ -1021,6 +1083,8 @@ export default {
       if (req.method === 'POST' && pathname === '/v1/admin/field-values/rename') return await adminRenameFieldValues(req, env, ch, ipHash);
       if (req.method === 'POST' && pathname === '/v1/admin/reminders/send')     return await adminSendReminders(req, env, ch, ipHash);
       if (req.method === 'GET'  && pathname === '/v1/admin/audit')              return await adminAuditLog(req, env, ch);
+      if (req.method === 'POST' && pathname === '/v1/admin/checkin')              return await adminCheckin(req, env, ch, ipHash);
+      if (req.method === 'GET'  && pathname === '/v1/admin/checkins')             return await adminListCheckins(req, env, ch);
       if (pathname === '/v1/health') return json({ ok: true, time: new Date().toISOString() }, 200, ch);
       return fail('not_found', 404, ch);
     } catch (e) {

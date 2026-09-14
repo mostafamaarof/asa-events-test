@@ -3,6 +3,7 @@
 
 DROP TABLE IF EXISTS throttle;
 DROP TABLE IF EXISTS otps;
+DROP TABLE IF EXISTS checkins;
 DROP TABLE IF EXISTS registrations;
 DROP TABLE IF EXISTS invitation_events;
 DROP TABLE IF EXISTS invitations;
@@ -88,6 +89,17 @@ CREATE TABLE registrations (
   reminder_categories TEXT                 -- comma list of what that reminder covered, e.g. 'itinerary,hotel'
 );
 CREATE INDEX ix_reg_status ON registrations(status);
+
+-- One row per (person, event) actually checked in at reception -- scanning a
+-- dual-event participant's WGITA badge and their KSC badge writes two rows.
+-- Added live via a non-destructive migration; kept here for fresh installs.
+CREATE TABLE checkins (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  reference     TEXT NOT NULL REFERENCES registrations(reference),
+  event_code    TEXT NOT NULL,
+  checked_in_at TEXT NOT NULL,
+  UNIQUE(reference, event_code)
+);
 
 CREATE TABLE throttle (
   k        TEXT PRIMARY KEY,

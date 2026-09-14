@@ -234,7 +234,11 @@ function computeBadges() {
 }
 
 function badgeCard(b) {
-  const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${encodeURIComponent(b.regnum)}`;
+  /* Encodes "<regnum>|<event_code>", not just the regnum -- a dual-event
+     participant's two badges otherwise carry the exact same code, which
+     the reception check-in scanner needs to tell apart (admin/checkin). */
+  const qrData = `${b.regnum}|${b.eventCode}`;
+  const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${encodeURIComponent(qrData)}`;
   return `<div class="badgecard" data-ref="${esc(b.ref)}" data-event="${esc(b.meta.short)}" data-file="${esc(b.regnum)}-${esc(b.meta.short)}">
     <input type="checkbox" class="pick" checked>
     <div class="top">
