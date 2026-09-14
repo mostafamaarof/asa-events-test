@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow, noarchive">
+<title>Announcements — ASA Events Admin</title>
+<style>
+:root{
+  --ink:#0B2135; --ink-soft:#1C3A56; --surface:#EEF2F6; --sheet:#FFFFFF;
+  --rule:#CBD6E0; --rule-strong:#93A6B8; --muted:#556A7D;
+  --brass:#A8842C; --brass-tint:#F3EBD8;
+  --ok:#1D6B4C; --ok-tint:#E9F4EE; --err:#A02226; --err-tint:#FAECEC;
+  --f-body:"IBM Plex Sans",system-ui,sans-serif; --f-num:ui-monospace,Consolas,monospace;
+}
+*,*::before,*::after{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{font-family:var(--f-body);font-size:15px;line-height:1.55;color:var(--ink);background:var(--surface)}
+header{background:var(--ink);color:#fff;padding:16px 24px;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+header h1{margin:0;font-size:18px;font-weight:500}
+header p{margin:4px 0 0;font-size:13px;color:#A9BDD0}
+header nav{margin-inline-start:auto;display:flex;gap:14px}
+header nav a{color:#fff;font-size:13px;text-decoration:underline}
+main{max-width:1300px;margin:0 auto;padding:24px 20px 64px;display:grid;gap:20px}
+.card{background:var(--sheet);border:1px solid var(--rule);padding:20px 24px}
+.card h2{font-size:16px;margin:0 0 16px}
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px 20px}
+@media (max-width:640px){.grid{grid-template-columns:1fr}}
+.f{display:flex;flex-direction:column;gap:5px}
+label{font-size:13px;font-weight:500}
+input,select,textarea{font:inherit;font-size:14px;padding:8px 10px;border:1px solid var(--rule-strong);border-radius:2px;background:#fff;color:var(--ink)}
+textarea{resize:vertical;min-height:160px;line-height:1.5}
+.hint{font-size:12px;color:var(--muted);margin-top:2px}
+.actions{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+button{font:inherit;font-size:14px;font-weight:500;padding:10px 20px;border-radius:2px;border:1px solid transparent;background:var(--ink);color:#fff;cursor:pointer}
+button:hover{background:var(--ink-soft)}
+button:disabled{opacity:.5;cursor:not-allowed}
+button.ghost{background:transparent;color:var(--ink);border-color:var(--rule-strong)}
+button.ghost:hover{background:#F1F5F8}
+.msg{font-size:13px;padding:10px 12px;border-radius:2px;display:none;white-space:pre-line}
+.msg.ok{display:block;background:var(--ok-tint);color:var(--ok)}
+.msg.err{display:block;background:var(--err-tint);color:var(--err)}
+.filters{display:flex;gap:12px;flex-wrap:wrap;align-items:end}
+.filters .f{min-width:170px}
+.count{font-size:13px;color:var(--muted)}
+.empty{color:var(--muted);font-size:13px;padding:8px 0}
+
+.tblwrap{overflow-x:auto;background:var(--sheet);border:1px solid var(--rule);max-height:520px;overflow-y:auto}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th,td{text-align:left;padding:8px 12px;border-bottom:1px solid var(--rule);vertical-align:top}
+th{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:600;background:#FAFCFD;position:sticky;top:0}
+tr:last-child td{border-bottom:none}
+td.wrap{white-space:normal;min-width:140px}
+td.ref{font-family:var(--f-num);font-size:12px;color:var(--muted);white-space:nowrap}
+.pick{width:16px;height:16px}
+.pill{font-size:11px;font-weight:600;padding:2px 8px;border-radius:9px;white-space:nowrap}
+.pill.yes{background:var(--ok-tint);color:var(--ok)}
+.pill.no{background:var(--rule);color:var(--muted)}
+
+.previewcard{background:var(--sheet);border:1px solid var(--rule);margin-bottom:14px}
+.previewcard .phead{padding:12px 18px;border-bottom:1px solid var(--rule);background:var(--brass-tint)}
+.previewcard .phead .to{font-weight:600;font-size:14px}
+.previewcard .phead .subj{font-size:13px;color:var(--muted);margin-top:2px}
+.previewcard iframe{display:block;width:100%;height:340px;border:0}
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>ASA Events — Announcements</h1>
+    <p>Internal tool. Not linked from the public site. Requires the admin token.</p>
+  </div>
+  <nav><a href="../">All tools</a><a href="../reminders/">Reminders</a><a href="../audit/">Audit trail</a></nav>
+</header>
+
+<main>
+  <div class="card">
+    <h2>Admin token</h2>
+    <div class="grid">
+      <div class="f" style="grid-column:1/-1">
+        <label for="token">Admin token <span style="color:var(--brass)">*</span></label>
+        <input type="password" id="token" autocomplete="off" placeholder="paste your admin token">
+        <span class="hint">Kept only in this browser tab (sessionStorage). This page sends real email to registrants, so it accepts the admin token only.</span>
+      </div>
+    </div>
+    <div class="actions" style="margin-top:14px">
+      <button id="load">Load registrations</button>
+      <button class="ghost" id="selectAll">Select all shown</button>
+      <button class="ghost" id="clearAll">Clear all</button>
+      <span id="topMsg" class="msg"></span>
+    </div>
+    <div class="filters" style="margin-top:16px">
+      <div class="f">
+        <label for="fEvent">Event</label>
+        <select id="fEvent">
+          <option value="">All events</option>
+          <option value="WGITA-35-2026">35th Annual Meeting of INTOSAI Working Group on IT Audit</option>
+          <option value="KSC-SC18-2026">18th KSC Steering Committee Meeting</option>
+        </select>
+      </div>
+      <div class="f">
+        <label for="fCheckin">Check-in status</label>
+        <select id="fCheckin">
+          <option value="">Everyone</option>
+          <option value="yes">Checked in</option>
+          <option value="no">Not checked in yet</option>
+        </select>
+      </div>
+      <div class="f" style="flex:1;min-width:220px">
+        <label for="fSearch">Search (name, organization)</label>
+        <input type="text" id="fSearch" placeholder="type to filter...">
+      </div>
+      <span class="count" id="rowCount"></span>
+    </div>
+    <p class="hint" style="margin-top:10px">
+      "Checked in" / "Not checked in" is relative to the Event filter above (any of their events if left on "All events").
+      Handy for day-of nudges like "collect your badge" to whoever hasn't come through reception yet.
+    </p>
+  </div>
+
+  <div id="list"></div>
+
+  <div class="card">
+    <h2>Compose</h2>
+    <div class="grid">
+      <div class="f" style="grid-column:1/-1">
+        <label for="subject">Subject <span style="color:var(--brass)">*</span></label>
+        <input type="text" id="subject" placeholder="e.g. Badge collection and shuttle times">
+      </div>
+      <div class="f" style="grid-column:1/-1">
+        <label for="body">Message <span style="color:var(--brass)">*</span></label>
+        <textarea id="body" placeholder="Plain text. Leave a blank line between paragraphs."></textarea>
+        <span class="hint">Sent as "Dear &lt;name&gt;," followed by this message, in the same footer as every other system email. No attachments or rich formatting — for anything more than plain text, email directly.</span>
+      </div>
+    </div>
+    <div class="actions" style="margin-top:14px">
+      <button class="ghost" id="previewBtn">Preview</button>
+      <button id="sendBtn">Send announcement</button>
+      <span class="hint" id="sendHint"></span>
+    </div>
+  </div>
+
+  <div id="preview"></div>
+</main>
+
+<script>
+const CONFIG = { apiBase: 'https://asa-events-api.mostafamaarof.workers.dev/v1' };
+const $ = (id) => document.getElementById(id);
+const tokenInput = $('token');
+tokenInput.value = sessionStorage.getItem('asa_admin_token') || '';
+tokenInput.addEventListener('input', () => sessionStorage.setItem('asa_admin_token', tokenInput.value));
+
+function showMsg(el, text, ok) { el.textContent = text; el.className = 'msg ' + (ok ? 'ok' : 'err'); }
+function authHeaders() {
+  const token = tokenInput.value.trim();
+  if (!token) throw new Error('Enter the admin token first.');
+  return { 'Authorization': 'Bearer ' + token };
+}
+async function apiFetch(path, opts) {
+  const res = await fetch(CONFIG.apiBase + path, { ...opts, headers: { ...authHeaders(), ...(opts && opts.headers) } });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || data.ok === false) throw new Error(data.error || ('HTTP ' + res.status));
+  return data;
+}
+function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c])); }
+
+const O = (pairs) => Object.fromEntries(pairs);
+const OPT = { tier: O([['president','President'],['vice_president','Vice President'],['other','Other']]) };
+const EVENT_NAMES = { 'WGITA-35-2026': '35th Annual Meeting of INTOSAI Working Group on IT Audit', 'KSC-SC18-2026': '18th KSC Steering Committee Meeting' };
+
+let all = [];
+let checkinsByRef = new Map(); // reference -> Set(event_code)
+
+async function loadData() {
+  const msg = $('topMsg'); msg.className = 'msg';
+  try {
+    const [regData, ciData] = await Promise.all([
+      apiFetch('/admin/export.json', { method: 'GET' }),
+      apiFetch('/admin/checkins', { method: 'GET' })
+    ]);
+    all = (regData.registrations || []).filter(r => r.status === 'approved');
+    checkinsByRef = new Map();
+    (ciData.checkins || []).forEach(c => {
+      if (!checkinsByRef.has(c.reference)) checkinsByRef.set(c.reference, new Set());
+      checkinsByRef.get(c.reference).add(c.event_code);
+    });
+    showMsg(msg, `Loaded ${all.length} approved registration(s).`, true);
+    render();
+  } catch (e) {
+    showMsg(msg, e.message, false);
+  }
+}
+
+function computeRows() {
+  const evFilter = $('fEvent').value;
+  const checkinFilter = $('fCheckin').value;
+  const search = $('fSearch').value.trim().toLowerCase();
+  return all
+    .filter(r => !evFilter || (r.event_codes || '').split(',').includes(evFilter))
+    .map(r => {
+      const codes = (r.event_codes || '').split(',').filter(Boolean);
+      const checkedInSet = checkinsByRef.get(r.reference) || new Set();
+      const checkedIn = evFilter ? checkedInSet.has(evFilter) : checkedInSet.size > 0;
+      return {
+        ref: r.reference,
+        name: r.full_name || '(no name)',
+        org: r.organization_name || '',
+        country: r.country || '',
+        tier: OPT.tier[r.participant_tier || 'other'] || 'Other',
+        events: codes.map(c => EVENT_NAMES[c] || c).join(' & '),
+        checkedIn
+      };
+    })
+    .filter(row => !checkinFilter || (checkinFilter === 'yes' ? row.checkedIn : !row.checkedIn))
+    .filter(row => !search || row.name.toLowerCase().includes(search) || row.org.toLowerCase().includes(search))
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function render() {
+  const rows = computeRows();
+  $('rowCount').textContent = `${rows.length} of ${all.length} shown`;
+  const list = $('list');
+  if (!rows.length) { list.innerHTML = '<div class="card"><p class="empty">Nobody matches these filters. Load the data and adjust filters.</p></div>'; return; }
+
+  const rowsHtml = rows.map(r => `<tr>
+    <td><input type="checkbox" class="pick" data-ref="${esc(r.ref)}" checked></td>
+    <td class="wrap">${esc(r.name)}</td>
+    <td>${esc(r.tier)}</td>
+    <td class="wrap">${esc(r.org)}${r.country ? ' · ' + esc(r.country) : ''}</td>
+    <td class="wrap">${esc(r.events)}</td>
+    <td><span class="pill ${r.checkedIn ? 'yes' : 'no'}">${r.checkedIn ? 'Checked in' : 'Not yet'}</span></td>
+    <td class="ref">${esc(r.ref)}</td>
+  </tr>`).join('');
+
+  list.innerHTML = `<div class="card" style="padding:0"><div class="tblwrap"><table>
+    <thead><tr><th></th><th>Name</th><th>Tier</th><th>Org / Country</th><th>Event(s)</th><th>Check-in</th><th>Ref</th></tr></thead>
+    <tbody>${rowsHtml}</tbody>
+  </table></div></div>`;
+}
+
+function selectedRefs() {
+  return [...document.querySelectorAll('.pick:checked')].map(c => c.dataset.ref);
+}
+
+async function previewAnnouncement() {
+  const msg = $('topMsg'); msg.className = 'msg';
+  const subject = $('subject').value.trim();
+  const body = $('body').value.trim();
+  const refs = selectedRefs();
+  const previewEl = $('preview');
+  if (!subject || !body) { showMsg(msg, 'Enter a subject and message first.', false); return; }
+  if (!refs.length) { showMsg(msg, 'Select at least one recipient.', false); previewEl.innerHTML = ''; return; }
+
+  const sample = refs.slice(0, 3);
+  const btn = $('previewBtn');
+  btn.disabled = true; const orig = btn.textContent; btn.textContent = 'Composing…';
+  try {
+    const data = await apiFetch('/admin/announce/send', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ subject, body, references: sample, preview: true })
+    });
+    const results = data.results || [];
+    previewEl.innerHTML = `<div class="card" style="padding:16px 20px">
+      <h2 style="margin:0 0 4px">Preview</h2>
+      <p class="hint" style="margin:0 0 14px">Nothing has been sent. Showing ${results.length} of ${refs.length} selected — the same message goes to everyone, only the greeting name differs.</p>
+      ${results.map(r => r.ok
+        ? `<div class="previewcard">
+             <div class="phead"><div class="to">${esc(r.to)}</div><div class="subj">${esc(r.subject)}</div></div>
+             <iframe srcdoc="${esc(r.html)}" sandbox=""></iframe>
+           </div>`
+        : `<div class="previewcard"><div class="phead">${esc(r.reference)} — could not preview (${esc(r.error)})</div></div>`
+      ).join('')}
+    </div>`;
+    previewEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    showMsg(msg, `Composed ${results.filter(r => r.ok).length} preview(s).`, true);
+  } catch (e) {
+    showMsg(msg, 'Could not compose preview: ' + e.message, false);
+  } finally {
+    btn.disabled = false; btn.textContent = orig;
+  }
+}
+
+/* Each real API call opens one raw SMTP connection per recipient (see
+   sendMailGmail in the worker), so a single request sending to hundreds of
+   people risks simply running too long -- send in modest chunks instead,
+   sequentially, so one slow/failed batch doesn't jeopardise the rest. */
+const SEND_CHUNK = 20;
+async function sendAnnouncement() {
+  const msg = $('topMsg'); msg.className = 'msg';
+  const subject = $('subject').value.trim();
+  const body = $('body').value.trim();
+  const refs = selectedRefs();
+  if (!subject || !body) { showMsg(msg, 'Enter a subject and message first.', false); return; }
+  if (!refs.length) { showMsg(msg, 'Select at least one recipient.', false); return; }
+  if (!confirm(`Send "${subject}" to ${refs.length} recipient(s) now? This cannot be undone.`)) return;
+
+  const btn = $('sendBtn');
+  btn.disabled = true; const orig = btn.textContent;
+  const chunks = [];
+  for (let i = 0; i < refs.length; i += SEND_CHUNK) chunks.push(refs.slice(i, i + SEND_CHUNK));
+
+  let sent = 0, failed = [];
+  try {
+    for (let i = 0; i < chunks.length; i++) {
+      btn.textContent = chunks.length > 1 ? `Sending batch ${i + 1} of ${chunks.length}…` : 'Sending…';
+      const data = await apiFetch('/admin/announce/send', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ subject, body, references: chunks[i] })
+      });
+      const results = data.results || [];
+      sent += results.filter(r => r.ok).length;
+      failed.push(...results.filter(r => !r.ok));
+    }
+    let text = `Sent ${sent} of ${refs.length} announcement(s).`;
+    if (failed.length) text += '\nCould not send: ' + failed.map(f => `${f.reference} (${f.error})`).join(', ');
+    showMsg(msg, text, failed.length === 0);
+    $('preview').innerHTML = '';
+  } catch (e) {
+    showMsg(msg, `Sent ${sent} before this failed: ${e.message}`, false);
+  } finally {
+    btn.disabled = false; btn.textContent = orig;
+  }
+}
+
+$('load').addEventListener('click', loadData);
+$('fEvent').addEventListener('change', render);
+$('fCheckin').addEventListener('change', render);
+$('fSearch').addEventListener('input', render);
+$('selectAll').addEventListener('click', () => document.querySelectorAll('.pick').forEach(c => c.checked = true));
+$('clearAll').addEventListener('click', () => document.querySelectorAll('.pick').forEach(c => c.checked = false));
+$('previewBtn').addEventListener('click', previewAnnouncement);
+$('sendBtn').addEventListener('click', sendAnnouncement);
+if (tokenInput.value) loadData();
+</script>
+</body>
+</html>

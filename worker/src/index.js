@@ -35,6 +35,9 @@ import { connect } from 'cloudflare:sockets';
                                     accompanying), with the registrant's own edit link (Bearer ADMIN_TOKEN).
                                     Pass preview:true to compose and return the same emails without sending
                                     them or touching the database/audit trail.
+     POST /v1/admin/announce/send   free-form broadcast: {subject, body, references[]} to up to 100 confirmed
+                                    registrants per call (Bearer ADMIN_TOKEN). Pass preview:true to compose
+                                    and return without sending or touching the audit trail.
      GET  /v1/admin/audit           recent audit-trail entries (Bearer ADMIN_TOKEN only — not VIEWER_TOKEN)
      POST /v1/admin/checkin         reception scan/lookup: resolves a badge QR ("regnum|event_code") or a
                                     manual {regnum, event_code} pair, records a check-in the first time and
@@ -865,6 +868,61 @@ async function adminSendReminders(req, env, ch, ipHash) {
   return json({ ok: true, preview, results }, 200, ch);
 }
 
+/* Free-form broadcast to any set of confirmed registrants -- unlike
+   Reminders (which only ever sends the exact "still missing" categories),
+   this is arbitrary admin-authored content, so it's admin-only like
+   Reminders and gets the same preview-before-send discipline. The caller
+   is expected to chunk large recipient lists into several calls (each one
+   opens a real SMTP connection per email -- see sendMailGmail -- so a
+   single call sending to hundreds of people risks the request simply
+   running too long); this endpoint still caps at 100 as a backstop against
+   a caller that doesn't. One consolidated audit entry per send (not one per
+   recipient) -- a broadcast to 200 people is one event with a recipient
+   list, not 200 separate happenings. */
+async function adminSendAnnouncement(req, env, ch, ipHash) {
+  if (!requireAdmin(req, env)) return fail('unauthorized', 401, ch);
+  const b = await req.json().catch(() => ({}));
+  const subject = String(b.subject || '').trim();
+  const bodyText = String(b.body || '').trim();
+  const references = Array.isArray(b.references)
+    ? [...new Set(b.references.map(r => String(r || '').trim().toUpperCase()).filter(Boolean))] : [];
+  const preview = b.preview === true;
+  if (!subject || !bodyText || !references.length) return fail('missing_fields', 400, ch);
+  if (references.length > 100) return fail('too_many_recipients', 400, ch);
+
+  /* Plain text -> simple paragraphs, same minimal-formatting approach as
+     every other system email here -- no rich text editor to keep in sync
+     with what actually renders in a mail client. */
+  const bodyHtml = bodyText.split(/\n{2,}/).map(p => `<p>${esc(p).replace(/\n/g, '<br>')}</p>`).join('\n');
+
+  const results = [];
+  for (const reference of references) {
+    try {
+      const reg = await env.DB.prepare('SELECT registration_id, reference, full_name, email, status FROM registrations WHERE reference = ?').bind(reference).first();
+      if (!reg) { results.push({ reference, ok: false, error: 'not_found' }); continue; }
+      if (reg.status !== 'approved') { results.push({ reference, ok: false, error: 'not_approved' }); continue; }
+
+      const html = shell(`<p>Dear ${esc(reg.full_name || 'colleague')},</p>${bodyHtml}`);
+      if (preview) { results.push({ reference, ok: true, preview: true, to: reg.email, subject, html }); continue; }
+
+      const sendResult = await sendMail(env, reg.email, subject, html);
+      if (sendResult.skipped || sendResult.ok === false) { results.push({ reference, ok: false, error: 'send_failed' }); continue; }
+      results.push({ reference, ok: true });
+    } catch (e) {
+      results.push({ reference, ok: false, error: 'send_failed' });
+    }
+  }
+
+  if (!preview) {
+    const sent = results.filter(r => r.ok).length;
+    const failed = results.filter(r => !r.ok);
+    await audit(env, 'announcement_sent', 'announcement', null,
+      `"${subject}" — ${sent} of ${references.length} sent${failed.length ? ' (failed: ' + failed.map(f => f.reference).join(', ') + ')' : ''}`, ipHash);
+    await notifyTelegram(env, `📣 <b>Announcement sent</b>\n"${esc(subject)}" — ${sent} of ${references.length} recipient(s)`);
+  }
+  return json({ ok: true, preview, results }, 200, ch);
+}
+
 /* The registration form promises registrants their emergency-contact and
    medical/allergy fields are "seen only by the registrar, never included in
    any delegate list or export" -- so unlike the rest of data_json, these
@@ -1164,6 +1222,7 @@ export default {
       if (req.method === 'GET'  && pathname === '/v1/admin/field-values')        return await adminFieldValues(req, env, ch);
       if (req.method === 'POST' && pathname === '/v1/admin/field-values/rename') return await adminRenameFieldValues(req, env, ch, ipHash);
       if (req.method === 'POST' && pathname === '/v1/admin/reminders/send')     return await adminSendReminders(req, env, ch, ipHash);
+      if (req.method === 'POST' && pathname === '/v1/admin/announce/send')      return await adminSendAnnouncement(req, env, ch, ipHash);
       if (req.method === 'GET'  && pathname === '/v1/admin/audit')              return await adminAuditLog(req, env, ch);
       if (req.method === 'POST' && pathname === '/v1/admin/checkin')              return await adminCheckin(req, env, ch, ipHash);
       if (req.method === 'GET'  && pathname === '/v1/admin/checkins')             return await adminListCheckins(req, env, ch);

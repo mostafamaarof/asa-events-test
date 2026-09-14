@@ -147,6 +147,22 @@ button.ghost:hover{background:#F1F5F8}
     </p>
   </div>
 
+  <div class="card">
+    <h2>Quick reprint — lost badge</h2>
+    <p class="hint" style="margin-top:-8px;margin-bottom:14px">Look up one person by reference or registration number and isolate just their badge(s) below — ready to print or export straight away, ignoring the filters above.</p>
+    <div class="grid">
+      <div class="f" style="grid-column:1/-1">
+        <label for="qrRef">Reference or registration number</label>
+        <input type="text" id="qrRef" placeholder="e.g. SUB-XXXX or 2026-00042">
+      </div>
+    </div>
+    <div class="actions" style="margin-top:14px">
+      <button id="qrFind">Find &amp; isolate</button>
+      <button class="ghost" id="qrClear" hidden>Show everyone again</button>
+      <span id="qrMsg" class="msg"></span>
+    </div>
+  </div>
+
   <div id="sheet"></div>
 </main>
 
@@ -202,11 +218,9 @@ async function loadData() {
 
 /* One badge per (person, event) -- a person on both events gets two
    separate cards, each scoped to only that event's identity. */
-function computeBadges() {
-  const evFilter = $('fEvent').value;
-  const tierFilter = $('fTier').value;
-  const search = $('fSearch').value.trim().toLowerCase();
+let quickRef = '';
 
+function computeBadges() {
   const badges = [];
   all.forEach(r => {
     const codes = (r.event_codes || '').split(',').filter(Boolean);
@@ -226,6 +240,18 @@ function computeBadges() {
     });
   });
 
+  /* Quick reprint isolates one person by exact reference/regnum match and
+     ignores every other filter -- a Tier or Event filter left over from
+     browsing shouldn't silently hide the very badge reception is trying to
+     reprint right now. */
+  if (quickRef) {
+    return badges.filter(b => b.regnum.toUpperCase() === quickRef || b.ref.toUpperCase() === quickRef)
+      .sort((a, b) => a.eventCode.localeCompare(b.eventCode));
+  }
+
+  const evFilter = $('fEvent').value;
+  const tierFilter = $('fTier').value;
+  const search = $('fSearch').value.trim().toLowerCase();
   return badges
     .filter(b => !evFilter || b.eventCode === evFilter)
     .filter(b => !tierFilter || b.tier === tierFilter)
@@ -333,6 +359,28 @@ $('selectAll').addEventListener('click', () => document.querySelectorAll('.pick'
 $('clearAll').addEventListener('click', () => document.querySelectorAll('.pick').forEach(c => c.checked = false));
 $('printBtn').addEventListener('click', () => window.print());
 $('pngBtn').addEventListener('click', exportPngs);
+
+function quickFind() {
+  const v = $('qrRef').value.trim().toUpperCase();
+  const qmsg = $('qrMsg');
+  if (!v) { showMsg(qmsg, 'Type a reference or registration number first.', false); return; }
+  quickRef = v;
+  $('qrClear').hidden = false;
+  render();
+  const count = document.querySelectorAll('.badgecard').length;
+  if (count) showMsg(qmsg, `Found ${count} badge(s) for ${v} — all selected below.`, true);
+  else showMsg(qmsg, `No badge found for "${v}". Check the reference/registration number, and that they're approved.`, false);
+}
+$('qrFind').addEventListener('click', quickFind);
+$('qrRef').addEventListener('keydown', (e) => { if (e.key === 'Enter') quickFind(); });
+$('qrClear').addEventListener('click', () => {
+  quickRef = '';
+  $('qrRef').value = '';
+  $('qrClear').hidden = true;
+  $('qrMsg').className = 'msg';
+  render();
+});
+
 if (tokenInput.value) loadData();
 </script>
 </body>
