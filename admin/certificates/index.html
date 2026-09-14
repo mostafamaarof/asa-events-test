@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow, noarchive">
+<title>Certificates — ASA Events Admin</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Serif:wght@500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ink:#0B2135; --ink-soft:#1C3A56; --surface:#EEF2F6; --sheet:#FFFFFF;
+  --rule:#CBD6E0; --rule-strong:#93A6B8; --muted:#556A7D;
+  --brass:#A8842C; --brass-tint:#F3EBD8;
+  --ok:#1D6B4C; --ok-tint:#E9F4EE; --err:#A02226; --err-tint:#FAECEC;
+  --f-body:"IBM Plex Sans",system-ui,sans-serif; --f-serif:"IBM Plex Serif",Georgia,serif; --f-num:ui-monospace,Consolas,monospace;
+  --wgita:#2A78D6; --wgita-tint:#E4EFFB;
+  --ksc:#D9642C; --ksc-tint:#FBEBE0;
+}
+*,*::before,*::after{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{font-family:var(--f-body);font-size:15px;line-height:1.55;color:var(--ink);background:var(--surface)}
+header{background:var(--ink);color:#fff;padding:16px 24px}
+header h1{margin:0;font-size:18px;font-weight:500}
+header p{margin:4px 0 0;font-size:13px;color:#A9BDD0}
+main{max-width:1200px;margin:0 auto;padding:24px 20px 64px;display:grid;gap:20px}
+.card{background:var(--sheet);border:1px solid var(--rule);padding:20px 24px}
+.card h2{font-size:16px;margin:0 0 16px}
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px 20px}
+@media (max-width:640px){.grid{grid-template-columns:1fr}}
+.f{display:flex;flex-direction:column;gap:5px}
+label{font-size:13px;font-weight:500}
+input,select{font:inherit;font-size:14px;padding:8px 10px;border:1px solid var(--rule-strong);border-radius:2px;background:#fff;color:var(--ink)}
+.hint{font-size:12px;color:var(--muted);margin-top:2px}
+.actions{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+button{font:inherit;font-size:14px;font-weight:500;padding:10px 20px;border-radius:2px;border:1px solid transparent;background:var(--ink);color:#fff;cursor:pointer}
+button:hover{background:var(--ink-soft)}
+button:disabled{opacity:.5;cursor:default}
+button.ghost{background:transparent;color:var(--ink);border-color:var(--rule-strong)}
+button.ghost:hover{background:#F1F5F8}
+.msg{font-size:13px;padding:10px 12px;border-radius:2px;display:none}
+.msg.ok{display:block;background:var(--ok-tint);color:var(--ok)}
+.msg.err{display:block;background:var(--err-tint);color:var(--err)}
+.filters{display:flex;gap:12px;flex-wrap:wrap;align-items:end}
+.filters .f{min-width:180px}
+.count{font-size:13px;color:var(--muted)}
+.empty{color:var(--muted);font-size:13px;padding:8px 0}
+
+/* ---------- Certificate sheet ---------- */
+#sheet{display:flex;flex-direction:column;align-items:center;gap:20px}
+.certwrap{position:relative}
+.certwrap .pick{position:absolute;top:8px;inset-inline-end:8px;width:18px;height:18px;z-index:2}
+.certcard{
+  width:297mm;height:210mm;max-width:100%;flex:0 0 auto;position:relative;overflow:hidden;
+  background:#fff;color:var(--ink);font-family:var(--f-body);
+  border:1px solid var(--rule-strong);
+  padding:14mm 18mm;display:flex;flex-direction:column;align-items:center;text-align:center;
+}
+.certcard::before{
+  content:'';position:absolute;inset:6mm;border:1.5pt solid var(--brass);pointer-events:none;
+}
+.certcard::after{
+  content:'';position:absolute;inset:7.5mm;border:0.5pt solid var(--brass);pointer-events:none;
+}
+.certcard .top{width:100%;display:flex;justify-content:space-between;align-items:flex-start;margin-top:2mm}
+.certcard .seal{height:16mm;width:auto;object-fit:contain}
+.certcard .evtag{font-size:11px;font-weight:700;letter-spacing:.06em;padding:4px 12px;border-radius:11px;white-space:nowrap}
+.evtag.wgita{background:var(--wgita-tint);color:var(--wgita)}
+.evtag.ksc{background:var(--ksc-tint);color:var(--ksc)}
+.certcard .host{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-top:3mm}
+.certcard .title{font-family:var(--f-serif);font-size:26px;font-weight:600;letter-spacing:.03em;text-transform:uppercase;color:var(--ink);margin-top:9mm}
+.certcard .lede{font-size:13px;color:var(--muted);margin-top:6mm;font-style:italic}
+.certcard .name{font-family:var(--f-serif);font-size:34px;font-weight:600;color:var(--ink);margin-top:5mm;line-height:1.25;max-width:220mm}
+.certcard .rule{width:70mm;height:1px;background:var(--brass);margin:4mm auto 0}
+.certcard .org{font-size:14px;color:var(--ink-soft);margin-top:4mm}
+.certcard .body{font-size:13.5px;color:var(--ink-soft);max-width:190mm;margin:7mm auto 0;line-height:1.7}
+.certcard .sig{width:100%;display:flex;justify-content:space-between;margin-top:auto;padding-top:8mm}
+.certcard .sigblock{width:70mm;text-align:center}
+.certcard .sigline{border-top:1px solid var(--rule-strong);padding-top:2mm;font-size:10.5px;color:var(--muted);letter-spacing:.03em;text-transform:uppercase}
+.certcard .foot{width:100%;display:flex;justify-content:space-between;align-items:flex-end;margin-top:6mm}
+.certcard .ref{font-family:var(--f-num);font-size:9.5px;color:var(--rule-strong)}
+.certcard .qr{width:16mm;height:16mm;image-rendering:pixelated}
+
+@media print{
+  header,.card.controls{display:none}
+  body{background:#fff}
+  main{max-width:none;padding:0}
+  #sheet{gap:0}
+  .certwrap{page-break-after:always;break-after:page}
+  .certwrap:last-child{page-break-after:auto;break-after:auto}
+  .certcard{border:none}
+  .certwrap .pick{display:none}
+  #sheet .certwrap:has(.pick:not(:checked)){display:none}
+  @page{size:A4 landscape;margin:0}
+}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>ASA Events — Certificates of Attendance</h1>
+  <p>Internal tool. Not linked from the public site. Requires an access token.</p>
+</header>
+
+<main>
+  <div class="card controls">
+    <h2>Access token</h2>
+    <div class="grid">
+      <div class="f" style="grid-column:1/-1">
+        <label for="token">Access token <span style="color:var(--brass)">*</span></label>
+        <input type="password" id="token" autocomplete="off" placeholder="paste your token">
+        <span class="hint">Kept only in this browser tab (sessionStorage). Same token as the Full Report / Badges pages.</span>
+      </div>
+    </div>
+    <div class="actions" style="margin-top:14px">
+      <button id="load">Load checked-in participants</button>
+      <button class="ghost" id="selectAll">Select all shown</button>
+      <button class="ghost" id="clearAll">Clear all</button>
+      <button id="printBtn">Print certificates</button>
+      <button class="ghost" id="pngBtn">Export as PNG</button>
+      <span id="topMsg" class="msg"></span>
+    </div>
+    <div class="filters" style="margin-top:16px;margin-bottom:0">
+      <div class="f">
+        <label for="fEvent">Event</label>
+        <select id="fEvent">
+          <option value="">All events</option>
+          <option value="WGITA-35-2026">35th Annual Meeting of INTOSAI Working Group on IT Audit</option>
+          <option value="KSC-SC18-2026">18th KSC Steering Committee Meeting</option>
+        </select>
+      </div>
+      <div class="f" style="flex:1;min-width:220px">
+        <label for="fSearch">Search (name, organization)</label>
+        <input type="text" id="fSearch" placeholder="type to filter...">
+      </div>
+      <span class="count" id="rowCount"></span>
+    </div>
+    <p class="hint" style="margin-top:10px">
+      One certificate per person who was actually <b>checked in</b> at reception for that event (see the
+      Reception Check-in page) — not simply registered. Someone checked in at both events gets one certificate
+      for each. Sign and date the printed copy before handing it out.
+    </p>
+  </div>
+
+  <div id="sheet"></div>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script>
+const CONFIG = { apiBase: 'https://asa-events-api.mostafamaarof.workers.dev/v1' };
+const $ = (id) => document.getElementById(id);
+const tokenInput = $('token');
+tokenInput.value = sessionStorage.getItem('asa_report_token') || '';
+tokenInput.addEventListener('input', () => sessionStorage.setItem('asa_report_token', tokenInput.value));
+
+function showMsg(el, text, ok) { el.textContent = text; el.className = 'msg ' + (ok ? 'ok' : 'err'); }
+function authHeaders() {
+  const token = tokenInput.value.trim();
+  if (!token) throw new Error('Enter the access token first.');
+  return { 'Authorization': 'Bearer ' + token };
+}
+function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c])); }
+
+const EVENT_META = {
+  'WGITA-35-2026': { short: 'WGITA', cls: 'wgita', title: '35th Annual Meeting of INTOSAI Working Group on IT Audit', dates: '28–29 September 2026', logo: '../../register/wgita-logo.jpg' },
+  'KSC-SC18-2026':  { short: 'KSC',   cls: 'ksc',   title: '18th KSC Steering Committee Meeting',                     dates: '30 September 2026',    logo: '../../register/intosai-logo.png' }
+};
+
+let all = [];
+
+async function loadData() {
+  const msg = $('topMsg'); msg.className = 'msg';
+  try {
+    const res = await fetch(CONFIG.apiBase + '/admin/checkins', { headers: authHeaders() });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || data.ok === false) throw new Error(data.error || ('HTTP ' + res.status));
+    all = data.checkins || [];
+    showMsg(msg, `Loaded ${all.length} check-in(s).`, true);
+    render();
+  } catch (e) {
+    showMsg(msg, e.message, false);
+  }
+}
+
+function computeCerts() {
+  const evFilter = $('fEvent').value;
+  const search = $('fSearch').value.trim().toLowerCase();
+  return all
+    .filter(c => EVENT_META[c.event_code])
+    .filter(c => !evFilter || c.event_code === evFilter)
+    .filter(c => !search || (c.full_name || '').toLowerCase().includes(search) || (c.organization_name || '').toLowerCase().includes(search))
+    .map(c => ({
+      ref: c.reference,
+      name: c.full_name || '(no name)',
+      org: c.organization_name || '',
+      country: c.country || '',
+      eventCode: c.event_code,
+      meta: EVENT_META[c.event_code]
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name) || a.eventCode.localeCompare(b.eventCode));
+}
+
+function certCard(c) {
+  const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${encodeURIComponent(c.ref + '|' + c.eventCode)}`;
+  return `<div class="certwrap" data-ref="${esc(c.ref)}" data-event="${esc(c.meta.short)}" data-file="${esc(c.ref)}-${esc(c.meta.short)}-certificate">
+    <input type="checkbox" class="pick" checked>
+    <div class="certcard">
+      <div class="top">
+        <img class="seal" src="${c.meta.logo}" onerror="this.onerror=null;this.src='../../register/asa-logo.jpg'" alt="">
+        <span class="evtag ${c.meta.cls}">${esc(c.meta.short)}</span>
+      </div>
+      <div class="host">Accountability State Authority &middot; Arab Republic of Egypt</div>
+      <div class="title">Certificate of Attendance</div>
+      <div class="lede">This is to certify that</div>
+      <div class="name">${esc(c.name)}</div>
+      <div class="rule"></div>
+      <div class="org">${[c.org, c.country].filter(Boolean).join(', ')}</div>
+      <div class="body">has attended the <b>${esc(c.meta.title)}</b>, held in Cairo, Arab Republic of Egypt,
+        on ${esc(c.meta.dates)}.</div>
+      <div class="sig">
+        <div class="sigblock"><div class="sigline">Date</div></div>
+        <div class="sigblock"><div class="sigline">Authorized Signature</div></div>
+      </div>
+      <div class="foot">
+        <div class="ref">Ref. ${esc(c.ref)}</div>
+        <img class="qr" src="${qrUrl}" alt="">
+      </div>
+    </div>
+  </div>`;
+}
+
+function render() {
+  const certs = computeCerts();
+  $('rowCount').textContent = `${certs.length} certificate(s)`;
+  const sheet = $('sheet');
+  if (!certs.length) { sheet.innerHTML = '<p class="empty">No matching check-ins. Load the data and adjust filters, or check people in first on the Reception Check-in page.</p>'; return; }
+  sheet.innerHTML = certs.map(certCard).join('');
+}
+
+/* Renders each selected certificate off-screen at high scale so the
+   exported PNG is print-quality; the .pick checkbox itself is excluded. */
+async function cardToBlob(card) {
+  const canvas = await html2canvas(card, {
+    scale: 3, useCORS: true, backgroundColor: '#ffffff',
+    ignoreElements: el => el.classList && el.classList.contains('pick')
+  });
+  return new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+}
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+async function exportPngs() {
+  const btn = $('pngBtn');
+  const cards = Array.from(document.querySelectorAll('.certcard')).filter(c => c.closest('.certwrap').querySelector('.pick').checked);
+  if (!cards.length) { showMsg($('topMsg'), 'No certificates selected — tick at least one.', false); return; }
+
+  const origLabel = btn.textContent;
+  btn.disabled = true;
+  try {
+    if (cards.length === 1) {
+      btn.textContent = 'Rendering…';
+      const blob = await cardToBlob(cards[0]);
+      downloadBlob(blob, `${cards[0].closest('.certwrap').dataset.file}.png`);
+    } else {
+      const zip = new JSZip();
+      for (let i = 0; i < cards.length; i++) {
+        btn.textContent = `Rendering ${i + 1} of ${cards.length}…`;
+        const blob = await cardToBlob(cards[i]);
+        zip.file(`${cards[i].closest('.certwrap').dataset.file}.png`, blob);
+      }
+      btn.textContent = 'Zipping…';
+      const zipBlob = await zip.generateAsync({ type: 'blob' });
+      downloadBlob(zipBlob, 'certificates.zip');
+    }
+    showMsg($('topMsg'), `Exported ${cards.length} certificate(s).`, true);
+  } catch (e) {
+    showMsg($('topMsg'), 'PNG export failed: ' + e.message, false);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = origLabel;
+  }
+}
+
+$('load').addEventListener('click', loadData);
+$('fEvent').addEventListener('change', render);
+$('fSearch').addEventListener('input', render);
+$('selectAll').addEventListener('click', () => document.querySelectorAll('.pick').forEach(c => c.checked = true));
+$('clearAll').addEventListener('click', () => document.querySelectorAll('.pick').forEach(c => c.checked = false));
+$('printBtn').addEventListener('click', () => window.print());
+$('pngBtn').addEventListener('click', exportPngs);
+if (tokenInput.value) loadData();
+</script>
+</body>
+</html>

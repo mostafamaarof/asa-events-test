@@ -135,6 +135,7 @@ td.num{font-family:var(--f-num)}
       </div>
       <div class="actions" style="margin-top:14px">
         <button id="scanNext">Scan next now</button>
+        <button class="ghost" id="undoBtn" hidden>Undo this check-in</button>
         <span class="hint" id="autoHint"></span>
       </div>
     </div>
@@ -296,7 +297,11 @@ async function doCheckin(body) {
   }
 }
 
+let lastResult = null;
+
 function renderError(code) {
+  lastResult = null;
+  $('undoBtn').hidden = true;
   $('result').className = 'show';
   $('rescard').className = 'rescard st-error';
   $('resStatus').textContent = 'Not checked in';
@@ -310,6 +315,8 @@ function renderError(code) {
 
 function renderResult(d) {
   const meta = EVENT_META[d.event_code] || { short: d.event_code, cls: '' };
+  lastResult = { reference: d.reference, event_code: d.event_code };
+  $('undoBtn').hidden = false;
   $('result').className = 'show';
   $('rescard').className = 'rescard ' + (d.already ? 'st-again' : 'st-new');
   $('resStatus').textContent = d.already ? 'Already checked in' : 'Checked in';
@@ -328,6 +335,34 @@ function renderResult(d) {
 
   scheduleAutoResume();
 }
+
+/* Shared by the result card's "Undo this check-in" button and the "Undo"
+   button on each row of the recent-scans feed below -- a mis-scan isn't
+   always noticed until a few people later, so both need to work. */
+async function undoCheckin(reference, eventCode, btn) {
+  if (!confirm(`Undo the check-in for ${reference} — ${(EVENT_META[eventCode] || {}).short || eventCode}?`)) return;
+  const orig = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = '...'; }
+  try {
+    const res = await fetch(CONFIG.apiBase + '/admin/checkin/undo', {
+      method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({ reference, event_code: eventCode })
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || data.ok === false) throw new Error(data.error || ('HTTP ' + res.status));
+    showMsg($('topMsg'), `Undone: ${reference} — ${eventCode}.`, true);
+    if (lastResult && lastResult.reference === reference && lastResult.event_code === eventCode) {
+      $('undoBtn').hidden = true;
+      lastResult = null;
+    }
+    loadCounts();
+  } catch (e) {
+    showMsg($('topMsg'), 'Could not undo: ' + e.message, false);
+  } finally {
+    if (btn && btn.isConnected) { btn.disabled = false; btn.textContent = orig; }
+  }
+}
+$('undoBtn').addEventListener('click', () => { if (lastResult) undoCheckin(lastResult.reference, lastResult.event_code, $('undoBtn')); });
 
 function scheduleAutoResume() {
   if (autoResumeTimer) clearTimeout(autoResumeTimer);
@@ -368,14 +403,20 @@ async function loadCounts() {
     const feed = (ciData.checkins || []).slice(0, 40);
     const feedWrap = $('feedWrap');
     if (!feed.length) { feedWrap.innerHTML = '<p class="empty">Nothing scanned yet.</p>'; return; }
-    feedWrap.innerHTML = `<table><thead><tr><th>Time</th><th>Name</th><th>Organization</th><th>Event</th></tr></thead><tbody>
+    feedWrap.innerHTML = `<table><thead><tr><th>Time</th><th>Name</th><th>Organization</th><th>Event</th><th></th></tr></thead><tbody>
       ${feed.map(c => {
         const m = EVENT_META[c.event_code] || { short: c.event_code };
-        return `<tr><td class="num">${new Date(c.checked_in_at).toLocaleTimeString()}</td><td>${esc(c.full_name || '')}</td><td>${esc(c.organization_name || '')}</td><td>${esc(m.short)}</td></tr>`;
+        return `<tr><td class="num">${new Date(c.checked_in_at).toLocaleTimeString()}</td><td>${esc(c.full_name || '')}</td><td>${esc(c.organization_name || '')}</td><td>${esc(m.short)}</td>
+          <td><button type="button" class="ghost undoRowBtn" data-ref="${esc(c.reference)}" data-event="${esc(c.event_code)}" style="height:26px;padding:0 10px;font-size:12px">Undo</button></td></tr>`;
       }).join('')}
     </tbody></table>`;
   } catch (e) { /* summary is best-effort, never blocks scanning */ }
 }
+
+$('feedWrap').addEventListener('click', (e) => {
+  const btn = e.target.closest('.undoRowBtn'); if (!btn) return;
+  undoCheckin(btn.dataset.ref, btn.dataset.event, btn);
+});
 
 if (tokenInput.value) loadCounts();
 </script>

@@ -40,6 +40,8 @@ import { connect } from 'cloudflare:sockets';
                                     manual {regnum, event_code} pair, records a check-in the first time and
                                     returns the same participant data either way (Bearer ADMIN_TOKEN or VIEWER_TOKEN)
      GET  /v1/admin/checkins        recent check-ins across both events, newest first (Bearer ADMIN_TOKEN or VIEWER_TOKEN)
+     POST /v1/admin/checkin/undo    remove one (reference, event_code) check-in, correcting a mis-scan
+                                    (Bearer ADMIN_TOKEN or VIEWER_TOKEN)
      POST /v1/client-error          log one error the browser caught and showed to a registrant before it ever
                                     reached another endpoint (a bad invitation code or email caught by the
                                     gate page's own validation, no event selected, etc.) -- flow/code must be
@@ -972,6 +974,30 @@ async function adminListCheckins(req, env, ch) {
   return json({ ok: true, count: results.length, checkins: results }, 200, ch);
 }
 
+/* Corrects a mis-scan (wrong badge, wrong desk's event) without leaving a
+   phantom "checked in" record behind. Same access level as the check-in
+   itself (ADMIN_TOKEN or VIEWER_TOKEN) rather than admin-only -- this is
+   the same category of action reception is already trusted to do, just in
+   reverse, not a step up in sensitivity like the medical report. */
+async function adminUndoCheckin(req, env, ch, ipHash) {
+  if (!requireAdminOrViewer(req, env)) return fail('unauthorized', 401, ch);
+  const b = await req.json().catch(() => ({}));
+  const reference = String(b.reference || '').trim().toUpperCase();
+  const eventCode = String(b.event_code || '').trim();
+  if (!reference || !eventCode) return fail('invalid_request', 400, ch);
+
+  const existing = await env.DB.prepare('SELECT id FROM checkins WHERE reference = ? AND event_code = ?')
+    .bind(reference, eventCode).first();
+  if (!existing) return fail('not_found', 404, ch);
+
+  const reg = await env.DB.prepare('SELECT registration_id, full_name FROM registrations WHERE reference = ?').bind(reference).first();
+  await env.DB.prepare('DELETE FROM checkins WHERE reference = ? AND event_code = ?').bind(reference, eventCode).run();
+  await audit(env, 'checkin_undone', 'registration', reg ? reg.registration_id : null, `${reference}:${eventCode}`, ipHash);
+  await notifyTelegram(env, `↩️ <b>Check-in undone</b>\n${esc(reg ? reg.full_name : reference) || '(no name)'} — ${esc(reference)} · ${esc(eventCode)}`);
+
+  return json({ ok: true, reference, event_code: eventCode }, 200, ch);
+}
+
 function requireAdmin(req, env) {
   const token = (req.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '');
   return !!env.ADMIN_TOKEN && token === env.ADMIN_TOKEN;
@@ -1141,6 +1167,7 @@ export default {
       if (req.method === 'GET'  && pathname === '/v1/admin/audit')              return await adminAuditLog(req, env, ch);
       if (req.method === 'POST' && pathname === '/v1/admin/checkin')              return await adminCheckin(req, env, ch, ipHash);
       if (req.method === 'GET'  && pathname === '/v1/admin/checkins')             return await adminListCheckins(req, env, ch);
+      if (req.method === 'POST' && pathname === '/v1/admin/checkin/undo')         return await adminUndoCheckin(req, env, ch, ipHash);
       if (pathname === '/v1/health') return json({ ok: true, time: new Date().toISOString() }, 200, ch);
       return fail('not_found', 404, ch);
     } catch (e) {

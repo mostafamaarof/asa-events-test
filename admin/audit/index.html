@@ -141,6 +141,7 @@ const ACTIONS = {
   edit_link_sent:              { label: 'Edit link emailed',           pill: 'info' },
   reminder_sent:                { label: 'Missing-data reminder emailed', pill: 'info' },
   checked_in:                   { label: 'Checked in at reception',      pill: 'new' },
+  checkin_undone:                { label: 'Check-in undone',              pill: 'warn', warn: true },
   invitation_created:          { label: 'Invitation code created',     pill: 'new' },
   invitation_verified:         { label: 'Invitation code verified',    pill: 'info' },
   invitation_verify_failed:    { label: 'Invitation code check failed', pill: 'warn', warn: true },
@@ -241,6 +242,10 @@ function describe(e) {
     }
     case 'edit_link_sent': return `Reference ${e.detail || e.entity_id} — link emailed to the registrant`;
     case 'checked_in': {
+      const [ref, ev] = String(e.detail || '').split(':');
+      return `Reference ${ref || e.entity_id} — ${ev || '?'}`;
+    }
+    case 'checkin_undone': {
       const [ref, ev] = String(e.detail || '').split(':');
       return `Reference ${ref || e.entity_id} — ${ev || '?'}`;
     }
