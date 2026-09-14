@@ -89,8 +89,22 @@ td.num{font-family:var(--f-num);font-size:12.5px;color:var(--muted)}
   </div>
 
   <div id="list"></div>
+
+  <div class="card">
+    <h2>Attachments</h2>
+    <p class="hint" style="margin-top:-8px;margin-bottom:14px">
+      Passport copies, flight itineraries, speaker photos/slides, and accompanying persons' passport copies
+      aren't included in the snapshots above — they already live in R2, separately from the database. This
+      downloads every one of them to your computer as a single organised ZIP, one folder per person.
+    </p>
+    <div class="actions">
+      <button class="ghost" id="attachBtn">Download all attachments (ZIP)</button>
+      <span id="attachMsg" class="msg"></span>
+    </div>
+  </div>
 </main>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script>
 const CONFIG = { apiBase: 'https://asa-events-api.mostafamaarof.workers.dev/v1' };
 const $ = (id) => document.getElementById(id);
@@ -192,6 +206,89 @@ $('list').addEventListener('click', (e) => {
   const btn = e.target.closest('.dlBtn'); if (!btn) return;
   downloadBackup(btn.dataset.key, btn);
 });
+
+/* ---------- Attachments: everything in R2, zipped locally ---------- */
+function extOf(name) { const m = /\.[a-zA-Z0-9]+$/.exec(name || ''); return m ? m[0].toLowerCase() : ''; }
+function safeName(s) { return String(s || '').replace(/[\\/:*?"<>|]/g, '_').trim() || 'unnamed'; }
+
+/* Named by field, not by the original uploaded filename -- two files in the
+   same folder could otherwise both be called "scan.pdf" and silently
+   overwrite each other in the zip. The label alone is already unique per
+   person, so this can't collide. */
+function attachmentList(registrations) {
+  const items = [];
+  registrations.forEach(r => {
+    const d = r.data || {};
+    const folder = `${safeName(r.reference)} - ${safeName(r.full_name || 'no name')}`;
+    const add = (key, filename, label) => { if (key) items.push({ key, filename, label, folder }); };
+    add(d.passport_copy_key, d.passport_copy_filename, 'passport-copy');
+    add(d.ticket_file_key, d.ticket_file_filename, 'flight-itinerary');
+    if (d.wants_to_present === 'yes') {
+      add(d.speaker_photo_key, d.speaker_photo_filename, 'speaker-photo');
+      add(d.slides_file_key, d.slides_file_filename, 'slides');
+    }
+    if (d.is_accompanied === 'yes' && Array.isArray(d.accompanying)) {
+      d.accompanying.forEach((p, i) => {
+        const who = safeName(p.acc_full_name_passport || `accompanying-${i + 1}`);
+        add(p.acc_passport_copy_key, p.acc_passport_copy_filename, `accompanying - ${who} - passport-copy`);
+      });
+    }
+  });
+  return items;
+}
+
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+async function downloadAllAttachments() {
+  const msg = $('attachMsg'); msg.className = 'msg';
+  const btn = $('attachBtn');
+  btn.disabled = true; const orig = btn.textContent;
+  try {
+    btn.textContent = 'Loading registrations…';
+    const res = await fetch(CONFIG.apiBase + '/admin/export.json', { headers: authHeaders() });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || data.ok === false) throw new Error(data.error || ('HTTP ' + res.status));
+    const regs = (data.registrations || []).filter(r => r.status === 'approved');
+    const items = attachmentList(regs);
+    if (!items.length) { showMsg(msg, 'No attachments found.', true); return; }
+
+    const zip = new JSZip();
+    let ok = 0, failed = 0, idx = 0;
+    /* A handful of files at once, not all — dozens to hundreds of individual
+       downloads through the Worker/R2 shouldn't all fire in one burst. */
+    async function worker() {
+      while (idx < items.length) {
+        const item = items[idx++];
+        btn.textContent = `Fetching ${ok + failed + 1} of ${items.length}…`;
+        try {
+          const r = await fetch(CONFIG.apiBase + '/admin/files?key=' + encodeURIComponent(item.key), { headers: authHeaders() });
+          if (!r.ok) throw new Error('HTTP ' + r.status);
+          const blob = await r.blob();
+          const ext = extOf(item.filename) || extOf(item.key);
+          zip.file(`${item.folder}/${item.label}${ext}`, blob);
+          ok++;
+        } catch (e) { failed++; }
+      }
+    }
+    await Promise.all(Array.from({ length: 4 }, worker));
+
+    btn.textContent = 'Zipping…';
+    const zipBlob = await zip.generateAsync({ type: 'blob' });
+    downloadBlob(zipBlob, `asa-attachments-${new Date().toISOString().slice(0, 10)}.zip`);
+    showMsg(msg, `Downloaded ${ok} of ${items.length} file(s)${failed ? `. ${failed} failed — most likely never uploaded.` : '.'}`, failed === 0);
+  } catch (e) {
+    showMsg(msg, 'Could not download attachments: ' + e.message, false);
+  } finally {
+    btn.disabled = false; btn.textContent = orig;
+  }
+}
+$('attachBtn').addEventListener('click', downloadAllAttachments);
 
 $('load').addEventListener('click', loadBackups);
 $('runBtn').addEventListener('click', runBackup);
