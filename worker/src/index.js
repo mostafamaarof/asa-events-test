@@ -863,20 +863,29 @@ async function adminSendReminders(req, env, ch, ipHash) {
   return json({ ok: true, preview, results }, 200, ch);
 }
 
+/* The registration form promises registrants their emergency-contact and
+   medical/allergy fields are "seen only by the registrar, never included in
+   any delegate list or export" -- so unlike the rest of data_json, these
+   don't go out to a caller who only holds the narrower VIEWER_TOKEN, even
+   though export.json is otherwise their read-only report feed. Only the
+   full ADMIN_TOKEN gets them. */
+const SENSITIVE_WELFARE_FIELDS = ['emergency_contact_name', 'emergency_contact_relation',
+  'emergency_contact_phone', 'emergency_contact_email', 'allergies', 'medical_notes_emergency'];
+
 async function adminExportFull(req, env, ch) {
   if (!requireAdminOrViewer(req, env)) return fail('unauthorized', 401, ch);
+  const isFullAdmin = requireAdmin(req, env);
   const { results } = await env.DB.prepare(
     `SELECT registration_id, reference, registration_number, created_at, status, event_codes, invitation_id, email, full_name,
             organization_name, country, attendance_mode, role_in_delegation, participant_tier, visa_letter_needed,
             flag_personal_email, flag_org_mismatch, fill_seconds, locale, reminder_sent_at, reminder_categories, data_json, consents_json
      FROM registrations ORDER BY created_at DESC LIMIT 1000`).all();
-  const registrations = results.map(r => ({
-    ...r,
-    data_json: undefined, consents_json: undefined,
-    data: JSON.parse(r.data_json || '{}'),
-    consents: JSON.parse(r.consents_json || '{}')
-  }));
-  return json({ ok: true, count: registrations.length, exported_at: new Date().toISOString(), registrations }, 200, ch);
+  const registrations = results.map(r => {
+    const data = JSON.parse(r.data_json || '{}');
+    if (!isFullAdmin) SENSITIVE_WELFARE_FIELDS.forEach(f => delete data[f]);
+    return { ...r, data_json: undefined, consents_json: undefined, data, consents: JSON.parse(r.consents_json || '{}') };
+  });
+  return json({ ok: true, isAdmin: isFullAdmin, count: registrations.length, exported_at: new Date().toISOString(), registrations }, 200, ch);
 }
 
 async function adminAuditLog(req, env, ch) {

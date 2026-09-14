@@ -273,6 +273,15 @@ function renderDashboard(rows) {
   const speaking = rows.filter(r => dset(r).wants_to_present === 'yes').length;
   const visa = rows.filter(r => r.visa_letter_needed).length;
   const social = rows.filter(r => dset(r).social_program_attending === 'yes').length;
+  /* social_program_attending is asked of the confirmed participant only --
+     each accompanying person answers their own acc_attends_social instead,
+     so they're a separate tally rather than folded into the figure above
+     (which would then no longer match "registrations attending"). */
+  const accSocial = rows.reduce((s, r) => {
+    const d = dset(r);
+    const acc = (d.is_accompanied === 'yes' && Array.isArray(d.accompanying)) ? d.accompanying : [];
+    return s + acc.filter(a => a.acc_attends_social === 'yes').length;
+  }, 0);
   const official = rows.filter(r => dset(r).accommodation_type === 'official').length;
   const own = rows.filter(r => dset(r).accommodation_type === 'own').length;
   const accomNotDecided = rows.length - official - own;
@@ -316,7 +325,9 @@ function renderDashboard(rows) {
         ${kpiTile(speaking, 'Requesting to speak')}
         ${kpiTile(visa, 'Need a visa facilitation letter')}
         ${kpiTile(social, 'Joining the social programme')}
+        ${kpiTile(accSocial, 'Accompanying persons joining the social programme')}
       </div>
+      <p class="cap" style="margin:14px 0 0">Note: "Joining the social programme" counts confirmed participants only — accompanying persons are counted separately in the tile above, since each answers that question for themself.</p>
     </div>
 
     <div class="two-col">
@@ -404,6 +415,7 @@ function renderDashboard(rows) {
       ['Requesting to speak', speaking],
       ['Need a visa facilitation letter', visa],
       ['Joining the social programme', social],
+      ['Accompanying persons joining the social programme', accSocial],
       ['Staying at an official hotel', official],
       ['Own accommodation arrangement', own],
       ['Accommodation not yet decided', accomNotDecided]

@@ -131,6 +131,8 @@ td.muted{color:var(--rule-strong)}
       <div class="tab" data-tab="passport">Passport report</div>
       <div class="tab" data-tab="accompanying">Accompanying persons</div>
       <div class="tab" data-tab="speakers">Speakers</div>
+      <div class="tab" data-tab="dietary">Dietary requirements</div>
+      <div class="tab" data-tab="medical">Medical information</div>
       <div class="tab" data-tab="attachments">Attachments</div>
     </div>
   </div>
@@ -165,6 +167,11 @@ const OPT = {
   dietary: O([['none','No special requirement'],['vegetarian','Vegetarian'],['vegan','Vegan'],['halal','Halal only'],
     ['gluten','Gluten free'],['diabetic','Diabetic'],['other','Other']])
 };
+/* Same labels as OPT.dietary, plus the bucket for someone who never touched
+   the (optional) field at all -- distinct from actively picking "No special
+   requirement," same as the dashboard's own dietary breakdown. */
+const DIET_LABELS = { ...OPT.dietary, not_specified: 'Not specified' };
+const DIET_ORDER = ['vegetarian', 'vegan', 'halal', 'gluten', 'diabetic', 'other', 'none', 'not_specified'];
 const yn = (v) => v === 'yes' ? 'Yes' : v === 'no' ? 'No' : '';
 const COUNTRIES_RAW = "AF:Afghanistan|AL:Albania|DZ:Algeria|AS:American Samoa|AD:Andorra|AO:Angola|AI:Anguilla|AQ:Antarctica|AG:Antigua and Barbuda|AR:Argentina|AM:Armenia|AW:Aruba|AU:Australia|AT:Austria|AZ:Azerbaijan|BS:Bahamas|BH:Bahrain|BD:Bangladesh|BB:Barbados|BY:Belarus|BE:Belgium|BZ:Belize|BJ:Benin|BM:Bermuda|BT:Bhutan|BO:Bolivia|BQ:Bonaire, Sint Eustatius and Saba|BA:Bosnia and Herzegovina|BW:Botswana|BV:Bouvet Island|BR:Brazil|IO:British Indian Ocean Territory|BN:Brunei Darussalam|BG:Bulgaria|BF:Burkina Faso|BI:Burundi|CV:Cabo Verde|KH:Cambodia|CM:Cameroon|CA:Canada|KY:Cayman Islands|CF:Central African Republic|TD:Chad|CL:Chile|CN:China|CX:Christmas Island|CC:Cocos (Keeling) Islands|CO:Colombia|KM:Comoros|CG:Congo|CD:Congo, The Democratic Republic of the|CK:Cook Islands|CR:Costa Rica|HR:Croatia|CU:Cuba|CW:Curaçao|CY:Cyprus|CZ:Czechia|CI:Côte d'Ivoire|DK:Denmark|DJ:Djibouti|DM:Dominica|DO:Dominican Republic|EC:Ecuador|EG:Egypt|SV:El Salvador|GQ:Equatorial Guinea|ER:Eritrea|EE:Estonia|SZ:Eswatini|ET:Ethiopia|FK:Falkland Islands (Malvinas)|FO:Faroe Islands|FJ:Fiji|FI:Finland|FR:France|GF:French Guiana|PF:French Polynesia|TF:French Southern Territories|GA:Gabon|GM:Gambia|GE:Georgia|DE:Germany|GH:Ghana|GI:Gibraltar|GR:Greece|GL:Greenland|GD:Grenada|GP:Guadeloupe|GU:Guam|GT:Guatemala|GG:Guernsey|GN:Guinea|GW:Guinea-Bissau|GY:Guyana|HT:Haiti|HM:Heard Island and McDonald Islands|VA:Holy See (Vatican City State)|HN:Honduras|HK:Hong Kong|HU:Hungary|IS:Iceland|IN:India|ID:Indonesia|IR:Iran|IQ:Iraq|IE:Ireland|IM:Isle of Man|IL:Israel|IT:Italy|JM:Jamaica|JP:Japan|JE:Jersey|JO:Jordan|KZ:Kazakhstan|KE:Kenya|KI:Kiribati|KP:North Korea|KR:South Korea|KW:Kuwait|KG:Kyrgyzstan|LA:Laos|LV:Latvia|LB:Lebanon|LS:Lesotho|LR:Liberia|LY:Libya|LI:Liechtenstein|LT:Lithuania|LU:Luxembourg|MO:Macao|MG:Madagascar|MW:Malawi|MY:Malaysia|MV:Maldives|ML:Mali|MT:Malta|MH:Marshall Islands|MQ:Martinique|MR:Mauritania|MU:Mauritius|YT:Mayotte|MX:Mexico|FM:Micronesia, Federated States of|MD:Moldova|MC:Monaco|MN:Mongolia|ME:Montenegro|MS:Montserrat|MA:Morocco|MZ:Mozambique|MM:Myanmar|NA:Namibia|NR:Nauru|NP:Nepal|NL:Netherlands|NC:New Caledonia|NZ:New Zealand|NI:Nicaragua|NE:Niger|NG:Nigeria|NU:Niue|NF:Norfolk Island|MK:North Macedonia|MP:Northern Mariana Islands|NO:Norway|OM:Oman|PK:Pakistan|PW:Palau|PS:Palestine, State of|PA:Panama|PG:Papua New Guinea|PY:Paraguay|PE:Peru|PH:Philippines|PN:Pitcairn|PL:Poland|PT:Portugal|PR:Puerto Rico|QA:Qatar|RO:Romania|RU:Russian Federation|RW:Rwanda|RE:Réunion|BL:Saint Barthélemy|SH:Saint Helena, Ascension and Tristan da Cunha|KN:Saint Kitts and Nevis|LC:Saint Lucia|MF:Saint Martin (French part)|PM:Saint Pierre and Miquelon|VC:Saint Vincent and the Grenadines|WS:Samoa|SM:San Marino|ST:Sao Tome and Principe|SA:Saudi Arabia|SN:Senegal|RS:Serbia|SC:Seychelles|SL:Sierra Leone|SG:Singapore|SX:Sint Maarten (Dutch part)|SK:Slovakia|SI:Slovenia|SB:Solomon Islands|SO:Somalia|ZA:South Africa|GS:South Georgia and the South Sandwich Islands|SS:South Sudan|ES:Spain|LK:Sri Lanka|SD:Sudan|SR:Suriname|SJ:Svalbard and Jan Mayen|SE:Sweden|CH:Switzerland|SY:Syria|TW:Taiwan|TJ:Tajikistan|TZ:Tanzania|TH:Thailand|TL:Timor-Leste|TG:Togo|TK:Tokelau|TO:Tonga|TT:Trinidad and Tobago|TN:Tunisia|TM:Turkmenistan|TC:Turks and Caicos Islands|TV:Tuvalu|TR:Türkiye|UG:Uganda|UA:Ukraine|AE:United Arab Emirates|GB:United Kingdom|US:United States|UM:United States Minor Outlying Islands|UY:Uruguay|UZ:Uzbekistan|VU:Vanuatu|VE:Venezuela|VN:Vietnam|VG:Virgin Islands, British|VI:Virgin Islands, U.S.|WF:Wallis and Futuna|EH:Western Sahara|YE:Yemen|ZM:Zambia|ZW:Zimbabwe|AX:Åland Islands";
 OPT.country = O(COUNTRIES_RAW.split('|').map(s => { const i = s.indexOf(':'); return [s.slice(0,i), s.slice(i+1)]; }));
@@ -172,6 +179,11 @@ const EVENT_NAMES = { 'WGITA-35-2026': '35th Annual Meeting of INTOSAI Working G
 
 let all = [];
 let activeTab = 'arrival';
+/* export.json redacts allergies/medical/emergency-contact fields unless the
+   token used is the full ADMIN_TOKEN (see SENSITIVE_WELFARE_FIELDS in the
+   worker) -- the Medical Information tab checks this flag to show a clear
+   "admin token required" message instead of a misleadingly empty report. */
+let isAdmin = false;
 
 async function loadReports() {
   const msg = $('topMsg'); msg.className = 'msg';
@@ -180,6 +192,7 @@ async function loadReports() {
     const data = await res.json().catch(() => ({}));
     if (!res.ok || data.ok === false) throw new Error(data.error || ('HTTP ' + res.status));
     all = (data.registrations || []).filter(r => r.status === 'approved');
+    isAdmin = !!data.isAdmin;
     showMsg(msg, `Loaded ${all.length} approved registration(s).`, true);
     render();
   } catch (e) {
@@ -238,7 +251,18 @@ function computeRows() {
         speakerPhotoKey: d.speaker_photo_key || '',
         speakerPhotoFilename: d.speaker_photo_filename || '',
         slidesFileKey: d.slides_file_key || '',
-        slidesFileFilename: d.slides_file_filename || ''
+        slidesFileFilename: d.slides_file_filename || '',
+        dietary: Array.isArray(d.dietary_requirements) ? d.dietary_requirements : [],
+        dietaryNotes: d.dietary_notes || '',
+        /* These four are stripped from export.json unless loaded with the
+           full ADMIN_TOKEN (see SENSITIVE_WELFARE_FIELDS server-side) -- with
+           only a viewer token they're simply absent here, which is how the
+           Medical Information tab knows to show its "admin token required"
+           message instead of a misleading empty report. */
+        allergies: d.allergies || '',
+        medicalNotes: d.medical_notes_emergency || '',
+        emergencyContact: [d.emergency_contact_name, d.emergency_contact_relation].filter(Boolean).join(' — '),
+        emergencyPhone: [d.emergency_contact_phone, d.emergency_contact_email].filter(Boolean).join(' / ')
       };
     })
     .filter(row => !search ||
@@ -454,12 +478,81 @@ function attachmentsReport(rows) {
   });
 }
 
+/* ---------- Dietary requirements: one row per person (main participant AND
+   each accompanying person, since caterers plan for both), grouped by
+   requirement -- someone with two requirements (e.g. vegetarian + gluten
+   free) appears in both groups, the way a kitchen actually needs to read
+   the list. ---------- */
+function dietaryReport(rows) {
+  const people = [];
+  rows.forEach(r => {
+    people.push({
+      name: r.name, who: 'Main participant', tier: r.tier, org: r.org, country: r.country, events: r.events,
+      diet: r.dietary.length ? r.dietary : ['not_specified'], notes: r.dietaryNotes, ref: r.ref
+    });
+    r.accompanying.forEach(p => {
+      const diet = (Array.isArray(p.acc_dietary) ? p.acc_dietary : [p.acc_dietary]).filter(Boolean);
+      people.push({
+        name: p.acc_full_name_passport || '(no name)', who: `Accompanying ${r.name}`, tier: r.tier, org: r.org,
+        country: r.country, events: r.events, diet: diet.length ? diet : ['not_specified'], notes: '', ref: r.ref
+      });
+    });
+  });
+  const groups = new Map();
+  people.forEach(p => p.diet.forEach(cat => {
+    if (!groups.has(cat)) groups.set(cat, []);
+    groups.get(cat).push(p);
+  }));
+  const keys = [...groups.keys()].sort((a, b) => DIET_ORDER.indexOf(a) - DIET_ORDER.indexOf(b));
+  const cols = ['Name', 'Who', 'Tier', 'Org / Country', 'Event(s)', 'Notes', 'Ref'];
+  return keys.map(key => {
+    const items = groups.get(key).slice().sort((a, b) => a.name.localeCompare(b.name));
+    const title = DIET_LABELS[key] || key;
+    const rowsHtml = items.map(p => `<tr>
+      <td class="wrap">${esc(p.name)}</td>${td(p.who, 'wrap')}${td(p.tier)}${td(p.org ? p.org + (p.country ? ' · ' + p.country : '') : p.country, 'wrap')}
+      ${td(p.events, 'wrap')}${td(p.notes, 'wrap')}
+      <td class="ref">${esc(p.ref)}</td>
+    </tr>`).join('');
+    return { title, count: items.length, cols, rowsHtml, items };
+  });
+}
+
+/* ---------- Medical information: allergies, emergency-relevant medical
+   notes, and an emergency contact. These fields are stripped from
+   export.json for anything but the full ADMIN_TOKEN (the registration form
+   promises registrants they're "seen only by the registrar, never included
+   in any delegate list or export") -- with a viewer token every row here
+   comes back empty, so this report deliberately refuses to render as if
+   that meant "nobody has anything on file." ---------- */
+function medicalReport(rows) {
+  const groups = groupBy(rows, r => (r.allergies || r.medicalNotes) ? 'A__has' : 'B__none');
+  const keys = [...groups.keys()].sort();
+  const cols = ['Name', 'Tier', 'Org / Country', 'Event(s)', 'Mobile', 'Allergies', 'Medical information', 'Emergency contact', 'Ref'];
+  return keys.map(key => {
+    const items = groups.get(key).slice().sort((a, b) => a.name.localeCompare(b.name));
+    const title = key === 'A__has' ? 'Allergy / medical information on file' : 'Nothing on file';
+    const rowsHtml = items.map(r => `<tr>
+      <td class="wrap">${esc(r.name)}</td>${td(r.tier)}${td(r.org ? r.org + (r.country ? ' · ' + r.country : '') : r.country, 'wrap')}
+      ${td(r.events, 'wrap')}${td(r.mobile)}${td(r.allergies, 'wrap')}${td(r.medicalNotes, 'wrap')}
+      ${td([r.emergencyContact, r.emergencyPhone].filter(Boolean).join(' · '), 'wrap')}
+      <td class="ref">${esc(r.ref)}</td>
+    </tr>`).join('');
+    return { title, count: items.length, cols, rowsHtml, items };
+  });
+}
+
 let lastGroups = [];
 
 function render() {
+  const list = $('list');
+  if (activeTab === 'medical' && !isAdmin) {
+    lastGroups = [];
+    $('rowCount').textContent = '';
+    list.innerHTML = '<p class="empty">This report needs the full admin token, not the shared viewer/report token — the registration form promises registrants this information is seen only by the registrar. Load with the admin token to see it.</p>';
+    return;
+  }
   const rows = computeRows();
   $('rowCount').textContent = `${rows.length} of ${all.length} shown`;
-  const list = $('list');
   if (!rows.length) { list.innerHTML = '<p class="empty">No matching registrations. Load the reports and adjust filters.</p>'; return; }
 
   lastGroups = activeTab === 'arrival' ? dateReport(rows, 'arrival')
@@ -468,6 +561,8 @@ function render() {
     : activeTab === 'passport' ? passportReport(rows)
     : activeTab === 'accompanying' ? accompanyingReport(rows)
     : activeTab === 'speakers' ? speakersReport(rows)
+    : activeTab === 'dietary' ? dietaryReport(rows)
+    : activeTab === 'medical' ? medicalReport(rows)
     : attachmentsReport(rows);
 
   if (!lastGroups.length) {
@@ -529,6 +624,11 @@ function exportCsv() {
            r.presentationTitle, r.presentationAbstract,
            r.speakerPhotoKey ? (r.speakerPhotoFilename || 'Uploaded') : 'Not uploaded',
            r.slidesFileKey ? (r.slidesFileFilename || 'Uploaded') : 'Not uploaded', r.ref]
+        : activeTab === 'dietary'
+        ? [r.name, r.who, r.tier, (r.org ? r.org + (r.country ? ' - ' + r.country : '') : r.country), r.events, r.notes, r.ref]
+        : activeTab === 'medical'
+        ? [r.name, r.tier, (r.org ? r.org + (r.country ? ' - ' + r.country : '') : r.country), r.events, r.mobile,
+           r.allergies, r.medicalNotes, [r.emergencyContact, r.emergencyPhone].filter(Boolean).join(' - '), r.ref]
         : [r.name, r.tier, (r.org ? r.org + (r.country ? ' - ' + r.country : '') : r.country),
            r.passportCopyKey ? (r.passportCopyFilename || 'Uploaded') : 'Not uploaded',
            r.ticketFileKey ? (r.ticketFileFilename || 'Uploaded') : 'Not uploaded',
@@ -545,7 +645,8 @@ function exportCsv() {
   const wb = XLSX.utils.book_new();
   const sheetName = activeTab === 'arrival' ? 'By arrival date' : activeTab === 'departure' ? 'By departure date'
     : activeTab === 'hotel' ? 'By hotel' : activeTab === 'passport' ? 'Passport report'
-    : activeTab === 'accompanying' ? 'Accompanying persons' : activeTab === 'speakers' ? 'Speakers' : 'Attachments';
+    : activeTab === 'accompanying' ? 'Accompanying persons' : activeTab === 'speakers' ? 'Speakers'
+    : activeTab === 'dietary' ? 'Dietary requirements' : activeTab === 'medical' ? 'Medical information' : 'Attachments';
   XLSX.utils.book_append_sheet(wb, ws, sheetName);
   XLSX.writeFile(wb, `asa-logistics-${activeTab}.xlsx`);
 }
