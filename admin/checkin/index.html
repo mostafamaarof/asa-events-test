@@ -105,6 +105,17 @@ td.num{font-family:var(--f-num)}
 
   <div class="card">
     <h2>Scan a badge</h2>
+    <div class="grid" style="margin-bottom:16px">
+      <div class="f">
+        <label for="evSelect">Event</label>
+        <select id="evSelect">
+          <option value="">Auto-detect from the badge</option>
+          <option value="WGITA-35-2026">35th Annual Meeting of INTOSAI Working Group on IT Audit</option>
+          <option value="KSC-SC18-2026">18th KSC Steering Committee Meeting</option>
+        </select>
+        <span class="hint">Leave blank to read the event straight off the badge. Attending both? Pick the event you're checking in for here before scanning each badge.</span>
+      </div>
+    </div>
     <div class="camwrap" id="camwrap">
       <span class="cammsg" id="cammsg">Camera is off. Enter your token above and click "Start camera".</span>
       <video id="video" playsinline muted hidden></video>
@@ -131,18 +142,11 @@ td.num{font-family:var(--f-num)}
 
   <div class="card">
     <h2>No camera, or a damaged badge?</h2>
-    <p class="hint" style="margin-top:-8px;margin-bottom:14px">Type the registration number (or reference) printed on the badge and pick the event.</p>
+    <p class="hint" style="margin-top:-8px;margin-bottom:14px">Type the registration number (or reference) printed on the badge. Uses the Event picked above — pick one if it's still on "Auto-detect".</p>
     <div class="grid">
-      <div class="f">
+      <div class="f" style="grid-column:1/-1">
         <label for="manRegnum">Registration number / reference</label>
         <input type="text" id="manRegnum" placeholder="e.g. 2026-00042 or SUB-XXXX">
-      </div>
-      <div class="f">
-        <label for="manEvent">Event</label>
-        <select id="manEvent">
-          <option value="WGITA-35-2026">35th Annual Meeting of INTOSAI Working Group on IT Audit</option>
-          <option value="KSC-SC18-2026">18th KSC Steering Committee Meeting</option>
-        </select>
       </div>
     </div>
     <div class="actions" style="margin-top:14px">
@@ -258,13 +262,19 @@ $('stopCam').addEventListener('click', stopCam);
 $('scanNext').addEventListener('click', () => { if (autoResumeTimer) { clearTimeout(autoResumeTimer); autoResumeTimer = null; } resumeScanning(); $('autoHint').textContent = ''; });
 
 /* ---------- check-in call + result rendering ---------- */
+/* The Event picker is shared by both scanning and manual entry: left on
+   "Auto-detect", a scan uses whatever event the badge's QR encodes; set to
+   a specific event, that choice always wins over the badge (this is what
+   lets reception run one event's desk and just scan through, or resolve a
+   dual-event badge without one baked in). */
 async function handleScan(code) {
-  await doCheckin({ code });
+  await doCheckin({ code, event_code: $('evSelect').value });
 }
 $('manCheckin').addEventListener('click', () => {
   const regnum = $('manRegnum').value.trim();
-  const event_code = $('manEvent').value;
+  const event_code = $('evSelect').value;
   if (!regnum) { showMsg($('topMsg'), 'Enter a registration number or reference first.', false); return; }
+  if (!event_code) { showMsg($('topMsg'), 'Pick an event above first.', false); return; }
   doCheckin({ regnum, event_code });
 });
 
