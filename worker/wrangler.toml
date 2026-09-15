@@ -1,6 +1,7 @@
 name = "asa-events-api"
 main = "src/index.js"
 compatibility_date = "2026-01-01"
+workers_dev = true
 
 [[d1_databases]]
 binding = "DB"
