@@ -38,6 +38,9 @@ button.ghost:hover{background:#F1F5F8}
 .msg.ok{display:block;background:var(--ok-tint);color:var(--ok)}
 .msg.err{display:block;background:var(--err-tint);color:var(--err)}
 .empty{color:var(--muted);font-size:13px;padding:8px 0}
+.choice{display:flex;align-items:center;gap:6px;font-size:13.5px;font-weight:400;cursor:pointer}
+.choicelist{display:flex;flex-wrap:wrap;gap:8px 18px;margin-top:4px}
+[hidden]{display:none!important}
 
 /* KPI row -- figures only, no charts */
 .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1px;background:var(--rule);border:1px solid var(--rule)}
@@ -102,6 +105,16 @@ table.datatable tr:last-child td{border-bottom:none}
     </div>
   </div>
 
+  <div class="card controls">
+    <h2>Show / hide tables</h2>
+    <p class="cap">Untick anything not relevant right now — for a focused screen share, a print for one audience, or a lighter Excel export. Remembered on this device.</p>
+    <div class="choicelist" id="sectionToggles"></div>
+    <div class="actions" style="margin-top:12px">
+      <button class="ghost" id="showAllSections" style="height:30px;padding:0 14px;font-size:13px">Show all</button>
+      <button class="ghost" id="hideAllSections" style="height:30px;padding:0 14px;font-size:13px">Hide all</button>
+    </div>
+  </div>
+
   <div id="content"></div>
 </main>
 
@@ -119,6 +132,51 @@ function authHeaders() {
   if (!token) throw new Error('Enter the access token first.');
   return { 'Authorization': 'Bearer ' + token };
 }
+
+/* Same ids as each card's data-section attribute, and (for the eight
+   cross-tab cards) the 5th element each lastDashboard.sheets entry carries --
+   one source of truth for "which section is this" across the on-screen
+   cards, print, and the Excel export. */
+const SECTIONS = [
+  { id: 'kpi', label: 'At a glance' },
+  { id: 'byEvent', label: 'Registrations by event' },
+  { id: 'accommodation', label: 'Accommodation' },
+  { id: 'tier', label: 'Protocol tier by event' },
+  { id: 'role', label: 'Role in the delegation' },
+  { id: 'orgEvent', label: 'Orgs, by event' },
+  { id: 'orgTier', label: 'Orgs, by protocol tier' },
+  { id: 'orgAcc', label: 'Orgs, main vs. accompanying' },
+  { id: 'dietary', label: 'Dietary requirements' },
+  { id: 'hotelEvent', label: 'Hotels, by event' },
+  { id: 'hotelTier', label: 'Hotels, by protocol tier' }
+];
+const SECTIONS_KEY = 'asa_dashboard_hidden_sections';
+let hiddenSections = new Set();
+try { hiddenSections = new Set(JSON.parse(localStorage.getItem(SECTIONS_KEY) || '[]')); } catch (e) { /* corrupt/blocked storage -- default to everything shown */ }
+
+$('sectionToggles').innerHTML = SECTIONS.map(s =>
+  `<label class="choice"><input type="checkbox" class="sectionCb" value="${s.id}" ${hiddenSections.has(s.id) ? '' : 'checked'}>${s.label}</label>`
+).join('');
+
+function saveSections() { try { localStorage.setItem(SECTIONS_KEY, JSON.stringify([...hiddenSections])); } catch (e) { } }
+function applySectionVisibility() {
+  document.querySelectorAll('[data-section]').forEach(el => { el.hidden = hiddenSections.has(el.dataset.section); });
+}
+document.querySelectorAll('.sectionCb').forEach(cb => cb.addEventListener('change', () => {
+  if (cb.checked) hiddenSections.delete(cb.value); else hiddenSections.add(cb.value);
+  saveSections();
+  applySectionVisibility();
+}));
+$('showAllSections').addEventListener('click', () => {
+  hiddenSections.clear();
+  document.querySelectorAll('.sectionCb').forEach(cb => cb.checked = true);
+  saveSections(); applySectionVisibility();
+});
+$('hideAllSections').addEventListener('click', () => {
+  SECTIONS.forEach(s => hiddenSections.add(s.id));
+  document.querySelectorAll('.sectionCb').forEach(cb => cb.checked = false);
+  saveSections(); applySectionVisibility();
+});
 
 const EVENT_NAMES = { 'WGITA-35-2026': '35th Annual Meeting of INTOSAI Working Group on IT Audit', 'KSC-SC18-2026': '18th KSC Steering Committee Meeting' };
 const ROLE_NAMES = { hod:'Head of delegation', delegate:'Delegate', observer:'Observer', speaker:'Speaker', moderator:'Moderator', secretariat:'Secretariat', interpreter:'Interpreter', accompanying:'Accompanying official' };
@@ -323,7 +381,7 @@ function renderDashboard(rows) {
   const byHotelTier = groupCountByTier(rows, hotelName);
 
   content.innerHTML = `
-    <div class="card">
+    <div class="card" data-section="kpi">
       <h2>At a glance</h2>
       <p class="cap">Confirmed (approved) registrations only.</p>
       <div class="kpis">
@@ -343,7 +401,7 @@ function renderDashboard(rows) {
     </div>
 
     <div class="two-col">
-      <div class="card">
+      <div class="card" data-section="byEvent">
         <h2>Registrations by event</h2>
         <p class="cap">One person attending both events is counted once, under "Both".</p>
         <div class="tblwrap"><table class="datatable">
@@ -356,7 +414,7 @@ function renderDashboard(rows) {
           </tbody>
         </table></div>
       </div>
-      <div class="card">
+      <div class="card" data-section="accommodation">
         <h2>Accommodation</h2>
         <p class="cap">Where confirmed participants are staying. Adds up to the total above.</p>
         <div class="kpis" style="grid-template-columns:repeat(3,1fr)">
@@ -367,54 +425,55 @@ function renderDashboard(rows) {
       </div>
     </div>
 
-    <div class="card">
+    <div class="card" data-section="tier">
       <h2>Protocol tier by event</h2>
       <p class="cap">President / Vice President / Other. Set on the Registrations page.</p>
       ${crossTable(byTierEvent, EVENT_COLS, 'Tier')}
     </div>
 
-    <div class="card">
+    <div class="card" data-section="role">
       <h2>Role in the delegation, by event</h2>
       <p class="cap">Confirmed participants by protocol role.</p>
       ${crossTable(byRole, EVENT_COLS, 'Role')}
     </div>
 
-    <div class="card">
+    <div class="card" data-section="orgEvent">
       <h2>All organisations, by event</h2>
       <p class="cap">Every SAI/organisation represented.</p>
       ${crossTable(byOrgEvent, EVENT_COLS, 'Organisation / Country')}
     </div>
 
-    <div class="card">
+    <div class="card" data-section="orgTier">
       <h2>All organisations, by protocol tier</h2>
       <p class="cap">Which organisations the President/Vice President attendees belong to.</p>
       ${crossTable(byOrgTier, TIER_COLS, 'Organisation / Country')}
     </div>
 
-    <div class="card">
+    <div class="card" data-section="orgAcc">
       <h2>All organisations, main vs. accompanying</h2>
       <p class="cap">How many delegates each organisation sent, and how many people they brought along.</p>
       ${crossTable(byOrgParticipants, PARTICIPANTS_COLS, 'Organisation / Country')}
     </div>
 
-    <div class="card">
+    <div class="card" data-section="dietary">
       <h2>Dietary requirements, by event</h2>
       <p class="cap">For catering planning.</p>
       ${crossTable(byDiet, EVENT_COLS, 'Requirement')}
     </div>
 
-    <div class="card">
+    <div class="card" data-section="hotelEvent">
       <h2>Hotels, by event</h2>
       <p class="cap">Where each event's participants are staying, including own arrangements.</p>
       ${crossTable(byHotelEvent, EVENT_COLS, 'Hotel')}
     </div>
 
-    <div class="card">
+    <div class="card" data-section="hotelTier">
       <h2>Hotels, by protocol tier</h2>
       <p class="cap">Which hotels the President/Vice President attendees are staying at.</p>
       ${crossTable(byHotelTier, TIER_COLS, 'Hotel')}
     </div>
   `;
+  applySectionVisibility();
 
   lastDashboard = {
     summary: [
@@ -445,18 +504,22 @@ function renderDashboard(rows) {
       ['Total', wgitaOnly + kscOnly + bothCount]
     ],
     sheets: [
-      ['Protocol tier', byTierEvent, EVENT_COLS, 'Tier'],
-      ['Role', byRole, EVENT_COLS, 'Role'],
-      ['Orgs by event', byOrgEvent, EVENT_COLS, 'Organisation / Country'],
-      ['Orgs by tier', byOrgTier, TIER_COLS, 'Organisation / Country'],
-      ['Orgs main-vs-acc', byOrgParticipants, PARTICIPANTS_COLS, 'Organisation / Country'],
-      ['Dietary', byDiet, EVENT_COLS, 'Requirement'],
-      ['Hotels by event', byHotelEvent, EVENT_COLS, 'Hotel'],
-      ['Hotels by tier', byHotelTier, TIER_COLS, 'Hotel']
+      ['Protocol tier', byTierEvent, EVENT_COLS, 'Tier', 'tier'],
+      ['Role', byRole, EVENT_COLS, 'Role', 'role'],
+      ['Orgs by event', byOrgEvent, EVENT_COLS, 'Organisation / Country', 'orgEvent'],
+      ['Orgs by tier', byOrgTier, TIER_COLS, 'Organisation / Country', 'orgTier'],
+      ['Orgs main-vs-acc', byOrgParticipants, PARTICIPANTS_COLS, 'Organisation / Country', 'orgAcc'],
+      ['Dietary', byDiet, EVENT_COLS, 'Requirement', 'dietary'],
+      ['Hotels by event', byHotelEvent, EVENT_COLS, 'Hotel', 'hotelEvent'],
+      ['Hotels by tier', byHotelTier, TIER_COLS, 'Hotel', 'hotelTier']
     ]
   };
 }
 
+/* Mirrors whatever's ticked in "Show / hide tables" -- a lighter export for
+   the same reason someone would hide a card on screen. "Accommodation" has
+   no export sheet of its own (its numbers are already inside "At a glance"),
+   so hiding it has no effect here. */
 function exportToExcel() {
   if (!lastDashboard) { alert('Load the dashboard first.'); return; }
   const wb = XLSX.utils.book_new();
@@ -465,9 +528,12 @@ function exportToExcel() {
     ws['!cols'] = aoa[0].map((h, i) => ({ wch: Math.min(40, Math.max(10, String(h ?? '').length, ...aoa.slice(1).map(r => String(r[i] ?? '').length))) }));
     XLSX.utils.book_append_sheet(wb, ws, name);
   };
-  addSheet('At a glance', lastDashboard.summary);
-  addSheet('By event', lastDashboard.byEvent);
-  lastDashboard.sheets.forEach(([name, groupRows, columns, rowHeader]) => addSheet(name, groupsToAoa(groupRows, columns, rowHeader)));
+  if (!hiddenSections.has('kpi')) addSheet('At a glance', lastDashboard.summary);
+  if (!hiddenSections.has('byEvent')) addSheet('By event', lastDashboard.byEvent);
+  lastDashboard.sheets
+    .filter(([, , , , sectionId]) => !hiddenSections.has(sectionId))
+    .forEach(([name, groupRows, columns, rowHeader]) => addSheet(name, groupsToAoa(groupRows, columns, rowHeader)));
+  if (!wb.SheetNames.length) { alert('Everything is hidden — tick at least one table first.'); return; }
   XLSX.writeFile(wb, 'asa-events-dashboard.xlsx');
 }
 
