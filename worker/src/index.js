@@ -1376,7 +1376,16 @@ async function uploadFile(req, env, ch, ipHash) {
 const CLIENT_ERROR_CODES = {
   gate: ['missing_code', 'invalid_code_format', 'missing_email', 'invalid_email', 'disposable_email'],
   events_pick: ['no_events_selected'],
-  edit_request: ['missing_reference', 'missing_email', 'invalid_email']
+  edit_request: ['missing_reference', 'missing_email', 'invalid_email'],
+  /* fetch() itself throwing -- the request never reached this Worker at all
+     (blocked/firewalled connection, DNS failure, offline). Best-effort only:
+     if the browser can't reach the API for the real request, this report
+     can fail exactly the same way and never arrive either. It's worth
+     trying anyway, since not every failure here means a full, sustained
+     block -- a brief drop or a one-off timeout would still let this
+     follow-up call through. detail carries which endpoint the original
+     request was for. */
+  network: ['network_error']
 };
 async function logClientError(req, env, ch, ipHash) {
   const b = await req.json().catch(() => ({}));

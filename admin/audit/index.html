@@ -167,11 +167,13 @@ const FLOW_LABELS = {
   checkin: 'scanning a badge at reception',
   gate: 'the invitation code / email step',
   events_pick: 'choosing which event(s) to register for',
-  edit_request: 'requesting an edit link (own-browser validation)'
+  edit_request: 'requesting an edit link (own-browser validation)',
+  network: "a request that never reached the server (blocked network, offline, DNS)"
 };
 /* Error codes plain enough to skip a label; these earn a friendlier one. */
 const ERROR_LABELS = {
   rate_limited: 'Too many attempts, temporarily blocked',
+  network_error: 'Could not reach the server (network/firewall block, not the code or link)',
   not_found: 'No matching registration found',
   not_approved: 'Registration is not approved',
   event_mismatch: "Badge's event doesn't match the registration",

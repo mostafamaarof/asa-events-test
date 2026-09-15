@@ -878,7 +878,11 @@ async function call(path, body) {
        at all -- DNS failure, a blocked/firewalled connection, offline, a
        CORS rejection. That's a distinct condition from the server actually
        answering with an error, and callers need to tell them apart instead
-       of both landing on the same generic "invalid code"-shaped message. */
+       of both landing on the same generic "invalid code"-shaped message.
+       Best-effort audit trail entry for this same failure -- it can just as
+       easily fail to arrive (same block, same reason), but a brief drop or
+       one-off timeout would still let it through, so it's worth attempting. */
+    reportClientError('network', 'network_error', path);
     throw new Error('network_error');
   }
   const j = await r.json().catch(() => ({}));
