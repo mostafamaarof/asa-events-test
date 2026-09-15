@@ -277,25 +277,27 @@ function renderDashboard(rows) {
   const kscAttendance = rows.filter(r => events(r).includes('KSC-SC18-2026')).length;
   const orgs = new Set(rows.map(r => r.organization_name).filter(Boolean));
   const speaking = rows.filter(r => dset(r).wants_to_present === 'yes').length;
-  const visa = rows.filter(r => r.visa_letter_needed).length;
+  /* Reused below for anything an accompanying person answers for themself
+     (visa need, social programme) rather than inheriting the confirmed
+     participant's own answer. */
+  const accListOf = (r) => { const d = dset(r); return (d.is_accompanied === 'yes' && Array.isArray(d.accompanying)) ? d.accompanying : []; };
+  /* visa_letter_needed is the confirmed participant's own answer; each
+     accompanying person answers acc_visa_letter_needed for themself -- summed
+     into one figure (the secretariat's actual visa-letter workload), with a
+     note underneath breaking out how many of that total are accompanying
+     persons. Same pattern as the social-programme figure below. */
+  const visaMain = rows.filter(r => r.visa_letter_needed).length;
+  const visaAcc = rows.reduce((s, r) => s + accListOf(r).filter(a => a.acc_visa_letter_needed === 'yes').length, 0);
+  const visaTotal = visaMain + visaAcc;
   const social = rows.filter(r => dset(r).social_program_attending === 'yes').length;
-  /* social_program_attending is asked of the confirmed participant only --
-     each accompanying person answers their own acc_attends_social instead --
-     so the two are summed for the headcount the venue/caterer actually
-     needs, with a note underneath breaking out how many of that total are
-     accompanying persons. */
-  const accSocial = rows.reduce((s, r) => {
-    const d = dset(r);
-    const acc = (d.is_accompanied === 'yes' && Array.isArray(d.accompanying)) ? d.accompanying : [];
-    return s + acc.filter(a => a.acc_attends_social === 'yes').length;
-  }, 0);
+  const accSocial = rows.reduce((s, r) => s + accListOf(r).filter(a => a.acc_attends_social === 'yes').length, 0);
   const socialTotal = social + accSocial;
   const official = rows.filter(r => dset(r).accommodation_type === 'official').length;
   const own = rows.filter(r => dset(r).accommodation_type === 'own').length;
   const accomNotDecided = rows.length - official - own;
   const presidents = rows.filter(r => r.participant_tier === 'president').length;
   const vicePresidents = rows.filter(r => r.participant_tier === 'vice_president').length;
-  const accCountOf = (r) => { const d = dset(r); return (d.is_accompanied === 'yes' && Array.isArray(d.accompanying)) ? d.accompanying.length : 0; };
+  const accCountOf = (r) => accListOf(r).length;
   const totalAccompanying = rows.reduce((s, r) => s + accCountOf(r), 0);
 
   const byRole = groupCountByEvent(rows, r => r.role_in_delegation, ROLE_NAMES);
@@ -333,10 +335,11 @@ function renderDashboard(rows) {
         ${kpiTile(presidents, 'Presidents attending')}
         ${kpiTile(vicePresidents, 'Vice Presidents attending')}
         ${kpiTile(speaking, 'Requesting to speak')}
-        ${kpiTile(visa, 'Need a visa facilitation letter')}
+        ${kpiTile(visaTotal, 'Need a visa facilitation letter')}
         ${kpiTile(socialTotal, 'Attending the social programme')}
       </div>
-      <p class="cap" style="margin:14px 0 0">Note: "Attending the social programme" includes both confirmed participants and accompanying persons — ${accSocial} of the ${socialTotal} are accompanying persons (each answers that question for themself).</p>
+      <p class="cap" style="margin:14px 0 0">Note: "Need a visa facilitation letter" includes both confirmed participants and accompanying persons — ${visaAcc} of the ${visaTotal} are accompanying persons.</p>
+      <p class="cap" style="margin:4px 0 0">Note: "Attending the social programme" includes both confirmed participants and accompanying persons — ${accSocial} of the ${socialTotal} are accompanying persons (each answers that question for themself).</p>
     </div>
 
     <div class="two-col">
@@ -424,7 +427,9 @@ function renderDashboard(rows) {
       ['Presidents attending', presidents],
       ['Vice Presidents attending', vicePresidents],
       ['Requesting to speak', speaking],
-      ['Need a visa facilitation letter', visa],
+      ['Need a visa facilitation letter (total)', visaTotal],
+      ['  of which, accompanying persons', visaAcc],
+      ['  of which, confirmed participants', visaMain],
       ['Attending the social programme (total)', socialTotal],
       ['  of which, accompanying persons', accSocial],
       ['  of which, confirmed participants', social],
