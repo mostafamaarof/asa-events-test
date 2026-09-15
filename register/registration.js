@@ -86,6 +86,7 @@ const UI = {
   errPhone:      { en: 'Include the country code, for example +20 100 000 0000.', ar: 'أدرج رمز الدولة، مثال ‎+20 100 000 0000.' },
   errCode:       { en: 'Invalid or expired invitation code.', ar: 'رمز الدعوة غير صحيح أو منتهي الصلاحية.' },
   errRateLimited: { en: 'Too many attempts from this connection. Wait a few minutes and try again — your code is likely fine.', ar: 'محاولات كثيرة من هذا الاتصال. انتظر بضع دقائق وحاول مجدداً — الرمز على الأرجح صحيح.' },
+  errNetwork:    { en: 'Could not reach the registration server — this is usually a network or firewall issue, not your code. Try a different network (e.g. mobile data) or device, or try again in a few minutes.', ar: 'تعذّر الوصول إلى خادم التسجيل — غالباً بسبب الشبكة أو جدار حماية، وليس بسبب الرمز. جرّب شبكة مختلفة (بيانات الجوال مثلاً) أو جهازاً آخر، أو أعد المحاولة بعد دقائق.' },
   errOtp:        { en: 'That code did not match. Check your inbox and try again.', ar: 'الرمز غير مطابق. راجع بريدك وحاول مجدداً.' },
   errMinLen:     { en: 'Too short.', ar: 'النص قصير جداً.' },
   errMaxLen:     { en: 'Too long.', ar: 'النص طويل جداً.' },
@@ -869,7 +870,17 @@ async function call(path, body) {
   if (CONFIG.MOCK) return mock(path, body);
   const headers = { 'Content-Type': 'application/json' };
   if (state.session) headers['Authorization'] = 'Bearer ' + state.session;
-  const r = await fetch(CONFIG.apiBase + path, { method: 'POST', headers, body: JSON.stringify(body) });
+  let r;
+  try {
+    r = await fetch(CONFIG.apiBase + path, { method: 'POST', headers, body: JSON.stringify(body) });
+  } catch (e) {
+    /* fetch() itself only throws when the request never reached the server
+       at all -- DNS failure, a blocked/firewalled connection, offline, a
+       CORS rejection. That's a distinct condition from the server actually
+       answering with an error, and callers need to tell them apart instead
+       of both landing on the same generic "invalid code"-shaped message. */
+    throw new Error('network_error');
+  }
   const j = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(j.error || 'request_failed');
   return j;
@@ -1114,6 +1125,7 @@ async function submitGate(btn) {
     const msg = String(err.message);
     state.errors = msg === 'free_email_not_allowed' ? { institutional_email: T('errFreeEmail') }
       : msg === 'rate_limited' ? { invitation_code: T('errRateLimited') }
+      : msg === 'network_error' ? { invitation_code: T('errNetwork') }
       : { invitation_code: T('errCode') };
     renderGate();
   } finally {
@@ -1343,9 +1355,10 @@ async function loadForEdit(reference, token) {
     for (const [k, c] of Object.entries(r.consents || {})) state.data[k] = !!c.value;
     state.screen = 'review'; render(); window.scrollTo(0, 0);
   } catch (e) {
-    state.screen = 'gate'; state.errors = { invitation_code: state.lang === 'ar'
+    state.screen = 'gate';
+    state.errors = { invitation_code: String(e.message) === 'network_error' ? T('errNetwork') : (state.lang === 'ar'
       ? 'رابط التعديل غير صالح أو منتهي. استخدم "مسجَّل بالفعل؟" لطلب رابط جديد.'
-      : 'This edit link is invalid or has expired. Use "Already registered?" to request a new one.' };
+      : 'This edit link is invalid or has expired. Use "Already registered?" to request a new one.') };
     render();
   }
 }
