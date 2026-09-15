@@ -1075,7 +1075,17 @@ async function submitEditRequest() {
   if (Object.keys(e).length) return renderEditRequest();
   try {
     await call('/registrations/edit-link', { reference: ref, email: mail });
-  } catch (e2) { /* the endpoint always answers ok; a network failure is the only real error here */ }
+  } catch (e2) {
+    /* The endpoint answers ok:true whether or not the reference/email
+       matched anything, by design -- it never confirms which half was
+       wrong -- so an exception here is always a real failure (network
+       block, rate limiting), never "no match found." Showing the usual
+       "check your inbox" message in that case would be a false positive:
+       nothing was actually sent. */
+    state.errors = { editReference: T('netErr') };
+    renderEditRequest();
+    return;
+  }
   state.editRequestSent = true;
   renderEditRequest();
 }
