@@ -37,6 +37,8 @@ button:hover{background:var(--ink-soft)}
 button:disabled{opacity:.5;cursor:not-allowed}
 button.ghost{background:transparent;color:var(--ink);border-color:var(--rule-strong)}
 button.ghost:hover{background:#F1F5F8}
+button.danger{background:transparent;color:var(--err);border-color:var(--err)}
+button.danger:hover{background:var(--err-tint)}
 .msg{font-size:13px;padding:10px 12px;border-radius:2px;display:none}
 .msg.ok{display:block;background:var(--ok-tint);color:var(--ok)}
 .msg.err{display:block;background:var(--err-tint);color:var(--err)}
@@ -307,6 +309,7 @@ function renderTable(rows) {
       <td>
         <button type="button" class="btn ghost filesBtn" data-ref="${r.reference}" style="height:30px;padding:0 12px;font-size:12px">Files</button>
         <button type="button" class="btn ghost editBtn" data-ref="${r.reference}" style="height:30px;padding:0 12px;font-size:12px">Edit</button>
+        <button type="button" class="btn danger deleteBtn" data-ref="${r.reference}" data-name="${(r.full_name || '').replace(/"/g, '&quot;')}" style="height:30px;padding:0 12px;font-size:12px">Delete</button>
       </td>
     </tr>`).join('');
   wrap.innerHTML = `<table>
@@ -355,7 +358,37 @@ wrap0.addEventListener('change', async (e) => {
 wrap0.addEventListener('click', async (e) => {
   const filesBtn = e.target.closest('.filesBtn');
   const editBtn = e.target.closest('.editBtn');
-  if (!filesBtn && !editBtn) return;
+  const deleteBtn = e.target.closest('.deleteBtn');
+  if (!filesBtn && !editBtn && !deleteBtn) return;
+
+  if (deleteBtn) {
+    const reference = deleteBtn.dataset.ref;
+    const name = deleteBtn.dataset.name || '(no name)';
+    /* A plain confirm() isn't enough friction for something this
+       irreversible -- typing the reference back makes an accidental
+       double-click harmless instead of catastrophic. */
+    const typed = prompt(
+      `This permanently deletes ${reference} — ${name} — and every file they uploaded ` +
+      `(passport copy, ticket, photos, slides). This CANNOT be undone.\n\n` +
+      `A nightly backup exists, but if this matters, take a fresh one on the Backups page first.\n\n` +
+      `Type the reference to confirm: ${reference}`
+    );
+    if (typed === null) return;
+    if (typed.trim().toUpperCase() !== reference.toUpperCase()) { alert('Reference did not match — nothing was deleted.'); return; }
+
+    deleteBtn.disabled = true; const orig = deleteBtn.textContent; deleteBtn.textContent = '...';
+    try {
+      await apiFetch('/admin/registrations/delete', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reference })
+      });
+      all = all.filter(r => r.reference !== reference);
+      populateStatusFilter(); render();
+    } catch (e2) {
+      alert('Could not delete: ' + e2.message);
+      deleteBtn.disabled = false; deleteBtn.textContent = orig;
+    }
+    return;
+  }
 
   if (filesBtn) {
     const reference = filesBtn.dataset.ref;

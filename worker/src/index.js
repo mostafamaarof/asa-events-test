@@ -29,6 +29,10 @@ import { connect } from 'cloudflare:sockets';
      GET  /v1/admin/attachments?reference=... list one registration's attachments (Bearer ADMIN_TOKEN or VIEWER_TOKEN)
      POST /v1/admin/registrations/status  set status to under_review/approved/rejected, emails the applicant (Bearer ADMIN_TOKEN)
      POST /v1/admin/registrations/tier    set participant_tier to president/vice_president/other, never emailed (Bearer ADMIN_TOKEN)
+     POST /v1/admin/registrations/delete  permanently delete one registration, its check-ins, and every file it
+                                    uploaded; decrements the invitation's used_count. Full ADMIN_TOKEN only --
+                                    never satisfiable by a named token's 'registrations' scope, no matter how
+                                    broad. audit_log itself is untouched, only the deletion is logged.
      POST /v1/admin/registrations/edit-token  mint an edit-link token for any reference, opens the same public
                                     edit form; the resulting save is never emailed to the registrant (Bearer ADMIN_TOKEN)
      GET  /v1/admin/field-values?field=organization_name|official_hotel  distinct values in use, with counts (Bearer ADMIN_TOKEN)
@@ -691,6 +695,42 @@ async function adminSetTier(req, env, ch, access, ipHash, actor) {
   await notifyTelegram(env, `🎖️ <b>Tier changed</b>\n${esc(reg.full_name || '(no name)')} — ${esc(reference)} → <b>${esc(TIER_LABELS[tier])}</b>${actor ? `\nby ${esc(actor)}` : ''}`);
 
   return json({ ok: true, reference, tier }, 200, ch);
+}
+
+/* Permanently erases one registration -- the row, its check-ins, and every
+   file it uploaded (passport copy, ticket, photos, slides, accompanying
+   persons' passport copies). Admin-token only, checked against the raw
+   token directly (requireAdmin) rather than the 'registrations' scope a
+   named token could carry -- day-to-day approve/edit work is one thing,
+   irreversibly destroying a record is a different order of consequence,
+   so no named token gets this no matter how broad its other scopes are.
+   audit_log itself is untouched: the deletion is logged, but the rest of
+   this reference's history stays exactly as it already reads, matching
+   how this app treats the audit trail as a permanent record everywhere
+   else (e.g. a revoked access token still shows every prior use). */
+async function adminDeleteRegistration(req, env, ch, ipHash, actor) {
+  if (!requireAdmin(req, env)) return fail('unauthorized', 401, ch);
+  const b = await req.json().catch(() => ({}));
+  const reference = String(b.reference || '').trim().toUpperCase();
+  if (!reference) return fail('invalid_request', 400, ch);
+
+  const reg = await env.DB.prepare('SELECT * FROM registrations WHERE reference = ?').bind(reference).first();
+  if (!reg) return fail('not_found', 404, ch);
+
+  const attachments = extractAttachments(JSON.parse(reg.data_json || '{}'));
+  if (attachments.length) await env.FILES.delete(attachments.map(a => a.key));
+
+  await env.DB.prepare('DELETE FROM checkins WHERE reference = ?').bind(reference).run();
+  if (reg.invitation_id) {
+    await env.DB.prepare('UPDATE invitations SET used_count = MAX(0, used_count - 1) WHERE invitation_id = ?').bind(reg.invitation_id).run();
+  }
+  await env.DB.prepare('DELETE FROM registrations WHERE reference = ?').bind(reference).run();
+
+  await audit(env, 'registration_deleted', 'registration', reg.registration_id,
+    `${reference}: ${reg.full_name || '(no name)'} — ${reg.email || 'no email'} (${attachments.length} file(s) removed)`, ipHash, actor);
+  await notifyTelegram(env, `🗑️ <b>Registration deleted</b>\n${esc(reg.full_name || '(no name)')} — ${esc(reference)}${actor ? `\nby ${esc(actor)}` : ''}`);
+
+  return json({ ok: true, reference, filesDeleted: attachments.length }, 200, ch);
 }
 
 /* Lets an admin open any registration in the SAME edit form a registrant
@@ -1447,6 +1487,7 @@ export default {
       if (req.method === 'GET'  && pathname === '/v1/admin/attachments')  return await adminAttachments(req, env, ch, access);
       if (req.method === 'POST' && pathname === '/v1/admin/registrations/status') return await adminSetStatus(req, env, ch, access, ipHash, actor);
       if (req.method === 'POST' && pathname === '/v1/admin/registrations/tier')   return await adminSetTier(req, env, ch, access, ipHash, actor);
+      if (req.method === 'POST' && pathname === '/v1/admin/registrations/delete') return await adminDeleteRegistration(req, env, ch, ipHash, actor);
       if (req.method === 'POST' && pathname === '/v1/admin/registrations/edit-token') return await adminMintEditToken(req, env, ch, access);
       if (req.method === 'GET'  && pathname === '/v1/admin/field-values')        return await adminFieldValues(req, env, ch, access);
       if (req.method === 'POST' && pathname === '/v1/admin/field-values/rename') return await adminRenameFieldValues(req, env, ch, access, ipHash, actor);
