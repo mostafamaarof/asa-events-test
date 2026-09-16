@@ -40,6 +40,7 @@ button.ghost:hover{background:#F1F5F8}
 .msg{font-size:13px;padding:10px 12px;border-radius:2px;display:none}
 .msg.ok{display:block;background:var(--ok-tint);color:var(--ok)}
 .msg.err{display:block;background:var(--err-tint);color:var(--err)}
+.choice{display:flex;align-items:center;gap:6px;font-size:13.5px;font-weight:500;cursor:pointer}
 
 /* ---------- Camera ---------- */
 .camwrap{position:relative;width:100%;max-width:480px;margin:0 auto;background:#000;border-radius:4px;overflow:hidden;aspect-ratio:3/4}
@@ -104,6 +105,7 @@ td.num{font-family:var(--f-num)}
     <div class="actions" style="margin-top:14px">
       <button id="startCam">Start camera</button>
       <button class="ghost" id="stopCam" disabled>Stop camera</button>
+      <label class="choice" style="margin-inline-start:4px"><input type="checkbox" id="soundToggle" checked>Sound</label>
       <span id="topMsg" class="msg"></span>
     </div>
   </div>
@@ -197,6 +199,42 @@ function authHeaders() {
 }
 function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c])); }
 
+/* ---------- Sound feedback ---------- */
+/* Synthesized tones, not audio files -- one less asset to host, and a
+   reception desk doesn't need anything fancier than a clear success/error
+   distinction audible without looking at the screen. The AudioContext is
+   created lazily on the "Start camera" click (a real user gesture), since
+   browsers refuse to let audio play before one. */
+const soundToggle = $('soundToggle');
+soundToggle.checked = localStorage.getItem('asa_checkin_sound') !== 'off';
+soundToggle.addEventListener('change', () => localStorage.setItem('asa_checkin_sound', soundToggle.checked ? 'on' : 'off'));
+
+let audioCtx = null;
+function ensureAudioCtx() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if (audioCtx.state === 'suspended') audioCtx.resume().catch(() => {});
+}
+function beep(freq, duration, delay, type) {
+  if (!audioCtx) return;
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.type = type || 'sine';
+  osc.frequency.value = freq;
+  gain.gain.value = 0.25;
+  osc.connect(gain); gain.connect(audioCtx.destination);
+  const start = audioCtx.currentTime + (delay || 0);
+  osc.start(start);
+  osc.stop(start + duration);
+}
+function playSuccessSound() {
+  if (!soundToggle.checked) return;
+  try { ensureAudioCtx(); beep(880, 0.1, 0); beep(1318.5, 0.14, 0.1); } catch (e) { /* audio is best-effort */ }
+}
+function playErrorSound() {
+  if (!soundToggle.checked) return;
+  try { ensureAudioCtx(); beep(220, 0.16, 0, 'square'); beep(180, 0.2, 0.18, 'square'); } catch (e) { /* audio is best-effort */ }
+}
+
 const EVENT_META = {
   'WGITA-35-2026': { short: 'WGITA', cls: 'wgita', title: '35th Annual Meeting of INTOSAI Working Group on IT Audit' },
   'KSC-SC18-2026':  { short: 'KSC',   cls: 'ksc',   title: '18th KSC Steering Committee Meeting' }
@@ -221,6 +259,7 @@ let qrScanner = null, scanLocked = false, autoResumeTimer = null;
 async function startCam() {
   try { authHeaders(); } catch (e) { showMsg($('topMsg'), e.message, false); return; }
   if (typeof QrScanner !== 'function') { showMsg($('topMsg'), 'QR scanner library failed to load.', false); return; }
+  ensureAudioCtx(); // unlock audio now, on a real click, so the first scan's sound isn't silently blocked
   const video = $('video');
   /* QrScanner.start() only resolves once the <video> is actually decoding
      frames -- most browsers never play a display:none video, so the video
@@ -296,6 +335,7 @@ $('manCheckin').addEventListener('click', () => {
 
 async function doCheckin(body) {
   const msg = $('topMsg'); msg.className = 'msg';
+  ensureAudioCtx(); // covers manual entry too, in case the camera was never started
   try {
     const res = await fetch(CONFIG.apiBase + '/admin/checkin', {
       method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeaders() }, body: JSON.stringify(body)
@@ -315,6 +355,7 @@ async function doCheckin(body) {
 let lastResult = null;
 
 function renderError(code) {
+  playErrorSound();
   lastResult = null;
   $('undoBtn').hidden = true;
   $('result').className = 'show';
@@ -329,6 +370,7 @@ function renderError(code) {
 }
 
 function renderResult(d) {
+  playSuccessSound(); // "already checked in" still counts as a resolved, valid badge -- not a failure
   const meta = EVENT_META[d.event_code] || { short: d.event_code, cls: '' };
   lastResult = { reference: d.reference, event_code: d.event_code };
   $('undoBtn').hidden = false;
