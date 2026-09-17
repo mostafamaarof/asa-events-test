@@ -130,6 +130,7 @@ td.muted{color:var(--rule-strong);white-space:nowrap}
         <label class="choice"><input type="checkbox" class="catFilter" value="hotel" checked>Accommodation</label>
         <label class="choice"><input type="checkbox" class="catFilter" value="presentation" checked>Presentation</label>
         <label class="choice"><input type="checkbox" class="catFilter" value="accompanying" checked>Accompanying persons</label>
+        <label class="choice"><input type="checkbox" class="catFilter" value="attachments" checked>Attachments</label>
       </div>
       <span class="hint">Only people missing at least one ticked category are listed. Each row still lets you pick exactly which of their gaps to remind about.</span>
     </div>
@@ -211,7 +212,12 @@ function computeMissing(d) {
       if (gaps.length) accompanying.push(`${name}: missing ${gaps.join(', ')}`);
     });
   }
-  return { itinerary, hotel, presentation, accompanying };
+
+  const attachments = [];
+  if (!d.passport_copy_key) attachments.push('Passport copy');
+  if (!d.ticket_file_key) attachments.push('Flight itinerary / ticket file');
+
+  return { itinerary, hotel, presentation, accompanying, attachments };
 }
 
 function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c])); }
@@ -257,7 +263,7 @@ function computeRows() {
     .filter(row => catFilters.some(c => row.missing[c] && row.missing[c].length));
 }
 
-const CAT_LABELS = { itinerary: 'Flight itinerary', hotel: 'Accommodation', presentation: 'Presentation', accompanying: 'Accompanying persons' };
+const CAT_LABELS = { itinerary: 'Flight itinerary', hotel: 'Accommodation', presentation: 'Presentation', accompanying: 'Accompanying persons', attachments: 'Attachments' };
 
 function catCell(ref, cat, items) {
   if (items === null) return '<td class="muted">—</td>'; // not applicable
@@ -291,13 +297,14 @@ function render() {
     ${catCell(r.ref, 'hotel', r.missing.hotel)}
     ${catCell(r.ref, 'presentation', r.missing.presentation)}
     ${catCell(r.ref, 'accompanying', r.missing.accompanying)}
+    ${catCell(r.ref, 'attachments', r.missing.attachments)}
     <td class="muted">${fmtWhen(r.lastReminded)}${r.lastCategories.length ? '<br>' + r.lastCategories.map(c => CAT_LABELS[c] || c).join(', ') : ''}</td>
     <td class="ref">${esc(r.ref)}</td>
   </tr>`).join('');
 
   list.innerHTML = `<div class="tblwrap"><table>
     <thead><tr><th>Name</th><th>Tier</th><th>Org / Country</th><th>Flight itinerary</th><th>Accommodation</th>
-      <th>Presentation</th><th>Accompanying persons</th><th>Last reminded</th><th>Ref</th></tr></thead>
+      <th>Presentation</th><th>Accompanying persons</th><th>Attachments</th><th>Last reminded</th><th>Ref</th></tr></thead>
     <tbody>${rowsHtml}</tbody>
   </table></div>`;
 }

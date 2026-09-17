@@ -855,10 +855,18 @@ function computeMissing(d) {
     });
   }
 
-  return { itinerary, hotel, presentation, accompanying };
+  /* The participant's own two document uploads -- both optional on the
+     form, neither tracked by any other category (presentation's photo/
+     slides and accompanying's passport copies are each other people's
+     files; these are the confirmed participant's). */
+  const attachments = [];
+  if (!d.passport_copy_key) attachments.push('Passport copy');
+  if (!d.ticket_file_key) attachments.push('Flight itinerary / ticket file');
+
+  return { itinerary, hotel, presentation, accompanying, attachments };
 }
-const REMINDER_CATEGORIES = ['itinerary', 'hotel', 'presentation', 'accompanying'];
-const REMINDER_LABELS = { itinerary: 'Flight itinerary', hotel: 'Accommodation', presentation: 'Presentation', accompanying: 'Accompanying persons' };
+const REMINDER_CATEGORIES = ['itinerary', 'hotel', 'presentation', 'accompanying', 'attachments'];
+const REMINDER_LABELS = { itinerary: 'Flight itinerary', hotel: 'Accommodation', presentation: 'Presentation', accompanying: 'Accompanying persons', attachments: 'Attachments' };
 
 /* Builds the exact email a reminder would send, without sending it -- shared
    by the real send and the preview endpoint so a preview can never drift
