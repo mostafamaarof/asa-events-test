@@ -128,6 +128,7 @@ td.muted{color:var(--rule-strong)}
       <div class="tab active" data-tab="arrival">By arrival date</div>
       <div class="tab" data-tab="departure">By departure date</div>
       <div class="tab" data-tab="hotel">By hotel</div>
+      <div class="tab" data-tab="organization">By organization</div>
       <div class="tab" data-tab="passport">Passport report</div>
       <div class="tab" data-tab="accompanying">Accompanying persons</div>
       <div class="tab" data-tab="speakers">Speakers</div>
@@ -217,6 +218,7 @@ function computeRows() {
       return {
         ref: r.reference,
         name: r.full_name || '(no name)',
+        email: r.email || '',
         org: r.organization_name || '',
         country: OPT.country[r.country] || r.country || '',
         role: OPT.delRole[r.role_in_delegation] || r.role_in_delegation || '',
@@ -350,6 +352,30 @@ function hotelReport(rows) {
       ${td(r.roomType)}${td(fmtDate(r.checkIn))}${td(fmtDate(r.checkOut))}${td(r.bookingRef)}
       ${td(r.arrDate ? fmtDate(r.arrDate) + (r.arrTime ? ' ' + r.arrTime : '') : '')}
       ${td(r.depDate ? fmtDate(r.depDate) + (r.depTime ? ' ' + r.depTime : '') : '')}
+      <td class="ref">${esc(r.ref)}</td>
+    </tr>`).join('');
+    return { title, count: items.length, cols, rowsHtml, items };
+  });
+}
+
+/* ---------- By organization: a roster per SAI/organisation, unlike the
+   dashboard's org tables which only ever show counts. Grouped by org +
+   country (same compound key as every other report, so two SAIs that
+   happen to share a plain name still read as distinct groups); anyone
+   with no organisation given gets their own bucket at the end instead of
+   silently vanishing from the total. ---------- */
+function orgReport(rows) {
+  const norm = (s) => s.trim().replace(/\s+/g, ' ');
+  const groups = groupBy(rows, r => r.org ? 'A__' + norm(r.org).toLowerCase() + '|' + r.country : '￿__none');
+  const keys = [...groups.keys()].sort();
+  const cols = ['Name', 'Tier', 'Role', 'Event(s)', 'Mobile', 'Email', 'Accompanying', 'Ref'];
+  return keys.map(key => {
+    const items = groups.get(key).slice().sort((a, b) => a.name.localeCompare(b.name));
+    const first = items[0];
+    const title = key === '￿__none' ? 'Organisation not given' : first.org + (first.country ? ' · ' + first.country : '');
+    const rowsHtml = items.map(r => `<tr>
+      <td class="wrap">${esc(r.name)}</td>${td(r.tier)}${td(r.role)}${td(r.events, 'wrap')}${td(r.mobile)}${td(r.email)}
+      <td>${r.pax - 1 || ''}</td>
       <td class="ref">${esc(r.ref)}</td>
     </tr>`).join('');
     return { title, count: items.length, cols, rowsHtml, items };
@@ -558,6 +584,7 @@ function render() {
   lastGroups = activeTab === 'arrival' ? dateReport(rows, 'arrival')
     : activeTab === 'departure' ? dateReport(rows, 'departure')
     : activeTab === 'hotel' ? hotelReport(rows)
+    : activeTab === 'organization' ? orgReport(rows)
     : activeTab === 'passport' ? passportReport(rows)
     : activeTab === 'accompanying' ? accompanyingReport(rows)
     : activeTab === 'speakers' ? speakersReport(rows)
@@ -611,6 +638,8 @@ function exportCsv() {
            r.roomType, fmtDate(r.checkIn), fmtDate(r.checkOut), r.bookingRef,
            r.arrDate ? fmtDate(r.arrDate) + (r.arrTime ? ' ' + r.arrTime : '') : '',
            r.depDate ? fmtDate(r.depDate) + (r.depTime ? ' ' + r.depTime : '') : '', r.ref]
+        : activeTab === 'organization'
+        ? [r.name, r.tier, r.role, r.events, r.mobile, r.email, r.pax - 1 || '', r.ref]
         : activeTab === 'passport'
         ? [r.name, r.tier, (r.org ? r.org + (r.country ? ' - ' + r.country : '') : r.country),
            r.passportNumber, r.passportType, r.passportPlaceOfIssue, fmtDate(r.passportIssueDate), fmtDate(r.passportExpiryDate),
@@ -644,7 +673,7 @@ function exportCsv() {
   ws['!cols'] = header.map((h, i) => ({ wch: Math.min(40, Math.max(10, h.length, ...aoa.slice(1).map(r => String(r[i] ?? '').length / 1.6))) }));
   const wb = XLSX.utils.book_new();
   const sheetName = activeTab === 'arrival' ? 'By arrival date' : activeTab === 'departure' ? 'By departure date'
-    : activeTab === 'hotel' ? 'By hotel' : activeTab === 'passport' ? 'Passport report'
+    : activeTab === 'hotel' ? 'By hotel' : activeTab === 'organization' ? 'By organization' : activeTab === 'passport' ? 'Passport report'
     : activeTab === 'accompanying' ? 'Accompanying persons' : activeTab === 'speakers' ? 'Speakers'
     : activeTab === 'dietary' ? 'Dietary requirements' : activeTab === 'medical' ? 'Medical information' : 'Attachments';
   XLSX.utils.book_append_sheet(wb, ws, sheetName);
