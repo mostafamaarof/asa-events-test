@@ -15,6 +15,10 @@ import { connect } from 'cloudflare:sockets';
                                     for a (reference, email) pair, if it matches
      POST /v1/registrations/edit-fetch  return one registration's data (reference + token)
      POST /v1/registrations/edit        update it in place (reference + token)
+     POST /v1/registrations/edit-delete let the registrant permanently withdraw their own registration
+                                    (reference + token) -- same edit link as the two above, but rejects
+                                    an admin-minted token, so this can never become a side-door around
+                                    the admin-only /v1/admin/registrations/delete
      GET  /v1/admin/registrations  read the data back (Bearer ADMIN_TOKEN)
      GET  /v1/admin/export.csv     same data as CSV (summary columns only)
      GET  /v1/admin/export.json    full submissions incl. every form field (Bearer ADMIN_TOKEN or VIEWER_TOKEN).
@@ -102,7 +106,7 @@ const UPLOAD_ACCEPT = {
 };
 const UPLOAD_MAX_MB = { any: 15, image: 10, doc: 50 };
 const PUBLIC_PATHS = new Set(['/v1/invitations/verify', '/v1/registrations', '/v1/registrations/edit-link',
-  '/v1/registrations/edit-fetch', '/v1/registrations/edit', '/v1/uploads', '/v1/client-error']);
+  '/v1/registrations/edit-fetch', '/v1/registrations/edit', '/v1/registrations/edit-delete', '/v1/uploads', '/v1/client-error']);
 
 /* ---------- small helpers ---------- */
 const now = () => Math.floor(Date.now() / 1000);
@@ -591,6 +595,46 @@ async function updateRegistration(req, env, ch, ipHash) {
   }
 
   return json({ ok: true, status: reg.status, registration_number: reg.registration_number || null, reference: reg.reference, event_codes: codes }, 200, ch);
+}
+
+/* Lets a registrant permanently withdraw their own registration from the
+   same edit link used to update it -- same row/checkins/files/used_count
+   cleanup as the admin delete action below, just reached a different way.
+   Deliberately rejects an admin-minted token (t.admin, see adminMintEditToken)
+   so this can never become a side-door around requireAdmin: an admin opening
+   someone's record from the admin UI must still use the dedicated admin
+   delete action, which stays attributed to the admin's own actor/audit
+   trail rather than looking like the registrant did it themselves. */
+async function deleteOwnRegistration(req, env, ch, ipHash) {
+  const b = await req.json().catch(() => ({}));
+  const reference = String(b.reference || '').trim().toUpperCase();
+  const t = await readEditToken(env, String(b.token || '').trim());
+  if (!t || t.admin) { await auditError(env, 'edit_delete', 'invalid_edit_link', reference, ipHash); return fail('invalid_edit_link', 401, ch); }
+  if (!await allow(env, 'editdelete:' + ipHash, 10, 3600)) { await auditError(env, 'edit_delete', 'rate_limited', reference, ipHash); return fail('rate_limited', 429, ch); }
+
+  const reg = await env.DB.prepare('SELECT * FROM registrations WHERE reference = ? AND registration_id = ?')
+    .bind(reference, t.r).first();
+  if (!reg) { await auditError(env, 'edit_delete', 'invalid_edit_link', reference, ipHash); return fail('invalid_edit_link', 401, ch); }
+
+  const attachments = extractAttachments(JSON.parse(reg.data_json || '{}'));
+  if (attachments.length) await env.FILES.delete(attachments.map(a => a.key));
+
+  await env.DB.prepare('DELETE FROM checkins WHERE reference = ?').bind(reg.reference).run();
+  if (reg.invitation_id) {
+    await env.DB.prepare('UPDATE invitations SET used_count = MAX(0, used_count - 1) WHERE invitation_id = ?').bind(reg.invitation_id).run();
+  }
+  await env.DB.prepare('DELETE FROM registrations WHERE reference = ?').bind(reg.reference).run();
+
+  await audit(env, 'registration_withdrawn', 'registration', reg.registration_id,
+    `${reg.reference}: ${reg.full_name || '(no name)'} — ${reg.email || 'no email'} (${attachments.length} file(s) removed)`, ipHash);
+  await notifyTelegram(env, `🗑️ <b>Registration withdrawn by participant</b>\n${esc(reg.full_name || '(no name)')} — ${esc(reg.reference)}`);
+
+  const { titlesEn } = await eventTitles(env, reg.event_codes);
+  await sendMail(env, reg.email, `Registration withdrawn — ${reg.reference}`, shell(
+    `<h2 style="font-size:18px;margin:0 0 12px">Your registration has been withdrawn</h2>
+     <p>Reference <b>${reg.reference}</b> for <b>${titlesEn}</b> has been permanently deleted at your request. If you didn't request this, or you change your mind, contact the secretariat.</p>`));
+
+  return json({ ok: true, reference: reg.reference }, 200, ch);
 }
 
 async function adminRead(req, env, ch, csv, access) {
@@ -1484,6 +1528,7 @@ export default {
       if (req.method === 'POST' && pathname === '/v1/registrations/edit-link')  return await requestEditLink(req, env, ch, ipHash);
       if (req.method === 'POST' && pathname === '/v1/registrations/edit-fetch') return await fetchForEdit(req, env, ch, ipHash);
       if (req.method === 'POST' && pathname === '/v1/registrations/edit')       return await updateRegistration(req, env, ch, ipHash);
+      if (req.method === 'POST' && pathname === '/v1/registrations/edit-delete') return await deleteOwnRegistration(req, env, ch, ipHash);
       if (req.method === 'GET'  && pathname === '/v1/admin/registrations')return await adminRead(req, env, ch, false, access);
       if (req.method === 'GET'  && pathname === '/v1/admin/export.csv')   return await adminRead(req, env, ch, true, access);
       if (req.method === 'GET'  && pathname === '/v1/admin/export.json')  return await adminExportFull(req, env, ch, access, ipHash);

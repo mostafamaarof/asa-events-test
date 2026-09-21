@@ -112,7 +112,13 @@ const UI = {
   uploading:        { en: 'Uploading…', ar: 'جارٍ الرفع…' },
   onFile:           { en: 'On file', ar: 'مرفوع مسبقاً' },
   errUploadPending: { en: 'Still uploading — wait a moment and try again.', ar: 'الرفع لا يزال جارياً، انتظر لحظة وحاول مجدداً.' },
-  errUploadFailed:  { en: 'Upload failed. Choose the file again to retry.', ar: 'فشل الرفع. اختر الملف مجدداً للمحاولة.' }
+  errUploadFailed:  { en: 'Upload failed. Choose the file again to retry.', ar: 'فشل الرفع. اختر الملف مجدداً للمحاولة.' },
+  deleteMine:       { en: 'Delete my registration', ar: 'حذف تسجيلي' },
+  deleting:         { en: 'Deleting…', ar: 'جارٍ الحذف…' },
+  confirmDelete:    { en: 'This permanently deletes your registration and every file you uploaded. This cannot be undone. Continue?', ar: 'سيؤدي هذا إلى حذف تسجيلك وكل الملفات التي رفعتها نهائياً. لا يمكن التراجع عن هذا. هل تريد المتابعة؟' },
+  deletedTitle:     { en: 'Your registration has been deleted', ar: 'تم حذف تسجيلك' },
+  deletedDesc:      { en: 'It has been permanently removed. If this was a mistake, you will need to register again with a valid invitation code.', ar: 'تمت إزالته نهائياً. إذا كان هذا عن طريق الخطأ، ستحتاج إلى التسجيل مجدداً برمز دعوة صالح.' },
+  errDeleteFailed:  { en: 'Could not delete your registration. Try again, or contact the secretariat.', ar: 'تعذّر حذف تسجيلك. حاول مجدداً أو راسل الأمانة.' }
 };
 
 const T = (k) => (UI[k] ? UI[k][state.lang] : k);
@@ -441,7 +447,7 @@ const state = {
   coveredEvents: [],      // event codes this invitation currently unlocks (from the server, before picking)
   selectedEventCodes: [], // checkbox state on the events-picker screen
   invitationId: '',
-  screen: 'gate',        // gate | events | form | review | done | closed
+  screen: 'gate',        // gate | events | form | review | done | deleted | closed
   idx: 0,
   data: {},
   files: {},             // key -> File (never persisted to the device draft)
@@ -926,6 +932,10 @@ function mock(path, body) {
       return body.token === 'mock-token' ? res({ ok: true, status: 'under_review', reference: body.reference, event_codes: [Object.keys(EVENTS)[0]] })
                                           : rej(new Error('invalid_edit_link'));
     }
+    if (path === '/registrations/edit-delete') {
+      return body.token === 'mock-token' ? res({ ok: true, reference: body.reference })
+                                          : rej(new Error('invalid_edit_link'));
+    }
     res({ ok: true });
   }, 500));
 }
@@ -1254,6 +1264,10 @@ function renderReview() {
   ft.append(sub);
   ft.append(el('span', { class: 'foot-spacer' }));
   if (bad) ft.append(el('span', { class: 'err' }, T('errFix')));
+  if (state.editMode) {
+    const del = el('button', { class: 'btn danger', type: 'button', onclick: () => deleteOwnRegistration(del) }, T('deleteMine'));
+    ft.append(del);
+  }
   renderLedger();
 }
 
@@ -1278,6 +1292,25 @@ async function doSubmit(btn) {
     const m = String(e.message) === 'session_expired' ? T('errExpired')
             : String(e.message) === 'invalid_edit_link' ? (state.lang === 'ar' ? 'رابط التعديل غير صالح أو منتهي. اطلب رابطاً جديداً.' : 'This edit link is invalid or has expired. Request a new one.')
             : String(e.message) === 'duplicate_registration' ? T('errDuplicate') : T('netErr');
+    foot().append(el('span', { class: 'err' }, m));
+  }
+}
+
+/* Only reachable in editMode (see renderReview's footer), so state.editMode
+   is always set here -- the same {reference, token} pair used to save an
+   edit, reused to authorize the delete. */
+async function deleteOwnRegistration(btn) {
+  if (!confirm(T('confirmDelete'))) return;
+  btn.disabled = true; btn.textContent = T('deleting');
+  try {
+    await call('/registrations/edit-delete', { reference: state.editMode.reference, token: state.editMode.token });
+    store.del(CONFIG.draftKey);
+    state.screen = 'deleted'; render(); window.scrollTo(0, 0);
+  } catch (e) {
+    btn.disabled = false; btn.textContent = T('deleteMine');
+    const m = String(e.message) === 'network_error' ? T('errNetwork')
+            : String(e.message) === 'invalid_edit_link' ? (state.lang === 'ar' ? 'رابط التعديل غير صالح أو منتهي. اطلب رابطاً جديداً.' : 'This edit link is invalid or has expired. Request a new one.')
+            : T('errDeleteFailed');
     foot().append(el('span', { class: 'err' }, m));
   }
 }
@@ -1329,6 +1362,15 @@ function renderDone() {
   foot();
 }
 
+/* --- Deleted ------------------------------------------------------------ */
+function renderDeleted() {
+  showChrome(false);
+  head('', T('deletedTitle'), T('deletedDesc'));
+  const b = body();
+  b.append(el('p', { style: 'margin-top:20px' }, (state.lang === 'ar' ? 'للاستفسار: ' : 'Questions: '), CONFIG.supportEmail));
+  foot();
+}
+
 /* --- Closed ----------------------------------------------------------- */
 function renderClosed() {
   showChrome(false);
@@ -1337,7 +1379,7 @@ function renderClosed() {
 }
 
 function render() {
-  ({ gate: renderGate, events: renderEventsPick, editRequest: renderEditRequest, form: renderForm, review: renderReview, done: renderDone, closed: renderClosed }[state.screen])();
+  ({ gate: renderGate, events: renderEventsPick, editRequest: renderEditRequest, form: renderForm, review: renderReview, done: renderDone, deleted: renderDeleted, closed: renderClosed }[state.screen])();
 }
 
 /* =============================================================================
