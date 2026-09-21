@@ -115,6 +115,7 @@ td.muted{color:var(--rule-strong)}
           <option value="">All tiers</option>
           <option value="president">President</option>
           <option value="vice_president">Vice President</option>
+          <option value="both">President &amp; Vice President</option>
           <option value="other">Other</option>
         </select>
       </div>
@@ -162,7 +163,7 @@ const OPT = {
     ['moderator','Moderator'],['secretariat','Secretariat'],['interpreter','Interpreter'],['accompanying','Accompanying official']]),
   terminal: O([['T1','Terminal 1'],['T2','Terminal 2'],['T3','Terminal 3'],['unknown','Not known yet']]),
   roomType: O([['single','Single'],['double','Double'],['suite','Suite']]),
-  tier: O([['president','President'],['vice_president','Vice President'],['other','Other']]),
+  tier: O([['president','President'],['vice_president','Vice President'],['both','President & Vice President'],['other','Other']]),
   passportType: O([['diplomatic','Diplomatic'],['service','Service or special'],['ordinary','Ordinary'],['lp','UN laissez-passer']]),
   accRel: O([['spouse','Spouse'],['aide','Aide or assistant'],['security','Security'],['interpreter','Interpreter'],['other','Other']]),
   dietary: O([['none','No special requirement'],['vegetarian','Vegetarian'],['vegan','Vegan'],['halal','Halal only'],

@@ -145,6 +145,7 @@ table.summary tr:last-child td{border-bottom:none}
           <option value="">All tiers</option>
           <option value="president">President</option>
           <option value="vice_president">Vice President</option>
+          <option value="both">President &amp; Vice President</option>
           <option value="other">Other</option>
         </select>
       </div>
@@ -195,7 +196,7 @@ const OPT = {
     ['CAROSAI','CAROSAI'],['EUROSAI','EUROSAI'],['OLACEFS','OLACEFS'],['PASAI','PASAI'],['na','Not applicable']]),
   delRole: O([['hod','Head of delegation'],['delegate','Delegate'],['observer','Observer'],['speaker','Speaker'],
     ['moderator','Moderator'],['secretariat','Secretariat'],['interpreter','Interpreter'],['accompanying','Accompanying official']]),
-  tier: O([['president','President'],['vice_president','Vice President'],['other','Other']]),
+  tier: O([['president','President'],['vice_president','Vice President'],['both','President & Vice President'],['other','Other']]),
   yesno: O([['yes','Yes'],['no','No']]),
   passportType: O([['diplomatic','Diplomatic'],['service','Service or special'],['ordinary','Ordinary'],['lp','UN laissez-passer']]),
   terminal: O([['T1','Terminal 1'],['T2','Terminal 2'],['T3','Terminal 3'],['unknown','Not known yet']]),
@@ -476,7 +477,7 @@ function render() {
           <div class="sub">${r.job_title_line || r.organization_name || ''}${r.country ? ' · ' + (OPT.country[r.country] || r.country) : ''}</div>
         </div>
         <div class="meta">
-          <div><span class="badge ${r.status}">${(r.status || '').replace('_',' ')}</span>${(r.participant_tier === 'president' || r.participant_tier === 'vice_president') ? `<span class="badge tier">${OPT.tier[r.participant_tier]}</span>` : ''}</div>
+          <div><span class="badge ${r.status}">${(r.status || '').replace('_',' ')}</span>${(r.participant_tier === 'president' || r.participant_tier === 'vice_president' || r.participant_tier === 'both') ? `<span class="badge tier">${OPT.tier[r.participant_tier]}</span>` : ''}</div>
           <div class="ref" style="margin-top:6px">${r.reference}${r.registration_number ? ' · ' + r.registration_number : ''}</div>
           <div class="sub" style="margin-top:2px">${events}</div>
           ${attCount ? `<button type="button" class="ghost attBtn" data-ref="${r.reference}" style="height:30px;padding:0 12px;font-size:12px;margin-top:8px">Download attachments (${attCount})</button>` : ''}

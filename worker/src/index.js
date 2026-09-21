@@ -719,8 +719,8 @@ async function adminSetStatus(req, env, ch, access, ipHash, actor) {
   return json({ ok: true, reference, status, registration_number: regNumber || null }, 200, ch);
 }
 
-const TIERS = ['president', 'vice_president', 'other'];
-const TIER_LABELS = { president: 'President', vice_president: 'Vice President', other: 'Other' };
+const TIERS = ['president', 'vice_president', 'both', 'other'];
+const TIER_LABELS = { president: 'President', vice_president: 'Vice President', both: 'President & Vice President', other: 'Other' };
 
 /* Protocol tier -- purely an internal admin classification for logistics/
    seating/escort planning. Never emailed to the registrant, unlike status. */

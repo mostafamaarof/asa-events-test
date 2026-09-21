@@ -181,7 +181,7 @@ $('hideAllSections').addEventListener('click', () => {
 const EVENT_NAMES = { 'WGITA-35-2026': '35th Annual Meeting of INTOSAI Working Group on IT Audit', 'KSC-SC18-2026': '18th KSC Steering Committee Meeting' };
 const ROLE_NAMES = { hod:'Head of delegation', delegate:'Delegate', observer:'Observer', speaker:'Speaker', moderator:'Moderator', secretariat:'Secretariat', interpreter:'Interpreter', accompanying:'Accompanying official' };
 const DIET_NAMES = { none:'No special requirement', vegetarian:'Vegetarian', vegan:'Vegan', halal:'Halal only', gluten:'Gluten free', diabetic:'Diabetic', other:'Other', not_specified:'Not specified' };
-const TIER_NAMES = { president: 'President', vice_president: 'Vice President', other: 'Other' };
+const TIER_NAMES = { president: 'President', vice_president: 'Vice President', both: 'President & Vice President', other: 'Other' };
 /* Only used to append " · Country" onto organisation labels, matching how
    every other report (Full Report, logistics) shows Org / Country together
    -- not a standalone country breakdown (deliberately removed elsewhere). */
@@ -227,7 +227,7 @@ function groupCountByTier(rows, keyFn, nameMap) {
     vals.forEach(v => {
       if (!v) return;
       const label = (nameMap && nameMap[v]) || v;
-      if (!counts[label]) counts[label] = { label, president: 0, vice_president: 0, other: 0 };
+      if (!counts[label]) counts[label] = { label, president: 0, vice_president: 0, both: 0, other: 0 };
       counts[label][tier]++;
     });
   });
@@ -292,7 +292,7 @@ function groupsToAoa(groupRows, columns, rowHeader) {
 }
 
 const EVENT_COLS = [{ key: 'wgita', label: 'WGITA' }, { key: 'ksc', label: 'KSC' }, { key: 'both', label: 'Both' }];
-const TIER_COLS = [{ key: 'president', label: 'President' }, { key: 'vice_president', label: 'Vice President' }, { key: 'other', label: 'Other' }];
+const TIER_COLS = [{ key: 'president', label: 'President' }, { key: 'vice_president', label: 'Vice President' }, { key: 'both', label: 'President & VP' }, { key: 'other', label: 'Other' }];
 const PARTICIPANTS_COLS = [{ key: 'main', label: 'Main participants' }, { key: 'accompanying', label: 'Accompanying persons' }];
 
 /* Everything the Excel export needs, captured once per render so it doesn't
@@ -353,8 +353,11 @@ function renderDashboard(rows) {
   const official = rows.filter(r => dset(r).accommodation_type === 'official').length;
   const own = rows.filter(r => dset(r).accommodation_type === 'own').length;
   const accomNotDecided = rows.length - official - own;
-  const presidents = rows.filter(r => r.participant_tier === 'president').length;
-  const vicePresidents = rows.filter(r => r.participant_tier === 'vice_president').length;
+  /* Someone tagged 'both' holds both titles at once, so they count toward
+     each headcount -- unlike the crosstabs below, where 'both' stays its
+     own column so a person is never counted twice in one column's Total. */
+  const presidents = rows.filter(r => r.participant_tier === 'president' || r.participant_tier === 'both').length;
+  const vicePresidents = rows.filter(r => r.participant_tier === 'vice_president' || r.participant_tier === 'both').length;
   const accCountOf = (r) => accListOf(r).length;
   const totalAccompanying = rows.reduce((s, r) => s + accCountOf(r), 0);
 

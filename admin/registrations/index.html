@@ -125,6 +125,7 @@ td.ref{font-family:var(--f-num)}
           <option value="">All tiers</option>
           <option value="president">President</option>
           <option value="vice_president">Vice President</option>
+          <option value="both">President &amp; Vice President</option>
           <option value="other">Other</option>
         </select>
       </div>
@@ -262,7 +263,7 @@ function renderTiles(rows) {
   tiles.innerHTML = html;
 }
 
-const TIER_LABELS = { president: 'President', vice_president: 'Vice President', other: 'Other' };
+const TIER_LABELS = { president: 'President', vice_president: 'Vice President', both: 'President & Vice President', other: 'Other' };
 
 function renderTable(rows) {
   const wrap = $('tableWrap');
@@ -295,7 +296,7 @@ function renderTable(rows) {
       </td>
       <td>
         <select class="tierSel" data-ref="${r.reference}">
-          ${tierOpt('president', r.participant_tier)}${tierOpt('vice_president', r.participant_tier)}${tierOpt('other', r.participant_tier)}
+          ${tierOpt('president', r.participant_tier)}${tierOpt('vice_president', r.participant_tier)}${tierOpt('both', r.participant_tier)}${tierOpt('other', r.participant_tier)}
         </select>
       </td>
       <td>${r.full_name || ''}</td>

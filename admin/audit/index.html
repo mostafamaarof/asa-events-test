@@ -247,7 +247,7 @@ function describe(e) {
     }
     case 'participant_tier_changed': {
       const [ref, tier] = String(e.detail || '').split(':');
-      const TIER_LABELS = { president: 'President', vice_president: 'Vice President', other: 'Other' };
+      const TIER_LABELS = { president: 'President', vice_president: 'Vice President', both: 'President & Vice President', other: 'Other' };
       return `Reference ${ref || e.entity_id} → ${TIER_LABELS[tier] || tier || '?'}`;
     }
     case 'edit_link_sent': return `Reference ${e.detail || e.entity_id} — link emailed to the registrant`;
