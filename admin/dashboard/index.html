@@ -139,6 +139,7 @@ function authHeaders() {
    cards, print, and the Excel export. */
 const SECTIONS = [
   { id: 'kpi', label: 'At a glance' },
+  { id: 'tierRoster', label: 'Presidents & Vice Presidents — organisations' },
   { id: 'byEvent', label: 'Registrations by event' },
   { id: 'accommodation', label: 'Accommodation' },
   { id: 'tier', label: 'Protocol tier by event' },
@@ -369,6 +370,12 @@ function renderDashboard(rows) {
   const byOrgEvent = groupCountByEvent(rows, orgCountryLabel);
   const byOrgTier = groupCountByTier(rows, orgCountryLabel);
   const byOrgParticipants = groupOrgParticipants(rows, accCountOf, orgCountryLabel);
+  /* Which organisations/countries the President and Vice President
+     attendees come from -- deliberately org/country only, no names, so
+     this stays shareable without exposing who specifically is attending. */
+  const rosterOrgLabel = (r) => orgCountryLabel(r) || '(organisation not given)';
+  const presidentOrgs = rows.filter(r => r.participant_tier === 'president').map(rosterOrgLabel).sort((a, b) => a.localeCompare(b));
+  const vicePresidentOrgs = rows.filter(r => r.participant_tier === 'vice_president').map(rosterOrgLabel).sort((a, b) => a.localeCompare(b));
   /* An empty/unselected dietary field must still land somewhere, or that
      person silently drops out of the table and its Total column stops
      matching "Total confirmed registrations" -- which reads as a bug even
@@ -398,6 +405,27 @@ function renderDashboard(rows) {
       </div>
       <p class="cap" style="margin:14px 0 0">Note: "Need a visa facilitation letter" includes both confirmed participants and accompanying persons — ${visaAcc} of the ${visaTotal} are accompanying persons.</p>
       <p class="cap" style="margin:4px 0 0">Note: "Attending the social programme" includes both confirmed participants and accompanying persons — ${accSocial} of the ${socialTotal} are accompanying persons (each answers that question for themself).</p>
+    </div>
+
+    <div class="card" data-section="tierRoster">
+      <h2>Presidents & Vice Presidents — organisations attending</h2>
+      <p class="cap">Organisation and country only, no names.</p>
+      <div class="two-col">
+        <div>
+          <h3 style="font-size:14px;margin:0 0 8px">Presidents (${presidentOrgs.length})</h3>
+          <div class="tblwrap"><table class="datatable">
+            <thead><tr><th>Organisation / Country</th></tr></thead>
+            <tbody>${presidentOrgs.length ? presidentOrgs.map(o => `<tr><td class="wrap">${esc(o)}</td></tr>`).join('') : '<tr><td class="wrap">None</td></tr>'}</tbody>
+          </table></div>
+        </div>
+        <div>
+          <h3 style="font-size:14px;margin:0 0 8px">Vice Presidents (${vicePresidentOrgs.length})</h3>
+          <div class="tblwrap"><table class="datatable">
+            <thead><tr><th>Organisation / Country</th></tr></thead>
+            <tbody>${vicePresidentOrgs.length ? vicePresidentOrgs.map(o => `<tr><td class="wrap">${esc(o)}</td></tr>`).join('') : '<tr><td class="wrap">None</td></tr>'}</tbody>
+          </table></div>
+        </div>
+      </div>
     </div>
 
     <div class="two-col">
@@ -503,6 +531,11 @@ function renderDashboard(rows) {
       ['Both', bothCount],
       ['Total', wgitaOnly + kscOnly + bothCount]
     ],
+    tierRoster: [
+      ['Presidents — Organisation / Country', 'Vice Presidents — Organisation / Country'],
+      ...Array.from({ length: Math.max(presidentOrgs.length, vicePresidentOrgs.length) },
+        (_, i) => [presidentOrgs[i] || '', vicePresidentOrgs[i] || ''])
+    ],
     sheets: [
       ['Protocol tier', byTierEvent, EVENT_COLS, 'Tier', 'tier'],
       ['Role', byRole, EVENT_COLS, 'Role', 'role'],
@@ -529,6 +562,7 @@ function exportToExcel() {
     XLSX.utils.book_append_sheet(wb, ws, name);
   };
   if (!hiddenSections.has('kpi')) addSheet('At a glance', lastDashboard.summary);
+  if (!hiddenSections.has('tierRoster')) addSheet('Presidents & VPs', lastDashboard.tierRoster);
   if (!hiddenSections.has('byEvent')) addSheet('By event', lastDashboard.byEvent);
   lastDashboard.sheets
     .filter(([, , , , sectionId]) => !hiddenSections.has(sectionId))
