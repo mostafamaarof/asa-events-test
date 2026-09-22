@@ -5,20 +5,26 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex, nofollow, noarchive">
 <title>Leadership Dashboard — ASA Events Admin</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 :root{
   --ink:#0B2135; --ink-soft:#1C3A56; --surface:#EEF2F6; --sheet:#FFFFFF;
   --rule:#CBD6E0; --rule-strong:#93A6B8; --muted:#556A7D;
   --brass:#A8842C; --brass-tint:#F3EBD8;
   --ok:#1D6B4C; --ok-tint:#E9F4EE; --err:#A02226; --err-tint:#FAECEC; --warn-tint:#FBF3DF; --warn:#8A6100;
-  --f-body:"IBM Plex Sans",system-ui,sans-serif; --f-num:ui-monospace,Consolas,monospace;
+  --f-body:"IBM Plex Sans","IBM Plex Sans Arabic",system-ui,sans-serif; --f-num:ui-monospace,Consolas,monospace;
 }
+html[dir="rtl"]{ --f-body:"IBM Plex Sans Arabic",system-ui,sans-serif; }
 *,*::before,*::after{box-sizing:border-box}
 html,body{margin:0;padding:0}
 body{font-family:var(--f-body);font-size:15px;line-height:1.55;color:var(--ink);background:var(--surface)}
-header{background:var(--ink);color:#fff;padding:16px 24px}
+header{background:var(--ink);color:#fff;padding:16px 24px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
 header h1{margin:0;font-size:18px;font-weight:500}
 header p{margin:4px 0 0;font-size:13px;color:#A9BDD0}
+.langbtn{background:transparent;border:1px solid #46617C;color:#fff;font:inherit;font-size:13px;padding:7px 14px;border-radius:2px;cursor:pointer;white-space:nowrap;flex-shrink:0}
+.langbtn:hover{background:#16334D}
 main{max-width:1100px;margin:0 auto;padding:24px 20px 64px;display:grid;gap:20px}
 .card{background:var(--sheet);border:1px solid var(--rule);padding:20px 24px}
 .card h2{font-size:16px;margin:0 0 4px}
@@ -51,9 +57,9 @@ button.ghost:hover{background:#F1F5F8}
 /* Cross-tab tables */
 .tblwrap{overflow-x:auto;border:1px solid var(--rule)}
 table.datatable{border-collapse:collapse;width:100%;font-size:13px}
-table.datatable th,table.datatable td{text-align:left;padding:7px 12px;border-bottom:1px solid var(--rule);white-space:nowrap}
+table.datatable th,table.datatable td{text-align:start;padding:7px 12px;border-bottom:1px solid var(--rule);white-space:nowrap}
 table.datatable th{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:600;background:#FAFCFD;position:sticky;top:0}
-table.datatable td.n,table.datatable th.n{text-align:right;font-family:var(--f-num);font-variant-numeric:tabular-nums}
+table.datatable td.n,table.datatable th.n{text-align:end;font-family:var(--f-num);font-variant-numeric:tabular-nums}
 table.datatable td.wrap{white-space:normal}
 table.datatable tr.totalrow td{font-weight:600;background:#FAFCFD;border-top:2px solid var(--ink)}
 table.datatable tr:last-child td{border-bottom:none}
@@ -83,18 +89,21 @@ table.datatable tr:last-child td{border-bottom:none}
 <body>
 
 <header>
-  <h1>ASA Events — Leadership Dashboard</h1>
-  <p>Internal tool. Not linked from the public site. Requires an access token.</p>
+  <div>
+    <h1 id="pageTitle">ASA Events — Leadership Dashboard</h1>
+    <p id="pageSubtitle">Internal tool. Not linked from the public site. Requires an access token.</p>
+  </div>
+  <button class="langbtn" id="langToggle" type="button">العربية</button>
 </header>
 
 <main>
   <div class="card controls">
-    <h2>Access token</h2>
+    <h2 id="tokenCardTitle">Access token</h2>
     <div class="grid">
       <div class="f" style="grid-column:1/-1">
-        <label for="token">Access token <span style="color:var(--brass)">*</span></label>
+        <label for="token"><span id="tokenLabelText">Access token</span> <span style="color:var(--brass)">*</span></label>
         <input type="password" id="token" autocomplete="off" placeholder="paste your token">
-        <span class="hint">Kept only in this browser tab (sessionStorage). Same token as the Full Report page.</span>
+        <span class="hint" id="tokenHint">Kept only in this browser tab (sessionStorage). Same token as the Full Report page.</span>
       </div>
     </div>
     <div class="actions" style="margin-top:14px">
@@ -106,8 +115,8 @@ table.datatable tr:last-child td{border-bottom:none}
   </div>
 
   <div class="card controls">
-    <h2>Show / hide tables</h2>
-    <p class="cap">Untick anything not relevant right now — for a focused screen share, a print for one audience, or a lighter Excel export. Remembered on this device.</p>
+    <h2 id="sectionsCardTitle">Show / hide tables</h2>
+    <p class="cap" id="sectionsHint">Untick anything not relevant right now — for a focused screen share, a print for one audience, or a lighter Excel export. Remembered on this device.</p>
     <div class="choicelist" id="sectionToggles"></div>
     <div class="actions" style="margin-top:12px">
       <button class="ghost" id="showAllSections" style="height:30px;padding:0 14px;font-size:13px">Show all</button>
@@ -126,66 +135,205 @@ const tokenInput = $('token');
 tokenInput.value = sessionStorage.getItem('asa_report_token') || '';
 tokenInput.addEventListener('input', () => sessionStorage.setItem('asa_report_token', tokenInput.value));
 
+function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c])); }
+
+/* ---------------------------------------------------------------------------
+   Language. Every visible string lives here so English and Arabic never
+   drift apart -- entries can be a plain string per language, or a function
+   for anything that embeds a number (T() calls it automatically). */
+let lang = (localStorage.getItem('asa_dashboard_lang') === 'ar') ? 'ar' : 'en';
+const UI = {
+  pageTitle:      { en: 'ASA Events — Leadership Dashboard', ar: 'فعاليات الجهاز المركزي للمحاسبات — لوحة معلومات القيادة' },
+  pageSubtitle:   { en: 'Internal tool. Not linked from the public site. Requires an access token.', ar: 'أداة داخلية. غير مرتبطة بالموقع العام. تتطلب رمز وصول.' },
+  tokenCardTitle: { en: 'Access token', ar: 'رمز الوصول' },
+  tokenHint:      { en: 'Kept only in this browser tab (sessionStorage). Same token as the Full Report page.', ar: 'يُحفظ فقط في علامة تبويب المتصفح هذه (sessionStorage). نفس رمز صفحة التقرير الكامل.' },
+  tokenPh:        { en: 'paste your token', ar: 'الصق الرمز هنا' },
+  load:           { en: 'Load dashboard', ar: 'تحميل لوحة المعلومات' },
+  printBtn:       { en: 'Print / Save as PDF', ar: 'طباعة / حفظ كملف PDF' },
+  excelBtn:       { en: 'Export to Excel', ar: 'تصدير إلى إكسل' },
+  sectionsCardTitle: { en: 'Show / hide tables', ar: 'إظهار / إخفاء الجداول' },
+  sectionsHint:   { en: 'Untick anything not relevant right now — for a focused screen share, a print for one audience, or a lighter Excel export. Remembered on this device.',
+                     ar: 'أزل التحديد عن أي جدول غير مطلوب الآن — لمشاركة شاشة مركّزة، أو طباعة لجمهور محدد، أو تصدير إكسل أخف. يُحفظ هذا الاختيار على هذا الجهاز.' },
+  showAll:        { en: 'Show all', ar: 'إظهار الكل' },
+  hideAll:        { en: 'Hide all', ar: 'إخفاء الكل' },
+  needToken:      { en: 'Enter the access token first.', ar: 'أدخل رمز الوصول أولاً.' },
+  loadedMsg:      { en: (n) => `Loaded ${n} approved registration(s).`, ar: (n) => `تم تحميل ${n} من التسجيلات المعتمدة.` },
+  noApprovedYet:  { en: 'No approved registrations yet.', ar: 'لا توجد تسجيلات معتمدة بعد.' },
+  loadFirst:      { en: 'Load the dashboard first.', ar: 'حمّل لوحة المعلومات أولاً.' },
+  allHidden:      { en: 'Everything is hidden — tick at least one table first.', ar: 'جميع الجداول مخفية — حدد جدولاً واحداً على الأقل.' },
+
+  secKpi:         { en: 'At a glance', ar: 'نظرة عامة' },
+  secTierRoster:  { en: 'Presidents & Vice Presidents — organisations', ar: 'الرؤساء ونواب الرؤساء — الجهات' },
+  tierRosterH2:   { en: 'Presidents & Vice Presidents — organisations attending', ar: 'الرؤساء ونواب الرؤساء — الجهات الحاضرة' },
+  tierRosterCap:  { en: 'Organisation and country only, no names.', ar: 'الجهة والدولة فقط، دون أسماء.' },
+  presidentsHeading: { en: (n) => `Presidents (${n})`, ar: (n) => `الرؤساء (${n})` },
+  vpsHeading:     { en: (n) => `Vice Presidents (${n})`, ar: (n) => `نواب الرؤساء (${n})` },
+  secByEvent:     { en: 'Registrations by event', ar: 'التسجيلات حسب الفعالية' },
+  byEventCap:     { en: 'One person attending both events is counted once, under "Both".', ar: 'يُحسب الشخص الحاضر للفعاليتين مرة واحدة فقط، ضمن "كلاهما".' },
+  secAccommodation: { en: 'Accommodation', ar: 'الإقامة' },
+  accommodationCap: { en: 'Where confirmed participants are staying. Adds up to the total above.', ar: 'أماكن إقامة المشاركين المعتمدين، ومجموعها يساوي الإجمالي أعلاه.' },
+  secTier:        { en: 'Protocol tier by event', ar: 'الفئة البروتوكولية حسب الفعالية' },
+  tierCap:        { en: 'President / Vice President / Other. Set on the Registrations page.', ar: 'الرئيس / نائب الرئيس / أخرى — تُحدد من صفحة التسجيلات.' },
+  secRole:        { en: 'Role in the delegation', ar: 'الصفة في الوفد' },
+  roleH2:         { en: 'Role in the delegation, by event', ar: 'الصفة في الوفد، حسب الفعالية' },
+  roleCap:        { en: 'Confirmed participants by protocol role.', ar: 'المشاركون المعتمدون حسب الصفة البروتوكولية.' },
+  secOrgEvent:    { en: 'Orgs, by event', ar: 'الجهات، حسب الفعالية' },
+  orgEventH2:     { en: 'All organisations, by event', ar: 'جميع الجهات، حسب الفعالية' },
+  orgEventCap:    { en: 'Every SAI/organisation represented.', ar: 'جميع الأجهزة الرقابية العليا والجهات المشاركة.' },
+  secOrgTier:     { en: 'Orgs, by protocol tier', ar: 'الجهات، حسب الفئة البروتوكولية' },
+  orgTierH2:      { en: 'All organisations, by protocol tier', ar: 'جميع الجهات، حسب الفئة البروتوكولية' },
+  orgTierCap:     { en: 'Which organisations the President/Vice President attendees belong to.', ar: 'الجهات التي ينتمي إليها الحاضرون من الرؤساء ونواب الرؤساء.' },
+  secOrgAcc:      { en: 'Orgs, main vs. accompanying', ar: 'الجهات، الرئيسيون مقابل المرافقين' },
+  orgAccH2:       { en: 'All organisations, main vs. accompanying', ar: 'جميع الجهات، المشاركون الرئيسيون مقابل المرافقين' },
+  orgAccCap:      { en: 'How many delegates each organisation sent, and how many people they brought along.', ar: 'عدد المندوبين الذين أرسلتهم كل جهة، وعدد من اصطحبوهم معهم.' },
+  secDietary:     { en: 'Dietary requirements', ar: 'المتطلبات الغذائية' },
+  dietaryH2:      { en: 'Dietary requirements, by event', ar: 'المتطلبات الغذائية، حسب الفعالية' },
+  dietaryCap:     { en: 'For catering planning.', ar: 'لتخطيط خدمات الطعام.' },
+  secHotelEvent:  { en: 'Hotels, by event', ar: 'الفنادق، حسب الفعالية' },
+  hotelEventCap:  { en: "Where each event's participants are staying, including own arrangements.", ar: 'أماكن إقامة المشاركين في كل فعالية، بما في ذلك الإقامات الخاصة.' },
+  secHotelTier:   { en: 'Hotels, by protocol tier', ar: 'الفنادق، حسب الفئة البروتوكولية' },
+  hotelTierCap:   { en: 'Which hotels the President/Vice President attendees are staying at.', ar: 'الفنادق التي يقيم فيها الحاضرون من الرؤساء ونواب الرؤساء.' },
+
+  kpiCap:         { en: 'Confirmed (approved) registrations only.', ar: 'التسجيلات المعتمدة فقط.' },
+  kpiTotalReg:    { en: 'Total confirmed registrations', ar: 'إجمالي التسجيلات المعتمدة' },
+  kpiWgita:       { en: 'WGITA attendance', ar: 'حضور WGITA' },
+  kpiKsc:         { en: 'KSC attendance', ar: 'حضور KSC' },
+  kpiAccompanying: { en: 'Accompanying persons', ar: 'المرافقون' },
+  kpiOrgs:        { en: 'Organisations represented', ar: 'الجهات المشاركة' },
+  kpiPresidents:  { en: 'Presidents attending', ar: 'عدد الرؤساء الحاضرين' },
+  kpiVps:         { en: 'Vice Presidents attending', ar: 'عدد نواب الرؤساء الحاضرين' },
+  kpiSpeaking:    { en: 'Requesting to speak', ar: 'طلبوا تقديم عرض' },
+  kpiVisa:        { en: 'Need a visa facilitation letter', ar: 'يحتاجون خطاب تسهيل تأشيرة' },
+  kpiSocial:      { en: 'Attending the social programme', ar: 'حضور البرنامج الاجتماعي' },
+  visaNote:       { en: (acc, total) => `Note: "Need a visa facilitation letter" includes both confirmed participants and accompanying persons — ${acc} of the ${total} are accompanying persons.`,
+                     ar: (acc, total) => `ملاحظة: يشمل رقم "يحتاجون خطاب تسهيل تأشيرة" المشاركين المعتمدين والمرافقين معاً — ${acc} من أصل ${total} من المرافقين.` },
+  socialNote:     { en: (acc, total) => `Note: "Attending the social programme" includes both confirmed participants and accompanying persons — ${acc} of the ${total} are accompanying persons (each answers that question for themself).`,
+                     ar: (acc, total) => `ملاحظة: يشمل رقم "حضور البرنامج الاجتماعي" المشاركين المعتمدين والمرافقين معاً — ${acc} من أصل ${total} من المرافقين (يُجيب كل مرافق عن هذا السؤال بنفسه).` },
+
+  orgCountry:     { en: 'Organisation / Country', ar: 'الجهة / الدولة' },
+  event:          { en: 'Event', ar: 'الفعالية' },
+  count:          { en: 'Count', ar: 'العدد' },
+  wgitaOnly:      { en: 'WGITA only', ar: 'WGITA فقط' },
+  kscOnly:        { en: 'KSC only', ar: 'KSC فقط' },
+  both:           { en: 'Both', ar: 'كلاهما' },
+  total:          { en: 'Total', ar: 'الإجمالي' },
+  officialHotel:  { en: 'Official hotel', ar: 'فندق رسمي' },
+  ownArrangement: { en: 'Own arrangement', ar: 'إقامة خاصة' },
+  notDecided:     { en: 'Not yet decided', ar: 'لم يُحدد بعد' },
+  none:           { en: 'None', ar: 'لا يوجد' },
+  noData:         { en: 'No data.', ar: 'لا توجد بيانات.' },
+  tier:           { en: 'Tier', ar: 'الفئة' },
+  role:           { en: 'Role', ar: 'الصفة' },
+  hotel:          { en: 'Hotel', ar: 'الفندق' },
+  requirement:    { en: 'Requirement', ar: 'المتطلب' },
+  president:      { en: 'President', ar: 'الرئيس' },
+  vicePresident:  { en: 'Vice President', ar: 'نائب الرئيس' },
+  other:          { en: 'Other', ar: 'أخرى' },
+  mainParticipants: { en: 'Main participants', ar: 'المشاركون الرئيسيون' },
+  officialNotGiven: { en: '(official hotel — name not given)', ar: '(فندق رسمي — دون ذكر الاسم)' },
+  ownNotGiven:    { en: '(own arrangement — address not given)', ar: '(إقامة خاصة — دون ذكر العنوان)' },
+  orgNotGiven:    { en: '(organisation not given)', ar: '(دون ذكر الجهة)' },
+  metric:         { en: 'Metric', ar: 'المؤشر' },
+  value:          { en: 'Value', ar: 'القيمة' },
+
+  xlAtGlance:     { en: 'At a glance', ar: 'نظرة عامة' },
+  xlPresVps:      { en: 'Presidents & VPs', ar: 'الرؤساء ونواب الرؤساء' },
+  xlByEvent:      { en: 'By event', ar: 'حسب الفعالية' },
+  xlTier:         { en: 'Protocol tier', ar: 'الفئة البروتوكولية' },
+  xlOrgEvent:     { en: 'Orgs by event', ar: 'الجهات حسب الفعالية' },
+  xlOrgTier:      { en: 'Orgs by tier', ar: 'الجهات حسب الفئة' },
+  xlOrgAcc:       { en: 'Orgs main-vs-acc', ar: 'الجهات رئيسي مقابل مرافق' },
+  xlHotelEvent:   { en: 'Hotels by event', ar: 'الفنادق حسب الفعالية' },
+  xlHotelTier:    { en: 'Hotels by tier', ar: 'الفنادق حسب الفئة' },
+  xlPresidentsCol: { en: 'Presidents — Organisation / Country', ar: 'الرؤساء — الجهة / الدولة' },
+  xlVpsCol:       { en: 'Vice Presidents — Organisation / Country', ar: 'نواب الرؤساء — الجهة / الدولة' }
+};
+function T(key, ...args) {
+  const v = UI[key] ? UI[key][lang] : key;
+  return typeof v === 'function' ? v(...args) : v;
+}
+/* Language-dependent lookup maps for raw stored codes (role_in_delegation,
+   dietary_requirements, participant_tier) -- English/Arabic pairs, computed
+   fresh whenever the language changes since they feed straight into the
+   cross-tab tables as the row labels. */
+function roleNames() {
+  return lang === 'ar'
+    ? { hod:'رئيس الوفد', delegate:'عضو وفد', observer:'مراقب', speaker:'متحدث', moderator:'مدير جلسة', secretariat:'أمانة', interpreter:'مترجم فوري', accompanying:'مرافق رسمي' }
+    : { hod:'Head of delegation', delegate:'Delegate', observer:'Observer', speaker:'Speaker', moderator:'Moderator', secretariat:'Secretariat', interpreter:'Interpreter', accompanying:'Accompanying official' };
+}
+function dietNames() {
+  return lang === 'ar'
+    ? { none:'لا متطلبات', vegetarian:'نباتي', vegan:'نباتي صرف', halal:'حلال فقط', gluten:'خالٍ من الجلوتين', diabetic:'مناسب لمرضى السكري', other:'أخرى', not_specified:'غير محدد' }
+    : { none:'No special requirement', vegetarian:'Vegetarian', vegan:'Vegan', halal:'Halal only', gluten:'Gluten free', diabetic:'Diabetic', other:'Other', not_specified:'Not specified' };
+}
+function tierNames() {
+  return { president: T('president'), vice_president: T('vicePresident'), other: T('other') };
+}
+
 function showMsg(el, text, ok) { el.textContent = text; el.className = 'msg ' + (ok ? 'ok' : 'err'); }
 function authHeaders() {
   const token = tokenInput.value.trim();
-  if (!token) throw new Error('Enter the access token first.');
+  if (!token) throw new Error(T('needToken'));
   return { 'Authorization': 'Bearer ' + token };
 }
 
 /* Same ids as each card's data-section attribute, and (for the eight
    cross-tab cards) the 5th element each lastDashboard.sheets entry carries --
    one source of truth for "which section is this" across the on-screen
-   cards, print, and the Excel export. */
-const SECTIONS = [
-  { id: 'kpi', label: 'At a glance' },
-  { id: 'tierRoster', label: 'Presidents & Vice Presidents — organisations' },
-  { id: 'byEvent', label: 'Registrations by event' },
-  { id: 'accommodation', label: 'Accommodation' },
-  { id: 'tier', label: 'Protocol tier by event' },
-  { id: 'role', label: 'Role in the delegation' },
-  { id: 'orgEvent', label: 'Orgs, by event' },
-  { id: 'orgTier', label: 'Orgs, by protocol tier' },
-  { id: 'orgAcc', label: 'Orgs, main vs. accompanying' },
-  { id: 'dietary', label: 'Dietary requirements' },
-  { id: 'hotelEvent', label: 'Hotels, by event' },
-  { id: 'hotelTier', label: 'Hotels, by protocol tier' }
-];
+   cards, print, and the Excel export. A function (not a constant) because
+   its labels are translated and must be rebuilt whenever the language
+   changes. */
+function sections() {
+  return [
+    { id: 'kpi', label: T('secKpi') },
+    { id: 'tierRoster', label: T('secTierRoster') },
+    { id: 'byEvent', label: T('secByEvent') },
+    { id: 'accommodation', label: T('secAccommodation') },
+    { id: 'tier', label: T('secTier') },
+    { id: 'role', label: T('secRole') },
+    { id: 'orgEvent', label: T('secOrgEvent') },
+    { id: 'orgTier', label: T('secOrgTier') },
+    { id: 'orgAcc', label: T('secOrgAcc') },
+    { id: 'dietary', label: T('secDietary') },
+    { id: 'hotelEvent', label: T('secHotelEvent') },
+    { id: 'hotelTier', label: T('secHotelTier') }
+  ];
+}
 const SECTIONS_KEY = 'asa_dashboard_hidden_sections';
 let hiddenSections = new Set();
 try { hiddenSections = new Set(JSON.parse(localStorage.getItem(SECTIONS_KEY) || '[]')); } catch (e) { /* corrupt/blocked storage -- default to everything shown */ }
 
-$('sectionToggles').innerHTML = SECTIONS.map(s =>
-  `<label class="choice"><input type="checkbox" class="sectionCb" value="${s.id}" ${hiddenSections.has(s.id) ? '' : 'checked'}>${s.label}</label>`
-).join('');
-
+function renderSectionToggles() {
+  $('sectionToggles').innerHTML = sections().map(s =>
+    `<label class="choice"><input type="checkbox" class="sectionCb" value="${s.id}" ${hiddenSections.has(s.id) ? '' : 'checked'}>${esc(s.label)}</label>`
+  ).join('');
+}
 function saveSections() { try { localStorage.setItem(SECTIONS_KEY, JSON.stringify([...hiddenSections])); } catch (e) { } }
 function applySectionVisibility() {
   document.querySelectorAll('[data-section]').forEach(el => { el.hidden = hiddenSections.has(el.dataset.section); });
 }
-document.querySelectorAll('.sectionCb').forEach(cb => cb.addEventListener('change', () => {
+/* Delegated to the container (not bound per-checkbox) so rebuilding the
+   list's innerHTML on a language change never loses the wiring. */
+$('sectionToggles').addEventListener('change', (e) => {
+  const cb = e.target.closest('.sectionCb');
+  if (!cb) return;
   if (cb.checked) hiddenSections.delete(cb.value); else hiddenSections.add(cb.value);
   saveSections();
   applySectionVisibility();
-}));
+});
 $('showAllSections').addEventListener('click', () => {
   hiddenSections.clear();
-  document.querySelectorAll('.sectionCb').forEach(cb => cb.checked = true);
-  saveSections(); applySectionVisibility();
+  saveSections(); renderSectionToggles(); applySectionVisibility();
 });
 $('hideAllSections').addEventListener('click', () => {
-  SECTIONS.forEach(s => hiddenSections.add(s.id));
-  document.querySelectorAll('.sectionCb').forEach(cb => cb.checked = false);
-  saveSections(); applySectionVisibility();
+  sections().forEach(s => hiddenSections.add(s.id));
+  saveSections(); renderSectionToggles(); applySectionVisibility();
 });
 
-const EVENT_NAMES = { 'WGITA-35-2026': '35th Annual Meeting of INTOSAI Working Group on IT Audit', 'KSC-SC18-2026': '18th KSC Steering Committee Meeting' };
-const ROLE_NAMES = { hod:'Head of delegation', delegate:'Delegate', observer:'Observer', speaker:'Speaker', moderator:'Moderator', secretariat:'Secretariat', interpreter:'Interpreter', accompanying:'Accompanying official' };
-const DIET_NAMES = { none:'No special requirement', vegetarian:'Vegetarian', vegan:'Vegan', halal:'Halal only', gluten:'Gluten free', diabetic:'Diabetic', other:'Other', not_specified:'Not specified' };
-const TIER_NAMES = { president: 'President', vice_president: 'Vice President', other: 'Other' };
 /* Only used to append " · Country" onto organisation labels, matching how
-   every other report (Full Report, logistics) shows Org / Country together
-   -- not a standalone country breakdown (deliberately removed elsewhere). */
+   every other report (Full Report, logistics) shows Org / Country together.
+   Country names stay in English in both locales -- they must match travel
+   documents, same reasoning as the public registration form. */
 const COUNTRIES_RAW = "AF:Afghanistan|AL:Albania|DZ:Algeria|AS:American Samoa|AD:Andorra|AO:Angola|AI:Anguilla|AQ:Antarctica|AG:Antigua and Barbuda|AR:Argentina|AM:Armenia|AW:Aruba|AU:Australia|AT:Austria|AZ:Azerbaijan|BS:Bahamas|BH:Bahrain|BD:Bangladesh|BB:Barbados|BY:Belarus|BE:Belgium|BZ:Belize|BJ:Benin|BM:Bermuda|BT:Bhutan|BO:Bolivia|BQ:Bonaire, Sint Eustatius and Saba|BA:Bosnia and Herzegovina|BW:Botswana|BV:Bouvet Island|BR:Brazil|IO:British Indian Ocean Territory|BN:Brunei Darussalam|BG:Bulgaria|BF:Burkina Faso|BI:Burundi|CV:Cabo Verde|KH:Cambodia|CM:Cameroon|CA:Canada|KY:Cayman Islands|CF:Central African Republic|TD:Chad|CL:Chile|CN:China|CX:Christmas Island|CC:Cocos (Keeling) Islands|CO:Colombia|KM:Comoros|CG:Congo|CD:Congo, The Democratic Republic of the|CK:Cook Islands|CR:Costa Rica|HR:Croatia|CU:Cuba|CW:Curaçao|CY:Cyprus|CZ:Czechia|CI:Côte d'Ivoire|DK:Denmark|DJ:Djibouti|DM:Dominica|DO:Dominican Republic|EC:Ecuador|EG:Egypt|SV:El Salvador|GQ:Equatorial Guinea|ER:Eritrea|EE:Estonia|SZ:Eswatini|ET:Ethiopia|FK:Falkland Islands (Malvinas)|FO:Faroe Islands|FJ:Fiji|FI:Finland|FR:France|GF:French Guiana|PF:French Polynesia|TF:French Southern Territories|GA:Gabon|GM:Gambia|GE:Georgia|DE:Germany|GH:Ghana|GI:Gibraltar|GR:Greece|GL:Greenland|GD:Grenada|GP:Guadeloupe|GU:Guam|GT:Guatemala|GG:Guernsey|GN:Guinea|GW:Guinea-Bissau|GY:Guyana|HT:Haiti|HM:Heard Island and McDonald Islands|VA:Holy See (Vatican City State)|HN:Honduras|HK:Hong Kong|HU:Hungary|IS:Iceland|IN:India|ID:Indonesia|IR:Iran|IQ:Iraq|IE:Ireland|IM:Isle of Man|IL:Israel|IT:Italy|JM:Jamaica|JP:Japan|JE:Jersey|JO:Jordan|KZ:Kazakhstan|KE:Kenya|KI:Kiribati|KP:North Korea|KR:South Korea|KW:Kuwait|KG:Kyrgyzstan|LA:Laos|LV:Latvia|LB:Lebanon|LS:Lesotho|LR:Liberia|LY:Libya|LI:Liechtenstein|LT:Lithuania|LU:Luxembourg|MO:Macao|MG:Madagascar|MW:Malawi|MY:Malaysia|MV:Maldives|ML:Mali|MT:Malta|MH:Marshall Islands|MQ:Martinique|MR:Mauritania|MU:Mauritius|YT:Mayotte|MX:Mexico|FM:Micronesia, Federated States of|MD:Moldova|MC:Monaco|MN:Mongolia|ME:Montenegro|MS:Montserrat|MA:Morocco|MZ:Mozambique|MM:Myanmar|NA:Namibia|NR:Nauru|NP:Nepal|NL:Netherlands|NC:New Caledonia|NZ:New Zealand|NI:Nicaragua|NE:Niger|NG:Nigeria|NU:Niue|NF:Norfolk Island|MK:North Macedonia|MP:Northern Mariana Islands|NO:Norway|OM:Oman|PK:Pakistan|PW:Palau|PS:Palestine, State of|PA:Panama|PG:Papua New Guinea|PY:Paraguay|PE:Peru|PH:Philippines|PN:Pitcairn|PL:Poland|PT:Portugal|PR:Puerto Rico|QA:Qatar|RO:Romania|RU:Russian Federation|RW:Rwanda|RE:Réunion|BL:Saint Barthélemy|SH:Saint Helena, Ascension and Tristan da Cunha|KN:Saint Kitts and Nevis|LC:Saint Lucia|MF:Saint Martin (French part)|PM:Saint Pierre and Miquelon|VC:Saint Vincent and the Grenadines|WS:Samoa|SM:San Marino|ST:Sao Tome and Principe|SA:Saudi Arabia|SN:Senegal|RS:Serbia|SC:Seychelles|SL:Sierra Leone|SG:Singapore|SX:Sint Maarten (Dutch part)|SK:Slovakia|SI:Slovenia|SB:Solomon Islands|SO:Somalia|ZA:South Africa|GS:South Georgia and the South Sandwich Islands|SS:South Sudan|ES:Spain|LK:Sri Lanka|SD:Sudan|SR:Suriname|SJ:Svalbard and Jan Mayen|SE:Sweden|CH:Switzerland|SY:Syria|TW:Taiwan|TJ:Tajikistan|TZ:Tanzania|TH:Thailand|TL:Timor-Leste|TG:Togo|TK:Tokelau|TO:Tonga|TT:Trinidad and Tobago|TN:Tunisia|TM:Turkmenistan|TC:Turks and Caicos Islands|TV:Tuvalu|TR:Türkiye|UG:Uganda|UA:Ukraine|AE:United Arab Emirates|GB:United Kingdom|US:United States|UM:United States Minor Outlying Islands|UY:Uruguay|UZ:Uzbekistan|VU:Vanuatu|VE:Venezuela|VN:Vietnam|VG:Virgin Islands, British|VI:Virgin Islands, U.S.|WF:Wallis and Futuna|EH:Western Sahara|YE:Yemen|ZM:Zambia|ZW:Zimbabwe|AX:Åland Islands";
 const COUNTRY_NAMES = Object.fromEntries(COUNTRIES_RAW.split('|').map(s => { const i = s.indexOf(':'); return [s.slice(0,i), s.slice(i+1)]; }));
 
@@ -194,9 +342,8 @@ const COUNTRY_NAMES = Object.fromEntries(COUNTRIES_RAW.split('|').map(s => { con
 const events = (r) => (r.event_codes || '').split(',').filter(Boolean);
 
 function kpiTile(value, label) {
-  return `<div class="kpi"><div class="v">${value}</div><div class="l">${label}</div></div>`;
+  return `<div class="kpi"><div class="v">${value}</div><div class="l">${esc(label)}</div></div>`;
 }
-function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c])); }
 
 /* Every category (role, country, organisation, job title, hotel, diet...)
    broken down by which event(s) each person is attending. No folding into
@@ -269,36 +416,33 @@ function aggregateGroups(groupRows, columns) {
    alphabetically by row label so a specific country/organisation/hotel can
    be found by scanning, not by picking it out of a ranked list. */
 function crossTable(groupRows, columns, rowHeader) {
-  if (!groupRows.length) return '<p class="empty">No data.</p>';
+  if (!groupRows.length) return `<p class="empty">${esc(T('noData'))}</p>`;
   const { rows, colTotals, grandTotal } = aggregateGroups(groupRows, columns);
   const bodyRows = rows.map(g =>
     `<tr><td class="wrap">${esc(g.label)}</td>${columns.map(c => `<td class="n">${g[c.key] || 0}</td>`).join('')}<td class="n">${g.rowTotal}</td></tr>`
   ).join('');
-  const totalRow = `<tr class="totalrow"><td>Total</td>${columns.map(c => `<td class="n">${colTotals[c.key]}</td>`).join('')}<td class="n">${grandTotal}</td></tr>`;
+  const totalRow = `<tr class="totalrow"><td>${esc(T('total'))}</td>${columns.map(c => `<td class="n">${colTotals[c.key]}</td>`).join('')}<td class="n">${grandTotal}</td></tr>`;
   return `<div class="tblwrap"><table class="datatable">
-    <thead><tr><th>${rowHeader}</th>${columns.map(c => `<th class="n">${c.label}</th>`).join('')}<th class="n">Total</th></tr></thead>
+    <thead><tr><th>${esc(rowHeader)}</th>${columns.map(c => `<th class="n">${esc(c.label)}</th>`).join('')}<th class="n">${esc(T('total'))}</th></tr></thead>
     <tbody>${bodyRows}${totalRow}</tbody>
   </table></div>`;
 }
 /* Same aggregation, as a plain array-of-arrays for the Excel export. */
 function groupsToAoa(groupRows, columns, rowHeader) {
-  const header = [rowHeader, ...columns.map(c => c.label), 'Total'];
+  const header = [rowHeader, ...columns.map(c => c.label), T('total')];
   if (!groupRows.length) return [header];
   const { rows, colTotals, grandTotal } = aggregateGroups(groupRows, columns);
   return [
     header,
     ...rows.map(g => [g.label, ...columns.map(c => g[c.key] || 0), g.rowTotal]),
-    ['Total', ...columns.map(c => colTotals[c.key]), grandTotal]
+    [T('total'), ...columns.map(c => colTotals[c.key]), grandTotal]
   ];
 }
-
-const EVENT_COLS = [{ key: 'wgita', label: 'WGITA' }, { key: 'ksc', label: 'KSC' }, { key: 'both', label: 'Both' }];
-const TIER_COLS = [{ key: 'president', label: 'President' }, { key: 'vice_president', label: 'Vice President' }, { key: 'other', label: 'Other' }];
-const PARTICIPANTS_COLS = [{ key: 'main', label: 'Main participants' }, { key: 'accompanying', label: 'Accompanying persons' }];
 
 /* Everything the Excel export needs, captured once per render so it doesn't
    have to recompute (or re-scrape the rendered HTML) when the button is clicked. */
 let lastDashboard = null;
+let lastRows = null;
 
 async function loadDashboard() {
   const msg = $('topMsg'); msg.className = 'msg';
@@ -307,7 +451,8 @@ async function loadDashboard() {
     const data = await res.json().catch(() => ({}));
     if (!res.ok || data.ok === false) throw new Error(data.error || ('HTTP ' + res.status));
     const rows = (data.registrations || []).filter(r => r.status === 'approved');
-    showMsg(msg, `Loaded ${rows.length} approved registration(s).`, true);
+    lastRows = rows;
+    showMsg(msg, T('loadedMsg', rows.length), true);
     renderDashboard(rows);
   } catch (e) {
     showMsg(msg, e.message, false);
@@ -316,14 +461,18 @@ async function loadDashboard() {
 
 function renderDashboard(rows) {
   const content = $('content');
-  if (!rows.length) { content.innerHTML = '<p class="empty">No approved registrations yet.</p>'; return; }
+  if (!rows.length) { content.innerHTML = `<p class="empty">${esc(T('noApprovedYet'))}</p>`; return; }
+
+  const eventCols = [{ key: 'wgita', label: 'WGITA' }, { key: 'ksc', label: 'KSC' }, { key: 'both', label: T('both') }];
+  const tierCols = [{ key: 'president', label: T('president') }, { key: 'vice_president', label: T('vicePresident') }, { key: 'other', label: T('other') }];
+  const participantsCols = [{ key: 'main', label: T('mainParticipants') }, { key: 'accompanying', label: T('kpiAccompanying') }];
 
   const dset = (r) => (r.data || {});
   const hotelName = (r) => {
     const d = dset(r);
-    if (d.accommodation_type === 'official') return d.official_hotel || '(official hotel — name not given)';
-    if (d.accommodation_type === 'own') return d.own_hotel_name_address || '(own arrangement — address not given)';
-    return 'Not yet decided';
+    if (d.accommodation_type === 'official') return d.official_hotel || T('officialNotGiven');
+    if (d.accommodation_type === 'own') return d.own_hotel_name_address || T('ownNotGiven');
+    return T('notDecided');
   };
   const bothCount = rows.filter(r => events(r).length > 1).length;
   const wgitaOnly = rows.filter(r => { const e = events(r); return e.length === 1 && e[0] === 'WGITA-35-2026'; }).length;
@@ -359,8 +508,8 @@ function renderDashboard(rows) {
   const accCountOf = (r) => accListOf(r).length;
   const totalAccompanying = rows.reduce((s, r) => s + accCountOf(r), 0);
 
-  const byRole = groupCountByEvent(rows, r => r.role_in_delegation, ROLE_NAMES);
-  const byTierEvent = groupCountByEvent(rows, r => r.participant_tier || 'other', TIER_NAMES);
+  const byRole = groupCountByEvent(rows, r => r.role_in_delegation, roleNames());
+  const byTierEvent = groupCountByEvent(rows, r => r.participant_tier || 'other', tierNames());
   /* Org name plus country, same as every other report (Full Report,
      logistics) -- two SAIs that happen to share a name still read as
      distinct rows, and it's the context an admin actually wants here. */
@@ -373,7 +522,7 @@ function renderDashboard(rows) {
   /* Which organisations/countries the President and Vice President
      attendees come from -- deliberately org/country only, no names, so
      this stays shareable without exposing who specifically is attending. */
-  const rosterOrgLabel = (r) => orgCountryLabel(r) || '(organisation not given)';
+  const rosterOrgLabel = (r) => orgCountryLabel(r) || T('orgNotGiven');
   const presidentOrgs = rows.filter(r => r.participant_tier === 'president').map(rosterOrgLabel).sort((a, b) => a.localeCompare(b));
   const vicePresidentOrgs = rows.filter(r => r.participant_tier === 'vice_president').map(rosterOrgLabel).sort((a, b) => a.localeCompare(b));
   /* An empty/unselected dietary field must still land somewhere, or that
@@ -383,46 +532,46 @@ function renderDashboard(rows) {
   const byDiet = groupCountByEvent(rows, r => {
     const v = dset(r).dietary_requirements;
     return (Array.isArray(v) && v.length) ? v : ['not_specified'];
-  }, DIET_NAMES);
+  }, dietNames());
   const byHotelEvent = groupCountByEvent(rows, hotelName);
   const byHotelTier = groupCountByTier(rows, hotelName);
 
   content.innerHTML = `
     <div class="card" data-section="kpi">
-      <h2>At a glance</h2>
-      <p class="cap">Confirmed (approved) registrations only.</p>
+      <h2>${esc(T('secKpi'))}</h2>
+      <p class="cap">${esc(T('kpiCap'))}</p>
       <div class="kpis">
-        ${kpiTile(rows.length, 'Total confirmed registrations')}
-        ${kpiTile(wgitaAttendance, 'WGITA attendance')}
-        ${kpiTile(kscAttendance, 'KSC attendance')}
-        ${kpiTile(totalAccompanying, 'Accompanying persons')}
-        ${kpiTile(orgs.size, 'Organisations represented')}
-        ${kpiTile(presidents, 'Presidents attending')}
-        ${kpiTile(vicePresidents, 'Vice Presidents attending')}
-        ${kpiTile(speaking, 'Requesting to speak')}
-        ${kpiTile(visaTotal, 'Need a visa facilitation letter')}
-        ${kpiTile(socialTotal, 'Attending the social programme')}
+        ${kpiTile(rows.length, T('kpiTotalReg'))}
+        ${kpiTile(wgitaAttendance, T('kpiWgita'))}
+        ${kpiTile(kscAttendance, T('kpiKsc'))}
+        ${kpiTile(totalAccompanying, T('kpiAccompanying'))}
+        ${kpiTile(orgs.size, T('kpiOrgs'))}
+        ${kpiTile(presidents, T('kpiPresidents'))}
+        ${kpiTile(vicePresidents, T('kpiVps'))}
+        ${kpiTile(speaking, T('kpiSpeaking'))}
+        ${kpiTile(visaTotal, T('kpiVisa'))}
+        ${kpiTile(socialTotal, T('kpiSocial'))}
       </div>
-      <p class="cap" style="margin:14px 0 0">Note: "Need a visa facilitation letter" includes both confirmed participants and accompanying persons — ${visaAcc} of the ${visaTotal} are accompanying persons.</p>
-      <p class="cap" style="margin:4px 0 0">Note: "Attending the social programme" includes both confirmed participants and accompanying persons — ${accSocial} of the ${socialTotal} are accompanying persons (each answers that question for themself).</p>
+      <p class="cap" style="margin:14px 0 0">${esc(T('visaNote', visaAcc, visaTotal))}</p>
+      <p class="cap" style="margin:4px 0 0">${esc(T('socialNote', accSocial, socialTotal))}</p>
     </div>
 
     <div class="card" data-section="tierRoster">
-      <h2>Presidents & Vice Presidents — organisations attending</h2>
-      <p class="cap">Organisation and country only, no names.</p>
+      <h2>${esc(T('tierRosterH2'))}</h2>
+      <p class="cap">${esc(T('tierRosterCap'))}</p>
       <div class="two-col">
         <div>
-          <h3 style="font-size:14px;margin:0 0 8px">Presidents (${presidentOrgs.length})</h3>
+          <h3 style="font-size:14px;margin:0 0 8px">${esc(T('presidentsHeading', presidentOrgs.length))}</h3>
           <div class="tblwrap"><table class="datatable">
-            <thead><tr><th>Organisation / Country</th></tr></thead>
-            <tbody>${presidentOrgs.length ? presidentOrgs.map(o => `<tr><td class="wrap">${esc(o)}</td></tr>`).join('') : '<tr><td class="wrap">None</td></tr>'}</tbody>
+            <thead><tr><th>${esc(T('orgCountry'))}</th></tr></thead>
+            <tbody>${presidentOrgs.length ? presidentOrgs.map(o => `<tr><td class="wrap">${esc(o)}</td></tr>`).join('') : `<tr><td class="wrap">${esc(T('none'))}</td></tr>`}</tbody>
           </table></div>
         </div>
         <div>
-          <h3 style="font-size:14px;margin:0 0 8px">Vice Presidents (${vicePresidentOrgs.length})</h3>
+          <h3 style="font-size:14px;margin:0 0 8px">${esc(T('vpsHeading', vicePresidentOrgs.length))}</h3>
           <div class="tblwrap"><table class="datatable">
-            <thead><tr><th>Organisation / Country</th></tr></thead>
-            <tbody>${vicePresidentOrgs.length ? vicePresidentOrgs.map(o => `<tr><td class="wrap">${esc(o)}</td></tr>`).join('') : '<tr><td class="wrap">None</td></tr>'}</tbody>
+            <thead><tr><th>${esc(T('orgCountry'))}</th></tr></thead>
+            <tbody>${vicePresidentOrgs.length ? vicePresidentOrgs.map(o => `<tr><td class="wrap">${esc(o)}</td></tr>`).join('') : `<tr><td class="wrap">${esc(T('none'))}</td></tr>`}</tbody>
           </table></div>
         </div>
       </div>
@@ -430,121 +579,121 @@ function renderDashboard(rows) {
 
     <div class="two-col">
       <div class="card" data-section="byEvent">
-        <h2>Registrations by event</h2>
-        <p class="cap">One person attending both events is counted once, under "Both".</p>
+        <h2>${esc(T('secByEvent'))}</h2>
+        <p class="cap">${esc(T('byEventCap'))}</p>
         <div class="tblwrap"><table class="datatable">
-          <thead><tr><th>Event</th><th class="n">Count</th></tr></thead>
+          <thead><tr><th>${esc(T('event'))}</th><th class="n">${esc(T('count'))}</th></tr></thead>
           <tbody>
-            <tr><td>WGITA only</td><td class="n">${wgitaOnly}</td></tr>
-            <tr><td>KSC only</td><td class="n">${kscOnly}</td></tr>
-            <tr><td>Both</td><td class="n">${bothCount}</td></tr>
-            <tr class="totalrow"><td>Total</td><td class="n">${wgitaOnly + kscOnly + bothCount}</td></tr>
+            <tr><td>${esc(T('wgitaOnly'))}</td><td class="n">${wgitaOnly}</td></tr>
+            <tr><td>${esc(T('kscOnly'))}</td><td class="n">${kscOnly}</td></tr>
+            <tr><td>${esc(T('both'))}</td><td class="n">${bothCount}</td></tr>
+            <tr class="totalrow"><td>${esc(T('total'))}</td><td class="n">${wgitaOnly + kscOnly + bothCount}</td></tr>
           </tbody>
         </table></div>
       </div>
       <div class="card" data-section="accommodation">
-        <h2>Accommodation</h2>
-        <p class="cap">Where confirmed participants are staying. Adds up to the total above.</p>
+        <h2>${esc(T('secAccommodation'))}</h2>
+        <p class="cap">${esc(T('accommodationCap'))}</p>
         <div class="kpis" style="grid-template-columns:repeat(3,1fr)">
-          ${kpiTile(official, 'Official hotel')}
-          ${kpiTile(own, 'Own arrangement')}
-          ${kpiTile(accomNotDecided, 'Not yet decided')}
+          ${kpiTile(official, T('officialHotel'))}
+          ${kpiTile(own, T('ownArrangement'))}
+          ${kpiTile(accomNotDecided, T('notDecided'))}
         </div>
       </div>
     </div>
 
     <div class="card" data-section="tier">
-      <h2>Protocol tier by event</h2>
-      <p class="cap">President / Vice President / Other. Set on the Registrations page.</p>
-      ${crossTable(byTierEvent, EVENT_COLS, 'Tier')}
+      <h2>${esc(T('secTier'))}</h2>
+      <p class="cap">${esc(T('tierCap'))}</p>
+      ${crossTable(byTierEvent, eventCols, T('tier'))}
     </div>
 
     <div class="card" data-section="role">
-      <h2>Role in the delegation, by event</h2>
-      <p class="cap">Confirmed participants by protocol role.</p>
-      ${crossTable(byRole, EVENT_COLS, 'Role')}
+      <h2>${esc(T('roleH2'))}</h2>
+      <p class="cap">${esc(T('roleCap'))}</p>
+      ${crossTable(byRole, eventCols, T('role'))}
     </div>
 
     <div class="card" data-section="orgEvent">
-      <h2>All organisations, by event</h2>
-      <p class="cap">Every SAI/organisation represented.</p>
-      ${crossTable(byOrgEvent, EVENT_COLS, 'Organisation / Country')}
+      <h2>${esc(T('orgEventH2'))}</h2>
+      <p class="cap">${esc(T('orgEventCap'))}</p>
+      ${crossTable(byOrgEvent, eventCols, T('orgCountry'))}
     </div>
 
     <div class="card" data-section="orgTier">
-      <h2>All organisations, by protocol tier</h2>
-      <p class="cap">Which organisations the President/Vice President attendees belong to.</p>
-      ${crossTable(byOrgTier, TIER_COLS, 'Organisation / Country')}
+      <h2>${esc(T('orgTierH2'))}</h2>
+      <p class="cap">${esc(T('orgTierCap'))}</p>
+      ${crossTable(byOrgTier, tierCols, T('orgCountry'))}
     </div>
 
     <div class="card" data-section="orgAcc">
-      <h2>All organisations, main vs. accompanying</h2>
-      <p class="cap">How many delegates each organisation sent, and how many people they brought along.</p>
-      ${crossTable(byOrgParticipants, PARTICIPANTS_COLS, 'Organisation / Country')}
+      <h2>${esc(T('orgAccH2'))}</h2>
+      <p class="cap">${esc(T('orgAccCap'))}</p>
+      ${crossTable(byOrgParticipants, participantsCols, T('orgCountry'))}
     </div>
 
     <div class="card" data-section="dietary">
-      <h2>Dietary requirements, by event</h2>
-      <p class="cap">For catering planning.</p>
-      ${crossTable(byDiet, EVENT_COLS, 'Requirement')}
+      <h2>${esc(T('dietaryH2'))}</h2>
+      <p class="cap">${esc(T('dietaryCap'))}</p>
+      ${crossTable(byDiet, eventCols, T('requirement'))}
     </div>
 
     <div class="card" data-section="hotelEvent">
-      <h2>Hotels, by event</h2>
-      <p class="cap">Where each event's participants are staying, including own arrangements.</p>
-      ${crossTable(byHotelEvent, EVENT_COLS, 'Hotel')}
+      <h2>${esc(T('secHotelEvent'))}</h2>
+      <p class="cap">${esc(T('hotelEventCap'))}</p>
+      ${crossTable(byHotelEvent, eventCols, T('hotel'))}
     </div>
 
     <div class="card" data-section="hotelTier">
-      <h2>Hotels, by protocol tier</h2>
-      <p class="cap">Which hotels the President/Vice President attendees are staying at.</p>
-      ${crossTable(byHotelTier, TIER_COLS, 'Hotel')}
+      <h2>${esc(T('secHotelTier'))}</h2>
+      <p class="cap">${esc(T('hotelTierCap'))}</p>
+      ${crossTable(byHotelTier, tierCols, T('hotel'))}
     </div>
   `;
   applySectionVisibility();
 
   lastDashboard = {
     summary: [
-      ['Metric', 'Value'],
-      ['Total confirmed registrations', rows.length],
-      ['WGITA attendance', wgitaAttendance],
-      ['KSC attendance', kscAttendance],
-      ['Accompanying persons', totalAccompanying],
-      ['Organisations represented', orgs.size],
-      ['Presidents attending', presidents],
-      ['Vice Presidents attending', vicePresidents],
-      ['Requesting to speak', speaking],
-      ['Need a visa facilitation letter (total)', visaTotal],
-      ['  of which, accompanying persons', visaAcc],
-      ['  of which, confirmed participants', visaMain],
-      ['Attending the social programme (total)', socialTotal],
-      ['  of which, accompanying persons', accSocial],
-      ['  of which, confirmed participants', social],
-      ['Staying at an official hotel', official],
-      ['Own accommodation arrangement', own],
-      ['Accommodation not yet decided', accomNotDecided]
+      [T('metric'), T('value')],
+      [T('kpiTotalReg'), rows.length],
+      [T('kpiWgita'), wgitaAttendance],
+      [T('kpiKsc'), kscAttendance],
+      [T('kpiAccompanying'), totalAccompanying],
+      [T('kpiOrgs'), orgs.size],
+      [T('kpiPresidents'), presidents],
+      [T('kpiVps'), vicePresidents],
+      [T('kpiSpeaking'), speaking],
+      [T('kpiVisa') + ' (' + T('total') + ')', visaTotal],
+      ['  ' + T('kpiAccompanying'), visaAcc],
+      ['  ' + T('mainParticipants'), visaMain],
+      [T('kpiSocial') + ' (' + T('total') + ')', socialTotal],
+      ['  ' + T('kpiAccompanying'), accSocial],
+      ['  ' + T('mainParticipants'), social],
+      [T('officialHotel'), official],
+      [T('ownArrangement'), own],
+      [T('notDecided'), accomNotDecided]
     ],
     byEvent: [
-      ['Event', 'Count'],
-      ['WGITA only', wgitaOnly],
-      ['KSC only', kscOnly],
-      ['Both', bothCount],
-      ['Total', wgitaOnly + kscOnly + bothCount]
+      [T('event'), T('count')],
+      [T('wgitaOnly'), wgitaOnly],
+      [T('kscOnly'), kscOnly],
+      [T('both'), bothCount],
+      [T('total'), wgitaOnly + kscOnly + bothCount]
     ],
     tierRoster: [
-      ['Presidents — Organisation / Country', 'Vice Presidents — Organisation / Country'],
+      [T('xlPresidentsCol'), T('xlVpsCol')],
       ...Array.from({ length: Math.max(presidentOrgs.length, vicePresidentOrgs.length) },
         (_, i) => [presidentOrgs[i] || '', vicePresidentOrgs[i] || ''])
     ],
     sheets: [
-      ['Protocol tier', byTierEvent, EVENT_COLS, 'Tier', 'tier'],
-      ['Role', byRole, EVENT_COLS, 'Role', 'role'],
-      ['Orgs by event', byOrgEvent, EVENT_COLS, 'Organisation / Country', 'orgEvent'],
-      ['Orgs by tier', byOrgTier, TIER_COLS, 'Organisation / Country', 'orgTier'],
-      ['Orgs main-vs-acc', byOrgParticipants, PARTICIPANTS_COLS, 'Organisation / Country', 'orgAcc'],
-      ['Dietary', byDiet, EVENT_COLS, 'Requirement', 'dietary'],
-      ['Hotels by event', byHotelEvent, EVENT_COLS, 'Hotel', 'hotelEvent'],
-      ['Hotels by tier', byHotelTier, TIER_COLS, 'Hotel', 'hotelTier']
+      [T('xlTier'), byTierEvent, eventCols, T('tier'), 'tier'],
+      [T('role'), byRole, eventCols, T('role'), 'role'],
+      [T('xlOrgEvent'), byOrgEvent, eventCols, T('orgCountry'), 'orgEvent'],
+      [T('xlOrgTier'), byOrgTier, tierCols, T('orgCountry'), 'orgTier'],
+      [T('xlOrgAcc'), byOrgParticipants, participantsCols, T('orgCountry'), 'orgAcc'],
+      [T('secDietary'), byDiet, eventCols, T('requirement'), 'dietary'],
+      [T('xlHotelEvent'), byHotelEvent, eventCols, T('hotel'), 'hotelEvent'],
+      [T('xlHotelTier'), byHotelTier, tierCols, T('hotel'), 'hotelTier']
     ]
   };
 }
@@ -554,26 +703,60 @@ function renderDashboard(rows) {
    no export sheet of its own (its numbers are already inside "At a glance"),
    so hiding it has no effect here. */
 function exportToExcel() {
-  if (!lastDashboard) { alert('Load the dashboard first.'); return; }
+  if (!lastDashboard) { alert(T('loadFirst')); return; }
   const wb = XLSX.utils.book_new();
   const addSheet = (name, aoa) => {
     const ws = XLSX.utils.aoa_to_sheet(aoa);
     ws['!cols'] = aoa[0].map((h, i) => ({ wch: Math.min(40, Math.max(10, String(h ?? '').length, ...aoa.slice(1).map(r => String(r[i] ?? '').length))) }));
     XLSX.utils.book_append_sheet(wb, ws, name);
   };
-  if (!hiddenSections.has('kpi')) addSheet('At a glance', lastDashboard.summary);
-  if (!hiddenSections.has('tierRoster')) addSheet('Presidents & VPs', lastDashboard.tierRoster);
-  if (!hiddenSections.has('byEvent')) addSheet('By event', lastDashboard.byEvent);
+  if (!hiddenSections.has('kpi')) addSheet(T('xlAtGlance'), lastDashboard.summary);
+  if (!hiddenSections.has('tierRoster')) addSheet(T('xlPresVps'), lastDashboard.tierRoster);
+  if (!hiddenSections.has('byEvent')) addSheet(T('xlByEvent'), lastDashboard.byEvent);
   lastDashboard.sheets
     .filter(([, , , , sectionId]) => !hiddenSections.has(sectionId))
     .forEach(([name, groupRows, columns, rowHeader]) => addSheet(name, groupsToAoa(groupRows, columns, rowHeader)));
-  if (!wb.SheetNames.length) { alert('Everything is hidden — tick at least one table first.'); return; }
+  if (!wb.SheetNames.length) { alert(T('allHidden')); return; }
   XLSX.writeFile(wb, 'asa-events-dashboard.xlsx');
 }
 
+/* ---------------------------------------------------------------------------
+   Language switch: updates every fixed piece of chrome, rebuilds the
+   section-toggle list, and (if data is already loaded) re-renders the
+   dashboard body in place -- no refetch needed, since translation never
+   touches the underlying data. */
+function applyStaticTranslations() {
+  $('pageTitle').textContent = T('pageTitle');
+  $('pageSubtitle').textContent = T('pageSubtitle');
+  $('tokenCardTitle').textContent = T('tokenCardTitle');
+  $('tokenLabelText').textContent = T('tokenCardTitle');
+  tokenInput.placeholder = T('tokenPh');
+  $('tokenHint').textContent = T('tokenHint');
+  $('load').textContent = T('load');
+  $('printBtn').textContent = T('printBtn');
+  $('excelBtn').textContent = T('excelBtn');
+  $('sectionsCardTitle').textContent = T('sectionsCardTitle');
+  $('sectionsHint').textContent = T('sectionsHint');
+  $('showAllSections').textContent = T('showAll');
+  $('hideAllSections').textContent = T('hideAll');
+  renderSectionToggles();
+}
+function setLang(newLang) {
+  lang = newLang;
+  try { localStorage.setItem('asa_dashboard_lang', lang); } catch (e) { }
+  document.documentElement.lang = lang;
+  document.documentElement.dir = lang === 'ar' ? 'rtl' : 'ltr';
+  $('langToggle').textContent = lang === 'ar' ? 'English' : 'العربية';
+  applyStaticTranslations();
+  if (lastRows) renderDashboard(lastRows);
+}
+
+$('langToggle').addEventListener('click', () => setLang(lang === 'ar' ? 'en' : 'ar'));
 $('load').addEventListener('click', loadDashboard);
 $('printBtn').addEventListener('click', () => window.print());
 $('excelBtn').addEventListener('click', exportToExcel);
+
+setLang(lang);
 if (tokenInput.value) loadDashboard();
 </script>
 </body>
