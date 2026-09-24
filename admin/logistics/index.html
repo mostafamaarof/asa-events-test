@@ -390,21 +390,27 @@ function orgReport(rows) {
 
 /* ---------- Movement sheet: the compact protocol/immigration hand-off
    sheet -- who's arriving/departing when, on what passport, staying where.
-   One flat roster (not grouped by date/hotel/org like the reports above)
-   so it can be handed to the airport reception or protocol desk as a
-   single sortable list. ---------- */
+   Grouped by country (same "not given" bucket convention as every other
+   report here) so it can be handed to protocol/immigration one delegation
+   at a time; Country itself drops out of the row columns since it's now
+   the group heading. ---------- */
 function movementReport(rows) {
-  const items = rows.slice().sort((a, b) => a.name.localeCompare(b.name));
-  const cols = ['Salutation','Name','Country','Protocol tier','Passport number','Passport type',
+  const groups = groupBy(rows, r => r.country || '￿__none');
+  const keys = [...groups.keys()].sort();
+  const cols = ['Salutation','Name','Protocol tier','Passport number','Passport type',
     'Arrival flight number','Arrival date','Arrival time','Departure flight number','Departure date','Departure time','Official hotel'];
-  const rowsHtml = items.map(r => `<tr>
-    ${td(r.salutation)}<td class="wrap">${esc(r.name)}</td>${td(r.country)}${td(r.tier)}
-    ${td(r.passportNumber)}${td(r.passportType)}
-    ${td(r.arrFlight)}${td(fmtDate(r.arrDate))}${td(r.arrTime)}
-    ${td(r.depFlight)}${td(fmtDate(r.depDate))}${td(r.depTime)}
-    ${td(r.officialHotel, 'wrap')}
-  </tr>`).join('');
-  return [{ title: 'All confirmed participants', count: items.length, cols, rowsHtml, items }];
+  return keys.map(key => {
+    const items = groups.get(key).slice().sort((a, b) => a.name.localeCompare(b.name));
+    const title = key === '￿__none' ? 'Country not given' : items[0].country;
+    const rowsHtml = items.map(r => `<tr>
+      ${td(r.salutation)}<td class="wrap">${esc(r.name)}</td>${td(r.tier)}
+      ${td(r.passportNumber)}${td(r.passportType)}
+      ${td(r.arrFlight)}${td(fmtDate(r.arrDate))}${td(r.arrTime)}
+      ${td(r.depFlight)}${td(fmtDate(r.depDate))}${td(r.depTime)}
+      ${td(r.officialHotel, 'wrap')}
+    </tr>`).join('');
+    return { title, count: items.length, cols, rowsHtml, items };
+  });
 }
 
 /* ---------- Passport report: name, tier, passport details, and a download
@@ -667,7 +673,7 @@ function exportCsv() {
         : activeTab === 'organization'
         ? [r.name, r.tier, r.role, r.events, r.mobile, r.email, r.pax - 1 || '', r.ref]
         : activeTab === 'movement'
-        ? [r.salutation, r.name, r.country, r.tier, r.passportNumber, r.passportType,
+        ? [r.salutation, r.name, r.tier, r.passportNumber, r.passportType,
            r.arrFlight, fmtDate(r.arrDate), r.arrTime, r.depFlight, fmtDate(r.depDate), r.depTime, r.officialHotel]
         : activeTab === 'passport'
         ? [r.name, r.tier, (r.org ? r.org + (r.country ? ' - ' + r.country : '') : r.country),
