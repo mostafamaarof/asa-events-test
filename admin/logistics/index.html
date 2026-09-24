@@ -393,9 +393,56 @@ function orgReport(rows) {
    Grouped by country (same "not given" bucket convention as every other
    report here) so it can be handed to protocol/immigration one delegation
    at a time; Country itself drops out of the row columns since it's now
-   the group heading. ---------- */
+   the group heading.
+
+   Includes accompanying persons alongside confirmed participants -- they
+   have no salutation/passport type/flight fields of their own on the
+   form, so they inherit their principal's travel and hotel details (the
+   form assumes they travel together) and are flagged via the Protocol
+   tier column ("Accompanying person") instead of a name lookup.
+
+   The same real traveller can end up listed twice -- most often a
+   duplicate registration under a different email -- so entries sharing a
+   non-empty passport number are merged, keeping whichever copy has more
+   of the travel fields filled in. A blank passport number is never
+   merged against another blank one, or everyone missing one would
+   collapse into a single row. */
 function movementReport(rows) {
-  const groups = groupBy(rows, r => r.country || '￿__none');
+  const entries = [];
+  rows.forEach(r => {
+    entries.push({
+      salutation: r.salutation, name: r.name, tier: r.tier, country: r.country,
+      passportNumber: r.passportNumber, passportType: r.passportType,
+      arrFlight: r.arrFlight, arrDate: r.arrDate, arrTime: r.arrTime,
+      depFlight: r.depFlight, depDate: r.depDate, depTime: r.depTime,
+      officialHotel: r.officialHotel
+    });
+    r.accompanying.forEach(p => entries.push({
+      salutation: '', name: p.acc_full_name_passport || '(no name)', tier: 'Accompanying person',
+      country: OPT.country[p.acc_nationality] || p.acc_nationality || r.country,
+      passportNumber: p.acc_passport_number || '', passportType: '',
+      arrFlight: r.arrFlight, arrDate: r.arrDate, arrTime: r.arrTime,
+      depFlight: r.depFlight, depDate: r.depDate, depTime: r.depTime,
+      officialHotel: r.officialHotel
+    }));
+  });
+
+  const completeness = (e) => [e.salutation, e.passportType, e.arrFlight, e.arrDate, e.arrTime, e.depFlight, e.depDate, e.depTime, e.officialHotel]
+    .filter(Boolean).length;
+  const byPassport = new Map();
+  const deduped = [];
+  entries.forEach(e => {
+    const key = e.passportNumber ? e.passportNumber.trim().toUpperCase() : null;
+    if (!key) { deduped.push(e); return; }
+    const existing = byPassport.get(key);
+    if (!existing) { byPassport.set(key, e); deduped.push(e); return; }
+    if (completeness(e) > completeness(existing)) {
+      deduped[deduped.indexOf(existing)] = e;
+      byPassport.set(key, e);
+    }
+  });
+
+  const groups = groupBy(deduped, e => e.country || '￿__none');
   const keys = [...groups.keys()].sort();
   const cols = ['Salutation','Name','Protocol tier','Passport number','Passport type',
     'Arrival flight number','Arrival date','Arrival time','Departure flight number','Departure date','Departure time','Official hotel'];
