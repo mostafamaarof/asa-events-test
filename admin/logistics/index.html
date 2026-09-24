@@ -285,6 +285,16 @@ function fmtDate(iso) {
   if (isNaN(dt)) return iso;
   return dt.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
 }
+/* dd/MM/yyyy -- used only by the Movement sheet, where a compact date reads
+   better across a row already carrying a dozen other columns. */
+function fmtDateShort(iso) {
+  if (!iso) return '';
+  const dt = new Date(iso + 'T00:00:00');
+  if (isNaN(dt)) return iso;
+  const dd = String(dt.getDate()).padStart(2, '0');
+  const mm = String(dt.getMonth() + 1).padStart(2, '0');
+  return `${dd}/${mm}/${dt.getFullYear()}`;
+}
 function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c])); }
 function td(v, cls) { const c = v ? '' : ' muted'; return `<td class="${(cls||'') + c}">${v ? esc(v) : '—'}</td>`; }
 function dlBtn(key, filename) { return key
@@ -452,8 +462,8 @@ function movementReport(rows) {
     const rowsHtml = items.map(r => `<tr>
       ${td(r.salutation)}<td class="wrap">${esc(r.name)}</td>${td(r.tier)}
       ${td(r.passportNumber)}${td(r.passportType)}
-      ${td(r.arrFlight)}${td(fmtDate(r.arrDate))}${td(r.arrTime)}
-      ${td(r.depFlight)}${td(fmtDate(r.depDate))}${td(r.depTime)}
+      ${td(r.arrFlight)}${td(fmtDateShort(r.arrDate))}${td(r.arrTime)}
+      ${td(r.depFlight)}${td(fmtDateShort(r.depDate))}${td(r.depTime)}
       ${td(r.officialHotel, 'wrap')}
     </tr>`).join('');
     return { title, count: items.length, cols, rowsHtml, items };
@@ -721,7 +731,7 @@ function exportCsv() {
         ? [r.name, r.tier, r.role, r.events, r.mobile, r.email, r.pax - 1 || '', r.ref]
         : activeTab === 'movement'
         ? [r.salutation, r.name, r.tier, r.passportNumber, r.passportType,
-           r.arrFlight, fmtDate(r.arrDate), r.arrTime, r.depFlight, fmtDate(r.depDate), r.depTime, r.officialHotel]
+           r.arrFlight, fmtDateShort(r.arrDate), r.arrTime, r.depFlight, fmtDateShort(r.depDate), r.depTime, r.officialHotel]
         : activeTab === 'passport'
         ? [r.name, r.tier, (r.org ? r.org + (r.country ? ' - ' + r.country : '') : r.country),
            r.passportNumber, r.passportType, r.passportPlaceOfIssue, fmtDate(r.passportIssueDate), fmtDate(r.passportExpiryDate),
