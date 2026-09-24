@@ -130,6 +130,7 @@ td.muted{color:var(--rule-strong)}
       <div class="tab" data-tab="departure">By departure date</div>
       <div class="tab" data-tab="hotel">By hotel</div>
       <div class="tab" data-tab="organization">By organization</div>
+      <div class="tab" data-tab="movement">Movement sheet</div>
       <div class="tab" data-tab="passport">Passport report</div>
       <div class="tab" data-tab="accompanying">Accompanying persons</div>
       <div class="tab" data-tab="speakers">Speakers</div>
@@ -159,6 +160,7 @@ function authHeaders() {
 
 const O = (pairs) => Object.fromEntries(pairs);
 const OPT = {
+  salutation: O([['HE','H.E.'],['Dr','Dr'],['Mr','Mr'],['Mrs','Mrs'],['Ms','Ms']]),
   delRole: O([['hod','Head of delegation'],['delegate','Delegate'],['observer','Observer'],['speaker','Speaker'],
     ['moderator','Moderator'],['secretariat','Secretariat'],['interpreter','Interpreter'],['accompanying','Accompanying official']]),
   terminal: O([['T1','Terminal 1'],['T2','Terminal 2'],['T3','Terminal 3'],['unknown','Not known yet']]),
@@ -220,6 +222,7 @@ function computeRows() {
         : '';
       return {
         ref: r.reference,
+        salutation: OPT.salutation[d.salutation] || d.salutation || '',
         name: r.full_name || '(no name)',
         email: r.email || '',
         org: r.organization_name || '',
@@ -237,7 +240,7 @@ function computeRows() {
         depAirline: d.departure_airline || '', depFlight: d.departure_flight_no || '',
         depTerminal: OPT.terminal[d.departure_terminal] || d.departure_terminal || '',
         ticketFileKey: d.ticket_file_key || '', ticketFileFilename: d.ticket_file_filename || '',
-        accomType: d.accommodation_type || '', hotelName,
+        accomType: d.accommodation_type || '', hotelName, officialHotel: d.official_hotel || '',
         roomType: OPT.roomType[d.room_type] || d.room_type || '',
         checkIn: d.check_in_date || '', checkOut: d.check_out_date || '',
         bookingRef: d.booking_reference || '',
@@ -383,6 +386,25 @@ function orgReport(rows) {
     </tr>`).join('');
     return { title, count: items.length, cols, rowsHtml, items };
   });
+}
+
+/* ---------- Movement sheet: the compact protocol/immigration hand-off
+   sheet -- who's arriving/departing when, on what passport, staying where.
+   One flat roster (not grouped by date/hotel/org like the reports above)
+   so it can be handed to the airport reception or protocol desk as a
+   single sortable list. ---------- */
+function movementReport(rows) {
+  const items = rows.slice().sort((a, b) => a.name.localeCompare(b.name));
+  const cols = ['Salutation','Name','Country','Protocol tier','Passport number','Passport type',
+    'Arrival flight number','Arrival date','Arrival time','Departure flight number','Departure date','Departure time','Official hotel'];
+  const rowsHtml = items.map(r => `<tr>
+    ${td(r.salutation)}<td class="wrap">${esc(r.name)}</td>${td(r.country)}${td(r.tier)}
+    ${td(r.passportNumber)}${td(r.passportType)}
+    ${td(r.arrFlight)}${td(fmtDate(r.arrDate))}${td(r.arrTime)}
+    ${td(r.depFlight)}${td(fmtDate(r.depDate))}${td(r.depTime)}
+    ${td(r.officialHotel, 'wrap')}
+  </tr>`).join('');
+  return [{ title: 'All confirmed participants', count: items.length, cols, rowsHtml, items }];
 }
 
 /* ---------- Passport report: name, tier, passport details, and a download
@@ -588,6 +610,7 @@ function render() {
     : activeTab === 'departure' ? dateReport(rows, 'departure')
     : activeTab === 'hotel' ? hotelReport(rows)
     : activeTab === 'organization' ? orgReport(rows)
+    : activeTab === 'movement' ? movementReport(rows)
     : activeTab === 'passport' ? passportReport(rows)
     : activeTab === 'accompanying' ? accompanyingReport(rows)
     : activeTab === 'speakers' ? speakersReport(rows)
@@ -643,6 +666,9 @@ function exportCsv() {
            r.depDate ? fmtDate(r.depDate) + (r.depTime ? ' ' + r.depTime : '') : '', r.ref]
         : activeTab === 'organization'
         ? [r.name, r.tier, r.role, r.events, r.mobile, r.email, r.pax - 1 || '', r.ref]
+        : activeTab === 'movement'
+        ? [r.salutation, r.name, r.country, r.tier, r.passportNumber, r.passportType,
+           r.arrFlight, fmtDate(r.arrDate), r.arrTime, r.depFlight, fmtDate(r.depDate), r.depTime, r.officialHotel]
         : activeTab === 'passport'
         ? [r.name, r.tier, (r.org ? r.org + (r.country ? ' - ' + r.country : '') : r.country),
            r.passportNumber, r.passportType, r.passportPlaceOfIssue, fmtDate(r.passportIssueDate), fmtDate(r.passportExpiryDate),
@@ -676,7 +702,8 @@ function exportCsv() {
   ws['!cols'] = header.map((h, i) => ({ wch: Math.min(40, Math.max(10, h.length, ...aoa.slice(1).map(r => String(r[i] ?? '').length / 1.6))) }));
   const wb = XLSX.utils.book_new();
   const sheetName = activeTab === 'arrival' ? 'By arrival date' : activeTab === 'departure' ? 'By departure date'
-    : activeTab === 'hotel' ? 'By hotel' : activeTab === 'organization' ? 'By organization' : activeTab === 'passport' ? 'Passport report'
+    : activeTab === 'hotel' ? 'By hotel' : activeTab === 'organization' ? 'By organization' : activeTab === 'movement' ? 'Movement sheet'
+    : activeTab === 'passport' ? 'Passport report'
     : activeTab === 'accompanying' ? 'Accompanying persons' : activeTab === 'speakers' ? 'Speakers'
     : activeTab === 'dietary' ? 'Dietary requirements' : activeTab === 'medical' ? 'Medical information' : 'Attachments';
   XLSX.utils.book_append_sheet(wb, ws, sheetName);
