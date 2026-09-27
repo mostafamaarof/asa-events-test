@@ -413,6 +413,68 @@ function normalizeFreeText(d) {
   return d;
 }
 
+/* Mirrors the register form's own section layout (register/registration.js
+   SCHEMA) -- field key -> [section, short label] -- so an edit's audit_log
+   entry can say which section(s), and which fields specifically, actually
+   changed instead of just "edited". Keep in sync if the form's fields
+   change. File fields are listed by their '<field>_key' name, since that's
+   the only form the value ever takes in data_json (the plain field name is
+   never itself set) -- the matching '_filename' is intentionally left out
+   of this map so it's never flagged as its own change. */
+const FIELD_META = {
+  salutation: ['Personal', 'Salutation'], gender: ['Personal', 'Gender'],
+  first_name_passport: ['Personal', 'First name'], family_name_passport: ['Personal', 'Family name'],
+  badge_name_en: ['Personal', 'Name on badge'], nationality: ['Personal', 'Nationality'],
+  email: ['Personal', 'Email'], alt_email: ['Personal', 'Alternative email'], mobile: ['Personal', 'Mobile'],
+  whatsapp_same: ['Personal', 'WhatsApp same as mobile'], whatsapp_number: ['Personal', 'WhatsApp number'],
+  correspondence_language: ['Personal', 'Correspondence language'],
+  organization_name: ['Institution', 'SAI or organisation'], regional_group: ['Institution', 'INTOSAI regional group'],
+  country: ['Institution', 'Country'], job_title: ['Institution', 'Job title'], department: ['Institution', 'Department'],
+  role_in_delegation: ['Institution', 'Role in the delegation'], has_security_detail: ['Institution', 'Security detail'],
+  security_detail_count: ['Institution', 'Number of security personnel'],
+  wants_to_present: ['Contribution', 'Wants to present'], presentation_title: ['Contribution', 'Presentation title'],
+  presentation_abstract: ['Contribution', 'Abstract'], speaker_bio: ['Contribution', 'Short biography'],
+  speaker_photo_key: ['Contribution', 'Portrait photo'], slides_file_key: ['Contribution', 'Presentation slides'],
+  passport_number: ['Passport', 'Passport number'], passport_type: ['Passport', 'Passport type'],
+  passport_place_of_issue: ['Passport', 'Place of issue'], passport_issue_date: ['Passport', 'Date of issue'],
+  passport_expiry_date: ['Passport', 'Date of expiry'], passport_copy_key: ['Passport', 'Passport copy'],
+  visa_letter_needed: ['Visa', 'Visa facilitation letter needed'],
+  arrival_airline: ['Travel', 'Arrival airline'], arrival_flight_no: ['Travel', 'Arrival flight number'],
+  arrival_date: ['Travel', 'Arrival date'], arrival_time: ['Travel', 'Arrival time'], arrival_terminal: ['Travel', 'Arrival terminal'],
+  has_connecting_flight: ['Travel', 'Connecting flight'], connecting_airline: ['Travel', 'Connecting flight airline'],
+  connecting_flight_no: ['Travel', 'Connecting flight number'], connecting_date: ['Travel', 'Connecting flight date'],
+  connecting_time: ['Travel', 'Connecting flight time'], departure_airline: ['Travel', 'Departure airline'],
+  departure_flight_no: ['Travel', 'Departure flight number'], departure_date: ['Travel', 'Departure date'],
+  departure_time: ['Travel', 'Departure time'], departure_terminal: ['Travel', 'Departure terminal'],
+  ticket_file_key: ['Travel', 'Flight itinerary'],
+  accommodation_type: ['Accommodation', 'Where staying'], official_hotel: ['Accommodation', 'Official hotel'],
+  room_type: ['Accommodation', 'Room type'], own_hotel_name_address: ['Accommodation', 'Hotel name and address'],
+  check_in_date: ['Accommodation', 'Check-in'], check_out_date: ['Accommodation', 'Check-out'],
+  booking_reference: ['Accommodation', 'Booking reference'],
+  emergency_contact_name: ['Welfare', 'Emergency contact name'], emergency_contact_relation: ['Welfare', 'Emergency contact relationship'],
+  emergency_contact_phone: ['Welfare', 'Emergency contact phone'], emergency_contact_email: ['Welfare', 'Emergency contact email'],
+  dietary_requirements: ['Welfare', 'Dietary requirements'], dietary_notes: ['Welfare', 'Dietary notes'],
+  allergies: ['Welfare', 'Allergies'], medical_notes_emergency: ['Welfare', 'Medical information'],
+  covid_certificate: ['Welfare', 'COVID / vaccination certificate'],
+  is_accompanied: ['Accompanying persons', 'Is anyone travelling with you'],
+  accompanying: ['Accompanying persons', 'Accompanying persons'],
+  social_program_attending: ['Programme', 'Social programme attendance'],
+  consent_processing: ['Consents', 'Processing consent'], signature_typed_name: ['Consents', 'Signature']
+};
+
+/* undefined/null/''/[] are all "nothing entered" -- comparing them as equal
+   stops a field that was simply never touched from showing up as "changed"
+   just because it round-tripped through JSON differently. */
+const emptyNorm = (v) => (v === undefined || v === null || v === '' || (Array.isArray(v) && v.length === 0)) ? null : v;
+function summarizeEdit(oldD, newD) {
+  const keys = new Set([...Object.keys(oldD || {}), ...Object.keys(newD || {})]);
+  const changed = [...keys].filter(k => FIELD_META[k] && JSON.stringify(emptyNorm(oldD[k])) !== JSON.stringify(emptyNorm(newD[k])));
+  if (!changed.length) return 'no changes detected';
+  const sections = [...new Set(changed.map(k => FIELD_META[k][0]))];
+  const labels = changed.map(k => FIELD_META[k][1]);
+  return `${sections.join(', ')} — ${labels.slice(0, 15).join(', ')}${labels.length > 15 ? ', …' : ''}`;
+}
+
 async function createRegistration(req, env, ch, ipHash) {
   const token = (req.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '');
   const s = await readSession(env, token);
@@ -573,6 +635,7 @@ async function updateRegistration(req, env, ch, ipHash) {
   const fullName = fullNameOf(d);
   const orgMismatch = inv && d.organization_name &&
     d.organization_name.trim().toLowerCase() !== String(inv.organization_name).trim().toLowerCase();
+  const changeSummary = summarizeEdit(JSON.parse(reg.data_json || '{}'), d);
 
   await env.DB.prepare(
     `UPDATE registrations SET full_name=?, organization_name=?, country=?, role_in_delegation=?,
@@ -582,8 +645,9 @@ async function updateRegistration(req, env, ch, ipHash) {
       d.role_in_delegation || null, d.visa_letter_needed === 'yes' ? 1 : 0,
       JSON.stringify(d), JSON.stringify(b.consents || {}), orgMismatch ? 1 : 0, reg.registration_id).run();
 
-  await audit(env, t.admin ? 'registration_updated_by_admin' : 'registration_updated', 'registration', reg.registration_id, reg.reference, ipHash);
-  await notifyTelegram(env, `✏️ <b>Registration edited${t.admin ? ' by admin' : ''}</b>\n${esc(fullName || reg.full_name || '(no name)')} — ${esc(reg.reference)}`);
+  await audit(env, t.admin ? 'registration_updated_by_admin' : 'registration_updated', 'registration', reg.registration_id,
+    `${reg.reference} — ${changeSummary}`, ipHash);
+  await notifyTelegram(env, `✏️ <b>Registration edited${t.admin ? ' by admin' : ''}</b>\n${esc(fullName || reg.full_name || '(no name)')} — ${esc(reg.reference)}\n${esc(changeSummary)}`);
 
   const { codes, titlesEn } = await eventTitles(env, reg.event_codes);
   /* Admin-initiated edits (typo fixes, protocol corrections) don't notify the

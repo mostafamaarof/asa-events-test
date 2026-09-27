@@ -235,12 +235,28 @@ function org(e) {
   return '';
 }
 
+/* registration_updated(_by_admin) details look like "SUB-ABCD — Travel,
+   Accommodation — Arrival date, Official hotel" (see summarizeEdit() in the
+   worker) -- split off the reference so describe() can lead with the usual
+   "Reference X ..." phrasing and just append the section/field summary. */
+function splitEditDetail(detail) {
+  const s = String(detail || '');
+  const i = s.indexOf(' — ');
+  return i === -1 ? [s, ''] : [s.slice(0, i), s.slice(i + 3)];
+}
+
 /* Turn the raw (action, entity, entity_id, detail) tuple into one readable sentence. */
 function describe(e) {
   switch (e.action) {
     case 'registration_submitted': return `Reference ${e.detail || e.entity_id}`;
-    case 'registration_updated': return `Reference ${e.detail || e.entity_id} edited via self-service link`;
-    case 'registration_updated_by_admin': return `Reference ${e.detail || e.entity_id} edited by an admin (registrant not notified)`;
+    case 'registration_updated': {
+      const [ref, summary] = splitEditDetail(e.detail);
+      return `Reference ${ref || e.entity_id} edited via self-service link${summary ? ' — ' + summary : ''}`;
+    }
+    case 'registration_updated_by_admin': {
+      const [ref, summary] = splitEditDetail(e.detail);
+      return `Reference ${ref || e.entity_id} edited by an admin (registrant not notified)${summary ? ' — ' + summary : ''}`;
+    }
     case 'registration_status_changed': {
       const [ref, status] = String(e.detail || '').split(':');
       return `Reference ${ref || e.entity_id} → ${status || '?'}`;
