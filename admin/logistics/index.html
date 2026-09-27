@@ -254,6 +254,7 @@ function computeRows() {
         accompanying: (d.is_accompanied === 'yes' && Array.isArray(d.accompanying)) ? d.accompanying : [],
         eventCodes: (r.event_codes || '').split(',').filter(Boolean),
         wantsToPresent: d.wants_to_present === 'yes',
+        presentationTrack: r.presentation_track || '',
         presentationTitle: d.presentation_title || '',
         presentationAbstract: d.presentation_abstract || '',
         speakerPhotoKey: d.speaker_photo_key || '',
@@ -525,29 +526,37 @@ function accompanyingReport(rows) {
   });
 }
 
+const TRACK_LABELS = { wgita: 'WGITA Annual Meeting', seminar: 'WGITA Seminar', ksc: 'KSC Steering Committee' };
+const TRACK_ORDER = ['wgita', 'seminar', 'ksc', ''];
+
 /* ---------- Speakers: presentation details plus a download button each for
-   the portrait photo and the slides, grouped by event so each event's
-   programme can be compiled separately. ---------- */
+   the portrait photo and the slides, grouped by the admin-allocated
+   presentation track (WGITA Annual Meeting / WGITA Seminar / KSC) rather
+   than by event_codes -- WGITA-35-2026 covers both the Annual Meeting
+   (28 Sept) and the Seminar (29 Sept), so event_codes alone can't tell
+   which day a given presentation belongs to. Unallocated speakers land in
+   their own group at the end so nobody is missed when building the
+   programme. Each row's Track cell is a live <select> (see the change
+   handler below) that calls /admin/registrations/presentation-track. ---------- */
 function speakersReport(rows) {
   const speakers = rows.filter(r => r.wantsToPresent);
-  const groups = groupBy(speakers, r => {
-    if (r.eventCodes.length > 1) return 'C__both';
-    if (r.eventCodes[0] === 'WGITA-35-2026') return 'A__wgita';
-    if (r.eventCodes[0] === 'KSC-SC18-2026') return 'B__ksc';
-    return 'D__other';
-  });
-  const TITLES = { A__wgita: EVENT_NAMES['WGITA-35-2026'], B__ksc: EVENT_NAMES['KSC-SC18-2026'], C__both: 'Both events', D__other: 'Other' };
-  const keys = [...groups.keys()].sort();
+  const groups = groupBy(speakers, r => r.presentationTrack || '');
+  const keys = TRACK_ORDER.filter(k => groups.has(k));
   /* Abstract isn't a column on screen -- full text under a collapsible
      disclosure makes every row printed-programme-length regardless of who
      wrote a three-sentence blurb versus a page. It's still its own column
      in the Excel export, which SPEAKERS_EXPORT_COLS (see exportCsv) covers. */
-  const cols = ['Name','Tier','Org / Country','Presentation title','Photo','Slides','Ref'];
+  const cols = ['Name','Tier','Track','Org / Country','Presentation title','Photo','Slides','Ref'];
+  const trackOpt = (v, cur) => `<option value="${v}"${v === cur ? ' selected' : ''}>${v ? esc(TRACK_LABELS[v]) : 'Not yet allocated'}</option>`;
   return keys.map(key => {
     const items = groups.get(key).slice().sort((a, b) => a.name.localeCompare(b.name));
-    const title = TITLES[key] || key;
+    const title = key ? TRACK_LABELS[key] : 'Not yet allocated';
     const rowsHtml = items.map(r => `<tr>
-      <td class="wrap">${esc(r.name)}</td>${td(r.tier)}${td(r.org ? r.org + (r.country ? ' · ' + r.country : '') : r.country, 'wrap')}
+      <td class="wrap">${esc(r.name)}</td>${td(r.tier)}
+      <td><select class="trackSel" data-ref="${esc(r.ref)}" data-prev="${r.presentationTrack || ''}">
+        ${trackOpt('', r.presentationTrack)}${trackOpt('wgita', r.presentationTrack)}${trackOpt('seminar', r.presentationTrack)}${trackOpt('ksc', r.presentationTrack)}
+      </select></td>
+      ${td(r.org ? r.org + (r.country ? ' · ' + r.country : '') : r.country, 'wrap')}
       <td class="wrap">${esc(r.presentationTitle) || '—'}${r.presentationAbstract
         ? `<details style="margin-top:4px"><summary style="cursor:pointer;font-size:12px;color:var(--muted)">Abstract</summary><div style="margin-top:4px;font-size:13px">${esc(r.presentationAbstract)}</div></details>`
         : ''}</td>
@@ -557,7 +566,7 @@ function speakersReport(rows) {
     return { title, count: items.length, cols, rowsHtml, items };
   });
 }
-const SPEAKERS_EXPORT_COLS = ['Name','Tier','Org / Country','Presentation title','Abstract','Photo','Slides','Ref'];
+const SPEAKERS_EXPORT_COLS = ['Name','Tier','Track','Org / Country','Presentation title','Abstract','Photo','Slides','Ref'];
 
 /* ---------- Attachments: every file a person can upload, in one place, so
    nobody has to piece it together from the passport/speakers tabs. Grouped
@@ -741,7 +750,8 @@ function exportCsv() {
            r.visaNeeded, r.attendsSessions, r.attendsSocial, r.dietary,
            r.passportCopyKey ? (r.passportCopyFilename || 'Uploaded') : 'Not uploaded']
         : activeTab === 'speakers'
-        ? [r.name, r.tier, (r.org ? r.org + (r.country ? ' - ' + r.country : '') : r.country),
+        ? [r.name, r.tier, r.presentationTrack ? TRACK_LABELS[r.presentationTrack] : 'Not yet allocated',
+           (r.org ? r.org + (r.country ? ' - ' + r.country : '') : r.country),
            r.presentationTitle, r.presentationAbstract,
            r.speakerPhotoKey ? (r.speakerPhotoFilename || 'Uploaded') : 'Not uploaded',
            r.slidesFileKey ? (r.slidesFileFilename || 'Uploaded') : 'Not uploaded', r.ref]
@@ -795,6 +805,34 @@ $('list').addEventListener('click', async (e) => {
     btn.disabled = false; btn.textContent = orig;
   }
 });
+
+/* Manual presentation-track allocation, straight from the Speakers tab --
+   needs the 'registrations' scope (same as the Tier selector elsewhere), so
+   a report-only token gets a clear error here instead of a silent no-op. */
+$('list').addEventListener('change', async (e) => {
+  const sel = e.target.closest('.trackSel'); if (!sel) return;
+  const reference = sel.dataset.ref, track = sel.value, prev = sel.dataset.prev || '';
+  sel.disabled = true;
+  try {
+    await apiFetch('/admin/registrations/presentation-track', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reference, track })
+    });
+    const reg = all.find(r => r.reference === reference);
+    if (reg) reg.presentation_track = track;
+    render();
+  } catch (err) {
+    sel.value = prev;
+    alert('Could not update the presentation track: ' + err.message);
+  } finally {
+    sel.disabled = false;
+  }
+});
+async function apiFetch(path, opts) {
+  const res = await fetch(CONFIG.apiBase + path, { ...opts, headers: { ...authHeaders(), ...(opts && opts.headers) } });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || data.ok === false) throw new Error(data.error || ('HTTP ' + res.status));
+  return data;
+}
 
 document.querySelectorAll('.tab').forEach(tab => tab.addEventListener('click', () => {
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));

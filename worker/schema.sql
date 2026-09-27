@@ -75,6 +75,9 @@ CREATE TABLE registrations (
   attendance_mode     TEXT,
   role_in_delegation  TEXT,
   participant_tier    TEXT NOT NULL DEFAULT 'other', -- 'president' | 'vice_president' | 'other' -- protocol tier, admin-assigned only
+  presentation_track  TEXT, -- 'wgita' | 'seminar' | 'ksc' | NULL -- which day/track a speaker's presentation is
+                             -- allocated to, admin-assigned only (event_codes alone can't tell WGITA's Annual
+                             -- Meeting day from its Seminar day apart, since both share the WGITA-35-2026 code)
   visa_letter_needed  INTEGER DEFAULT 0,
   status              TEXT NOT NULL DEFAULT 'approved', -- auto-confirmed on submission; admin can still revert/reject
   registration_number TEXT,              -- assigned immediately on submission, distinct from reference

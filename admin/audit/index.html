@@ -137,6 +137,7 @@ const ACTIONS = {
   registration_updated_by_admin: { label: 'Registration edited by admin', pill: 'edit' },
   registration_status_changed: { label: 'Status changed',              pill: 'edit' },
   participant_tier_changed:    { label: 'Protocol tier changed',       pill: 'edit' },
+  presentation_track_changed:  { label: 'Presentation track changed',  pill: 'edit' },
   field_values_renamed:        { label: 'Organisation/hotel names merged', pill: 'edit' },
   edit_link_sent:              { label: 'Edit link emailed',           pill: 'info' },
   reminder_sent:                { label: 'Missing-data reminder emailed', pill: 'info' },
@@ -265,6 +266,11 @@ function describe(e) {
       const [ref, tier] = String(e.detail || '').split(':');
       const TIER_LABELS = { president: 'President', vice_president: 'Vice President', other: 'Other' };
       return `Reference ${ref || e.entity_id} → ${TIER_LABELS[tier] || tier || '?'}`;
+    }
+    case 'presentation_track_changed': {
+      const [ref, track] = String(e.detail || '').split(':');
+      const TRACK_LABELS = { wgita: 'WGITA Annual Meeting', seminar: 'WGITA Seminar', ksc: 'KSC Steering Committee', unallocated: 'Unallocated' };
+      return `Reference ${ref || e.entity_id} → ${TRACK_LABELS[track] || track || '?'}`;
     }
     case 'edit_link_sent': return `Reference ${e.detail || e.entity_id} — link emailed to the registrant`;
     case 'checked_in': {
