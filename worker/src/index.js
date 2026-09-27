@@ -33,10 +33,11 @@ import { connect } from 'cloudflare:sockets';
      GET  /v1/admin/attachments?reference=... list one registration's attachments (Bearer ADMIN_TOKEN or VIEWER_TOKEN)
      POST /v1/admin/registrations/status  set status to under_review/approved/rejected, emails the applicant (Bearer ADMIN_TOKEN)
      POST /v1/admin/registrations/tier    set participant_tier to president/vice_president/other, never emailed (Bearer ADMIN_TOKEN)
-     POST /v1/admin/registrations/presentation-track  set presentation_track to wgita/seminar/ksc (or '' to clear),
-                                    never emailed -- lets an admin allocate a speaker's presentation to the right
-                                    day/track when event_codes alone can't tell WGITA's Annual Meeting day apart
-                                    from its Seminar day (Bearer ADMIN_TOKEN)
+     POST /v1/admin/registrations/presentation-track  set presentation_track to wgita/seminar/ksc (or '' to clear)
+                                    and presentation_order to a 1-999 running order within that track (or '' to
+                                    clear), never emailed -- lets an admin allocate a speaker's presentation to
+                                    the right day/track and slot when event_codes alone can't tell WGITA's Annual
+                                    Meeting day apart from its Seminar day (Bearer ADMIN_TOKEN)
      POST /v1/admin/registrations/delete  permanently delete one registration, its check-ins, and every file it
                                     uploaded; decrements the invitation's used_count. Full ADMIN_TOKEN only --
                                     never satisfiable by a named token's 'registrations' scope, no matter how
@@ -812,27 +813,39 @@ async function adminSetTier(req, env, ch, access, ipHash, actor) {
 const PRESENTATION_TRACKS = ['wgita', 'seminar', 'ksc'];
 const PRESENTATION_TRACK_LABELS = { wgita: 'WGITA Annual Meeting', seminar: 'WGITA Seminar', ksc: 'KSC Steering Committee' };
 
-/* Which day/track a speaker's presentation is actually slotted into --
-   purely an internal admin classification for building the programme, like
-   participant_tier. Needed because event_codes alone can't tell the two
+/* Which day/track a speaker's presentation is actually slotted into, and
+   its running order within that track -- both purely internal admin
+   classifications for building the programme, like participant_tier.
+   Track is needed because event_codes alone can't tell the two
    WGITA-35-2026 days apart: 28 September is the Annual Meeting, 29
-   September is the AI Seminar, and both share the one event code.
-   b.track === '' clears it back to unallocated. */
+   September is the AI Seminar, and both share the one event code. Order is
+   just where in that day's agenda a presentation sits (1st, 2nd, ...) --
+   scoped to whichever track it's in, not a global ranking.
+   b.track === '' clears the track back to unallocated; b.order === '' (or
+   omitted) clears the order back to unset. */
 async function adminSetPresentationTrack(req, env, ch, access, ipHash, actor) {
   if (!hasScope(access, 'registrations')) return fail('unauthorized', 401, ch);
   const b = await req.json().catch(() => ({}));
   const reference = String(b.reference || '').trim().toUpperCase();
   const track = String(b.track || '').trim();
   if (track && !PRESENTATION_TRACKS.includes(track)) return fail('invalid_track', 400, ch);
+  const orderRaw = String(b.order ?? '').trim();
+  let order = null;
+  if (orderRaw) {
+    order = Number.parseInt(orderRaw, 10);
+    if (!Number.isInteger(order) || order < 1 || order > 999) return fail('invalid_order', 400, ch);
+  }
 
   const reg = await env.DB.prepare('SELECT registration_id, reference, full_name FROM registrations WHERE reference = ?').bind(reference).first();
   if (!reg) return fail('not_found', 404, ch);
 
-  await env.DB.prepare('UPDATE registrations SET presentation_track = ? WHERE reference = ?').bind(track || null, reference).run();
-  await audit(env, 'presentation_track_changed', 'registration', reg.registration_id, `${reference}:${track || 'unallocated'}`, ipHash, actor);
-  await notifyTelegram(env, `🎤 <b>Presentation track changed</b>\n${esc(reg.full_name || '(no name)')} — ${esc(reference)} → <b>${esc(track ? PRESENTATION_TRACK_LABELS[track] : 'Unallocated')}</b>${actor ? `\nby ${esc(actor)}` : ''}`);
+  await env.DB.prepare('UPDATE registrations SET presentation_track = ?, presentation_order = ? WHERE reference = ?')
+    .bind(track || null, order, reference).run();
+  await audit(env, 'presentation_track_changed', 'registration', reg.registration_id,
+    `${reference}:${track || 'unallocated'}${order ? ' #' + order : ''}`, ipHash, actor);
+  await notifyTelegram(env, `🎤 <b>Presentation track changed</b>\n${esc(reg.full_name || '(no name)')} — ${esc(reference)} → <b>${esc(track ? PRESENTATION_TRACK_LABELS[track] : 'Unallocated')}</b>${order ? ` (#${order})` : ''}${actor ? `\nby ${esc(actor)}` : ''}`);
 
-  return json({ ok: true, reference, track }, 200, ch);
+  return json({ ok: true, reference, track, order }, 200, ch);
 }
 
 /* Permanently erases one registration -- the row, its check-ins, and every
@@ -1155,8 +1168,9 @@ async function adminExportFull(req, env, ch, access, ipHash) {
   await logReportAccess(env, access, new URL(req.url).searchParams.get('src'), ipHash);
   const { results } = await env.DB.prepare(
     `SELECT registration_id, reference, registration_number, created_at, status, event_codes, invitation_id, email, full_name,
-            organization_name, country, attendance_mode, role_in_delegation, participant_tier, presentation_track, visa_letter_needed,
-            flag_personal_email, flag_org_mismatch, fill_seconds, locale, reminder_sent_at, reminder_categories, data_json, consents_json
+            organization_name, country, attendance_mode, role_in_delegation, participant_tier, presentation_track, presentation_order,
+            visa_letter_needed, flag_personal_email, flag_org_mismatch, fill_seconds, locale, reminder_sent_at, reminder_categories,
+            data_json, consents_json
      FROM registrations ORDER BY created_at DESC LIMIT 1000`).all();
   const registrations = results.map(r => {
     const data = JSON.parse(r.data_json || '{}');

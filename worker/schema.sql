@@ -78,6 +78,7 @@ CREATE TABLE registrations (
   presentation_track  TEXT, -- 'wgita' | 'seminar' | 'ksc' | NULL -- which day/track a speaker's presentation is
                              -- allocated to, admin-assigned only (event_codes alone can't tell WGITA's Annual
                              -- Meeting day from its Seminar day apart, since both share the WGITA-35-2026 code)
+  presentation_order  INTEGER, -- admin-assigned running order within presentation_track, NULL if not yet set
   visa_letter_needed  INTEGER DEFAULT 0,
   status              TEXT NOT NULL DEFAULT 'approved', -- auto-confirmed on submission; admin can still revert/reject
   registration_number TEXT,              -- assigned immediately on submission, distinct from reference

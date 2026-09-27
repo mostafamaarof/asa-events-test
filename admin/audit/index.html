@@ -268,9 +268,11 @@ function describe(e) {
       return `Reference ${ref || e.entity_id} → ${TIER_LABELS[tier] || tier || '?'}`;
     }
     case 'presentation_track_changed': {
-      const [ref, track] = String(e.detail || '').split(':');
+      const [ref, rest] = String(e.detail || '').split(':');
+      const m = String(rest || '').match(/^(\S+)(?: #(\d+))?$/);
+      const track = m ? m[1] : rest, order = m ? m[2] : null;
       const TRACK_LABELS = { wgita: 'WGITA Annual Meeting', seminar: 'WGITA Seminar', ksc: 'KSC Steering Committee', unallocated: 'Unallocated' };
-      return `Reference ${ref || e.entity_id} → ${TRACK_LABELS[track] || track || '?'}`;
+      return `Reference ${ref || e.entity_id} → ${TRACK_LABELS[track] || track || '?'}${order ? ' (#' + order + ')' : ''}`;
     }
     case 'edit_link_sent': return `Reference ${e.detail || e.entity_id} — link emailed to the registrant`;
     case 'checked_in': {

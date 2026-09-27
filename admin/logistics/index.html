@@ -255,6 +255,7 @@ function computeRows() {
         eventCodes: (r.event_codes || '').split(',').filter(Boolean),
         wantsToPresent: d.wants_to_present === 'yes',
         presentationTrack: r.presentation_track || '',
+        presentationOrder: (r.presentation_order === null || r.presentation_order === undefined) ? null : r.presentation_order,
         presentationTitle: d.presentation_title || '',
         presentationAbstract: d.presentation_abstract || '',
         speakerPhotoKey: d.speaker_photo_key || '',
@@ -536,8 +537,11 @@ const TRACK_ORDER = ['wgita', 'seminar', 'ksc', ''];
    (28 Sept) and the Seminar (29 Sept), so event_codes alone can't tell
    which day a given presentation belongs to. Unallocated speakers land in
    their own group at the end so nobody is missed when building the
-   programme. Each row's Track cell is a live <select> (see the change
-   handler below) that calls /admin/registrations/presentation-track. ---------- */
+   programme. Within a track, sorted by the admin-set running order (unset
+   orders sort last, alphabetical by name among themselves) so this table
+   already reads as the day's agenda. Each row's Track/Order cells are live
+   controls (see the change handler below) that call
+   /admin/registrations/presentation-track. ---------- */
 function speakersReport(rows) {
   const speakers = rows.filter(r => r.wantsToPresent);
   const groups = groupBy(speakers, r => r.presentationTrack || '');
@@ -546,16 +550,21 @@ function speakersReport(rows) {
      disclosure makes every row printed-programme-length regardless of who
      wrote a three-sentence blurb versus a page. It's still its own column
      in the Excel export, which SPEAKERS_EXPORT_COLS (see exportCsv) covers. */
-  const cols = ['Name','Tier','Track','Org / Country','Presentation title','Photo','Slides','Ref'];
+  const cols = ['Name','Tier','Track','Order','Org / Country','Presentation title','Photo','Slides','Ref'];
   const trackOpt = (v, cur) => `<option value="${v}"${v === cur ? ' selected' : ''}>${v ? esc(TRACK_LABELS[v]) : 'Not yet allocated'}</option>`;
   return keys.map(key => {
-    const items = groups.get(key).slice().sort((a, b) => a.name.localeCompare(b.name));
+    const items = groups.get(key).slice().sort((a, b) => {
+      const ao = a.presentationOrder ?? Infinity, bo = b.presentationOrder ?? Infinity;
+      return ao !== bo ? ao - bo : a.name.localeCompare(b.name);
+    });
     const title = key ? TRACK_LABELS[key] : 'Not yet allocated';
     const rowsHtml = items.map(r => `<tr>
       <td class="wrap">${esc(r.name)}</td>${td(r.tier)}
       <td><select class="trackSel" data-ref="${esc(r.ref)}" data-prev="${r.presentationTrack || ''}">
         ${trackOpt('', r.presentationTrack)}${trackOpt('wgita', r.presentationTrack)}${trackOpt('seminar', r.presentationTrack)}${trackOpt('ksc', r.presentationTrack)}
       </select></td>
+      <td><input type="number" class="orderInput" data-ref="${esc(r.ref)}" data-prev="${r.presentationOrder ?? ''}"
+        value="${r.presentationOrder ?? ''}" min="1" max="999" step="1" style="width:56px" placeholder="—"></td>
       ${td(r.org ? r.org + (r.country ? ' · ' + r.country : '') : r.country, 'wrap')}
       <td class="wrap">${esc(r.presentationTitle) || '—'}${r.presentationAbstract
         ? `<details style="margin-top:4px"><summary style="cursor:pointer;font-size:12px;color:var(--muted)">Abstract</summary><div style="margin-top:4px;font-size:13px">${esc(r.presentationAbstract)}</div></details>`
@@ -566,7 +575,7 @@ function speakersReport(rows) {
     return { title, count: items.length, cols, rowsHtml, items };
   });
 }
-const SPEAKERS_EXPORT_COLS = ['Name','Tier','Track','Org / Country','Presentation title','Abstract','Photo','Slides','Ref'];
+const SPEAKERS_EXPORT_COLS = ['Name','Tier','Track','Order','Org / Country','Presentation title','Abstract','Photo','Slides','Ref'];
 
 /* ---------- Attachments: every file a person can upload, in one place, so
    nobody has to piece it together from the passport/speakers tabs. Grouped
@@ -750,7 +759,7 @@ function exportCsv() {
            r.visaNeeded, r.attendsSessions, r.attendsSocial, r.dietary,
            r.passportCopyKey ? (r.passportCopyFilename || 'Uploaded') : 'Not uploaded']
         : activeTab === 'speakers'
-        ? [r.name, r.tier, r.presentationTrack ? TRACK_LABELS[r.presentationTrack] : 'Not yet allocated',
+        ? [r.name, r.tier, r.presentationTrack ? TRACK_LABELS[r.presentationTrack] : 'Not yet allocated', r.presentationOrder ?? '',
            (r.org ? r.org + (r.country ? ' - ' + r.country : '') : r.country),
            r.presentationTitle, r.presentationAbstract,
            r.speakerPhotoKey ? (r.speakerPhotoFilename || 'Uploaded') : 'Not uploaded',
@@ -806,25 +815,32 @@ $('list').addEventListener('click', async (e) => {
   }
 });
 
-/* Manual presentation-track allocation, straight from the Speakers tab --
-   needs the 'registrations' scope (same as the Tier selector elsewhere), so
-   a report-only token gets a clear error here instead of a silent no-op. */
+/* Manual presentation-track/order allocation, straight from the Speakers
+   tab -- needs the 'registrations' scope (same as the Tier selector
+   elsewhere), so a report-only token gets a clear error here instead of a
+   silent no-op. Track and order live in two separate controls in the same
+   row but save together in one call, since the endpoint sets both columns
+   at once -- whichever control changed, the current value of its sibling
+   is read straight off the row. */
 $('list').addEventListener('change', async (e) => {
-  const sel = e.target.closest('.trackSel'); if (!sel) return;
-  const reference = sel.dataset.ref, track = sel.value, prev = sel.dataset.prev || '';
-  sel.disabled = true;
+  const ctrl = e.target.closest('.trackSel, .orderInput'); if (!ctrl) return;
+  const row = ctrl.closest('tr');
+  const sel = row.querySelector('.trackSel'), inp = row.querySelector('.orderInput');
+  const reference = ctrl.dataset.ref, track = sel.value, order = inp.value.trim();
+  const prevTrack = sel.dataset.prev || '', prevOrder = inp.dataset.prev || '';
+  sel.disabled = true; inp.disabled = true;
   try {
     await apiFetch('/admin/registrations/presentation-track', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reference, track })
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reference, track, order })
     });
     const reg = all.find(r => r.reference === reference);
-    if (reg) reg.presentation_track = track;
+    if (reg) { reg.presentation_track = track; reg.presentation_order = order ? Number(order) : null; }
     render();
   } catch (err) {
-    sel.value = prev;
-    alert('Could not update the presentation track: ' + err.message);
+    sel.value = prevTrack; inp.value = prevOrder;
+    alert('Could not update the presentation track/order: ' + err.message);
   } finally {
-    sel.disabled = false;
+    sel.disabled = false; inp.disabled = false;
   }
 });
 async function apiFetch(path, opts) {
