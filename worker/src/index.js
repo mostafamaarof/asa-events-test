@@ -387,7 +387,7 @@ async function verifyInvitation(req, env, ch, ipHash) {
      client never needs its own hardcoded event registry -- see `events` in
      the response below. */
   const { results: coveredEvents } = await env.DB.prepare(
-    `SELECT e.code, e.title_en, e.title_ar, e.short_name, e.venue, e.venue_ar, e.blurb_en, e.blurb_ar,
+    `SELECT e.code, e.title_en, e.title_ar, e.short_name, e.city, e.venue, e.venue_ar, e.blurb_en, e.blurb_ar,
             e.start_date, e.end_date, e.registration_closes_at
      FROM invitation_events ie JOIN events e ON e.code = ie.event_code
      WHERE ie.invitation_id = ? AND e.is_active = 1`).bind(inv.invitation_id).all();
@@ -649,7 +649,7 @@ async function eventTitles(env, eventCodesStr) {
 async function publicEventsForCodes(env, codes) {
   if (!codes.length) return [];
   const { results } = await env.DB.prepare(
-    `SELECT code, title_en, title_ar, short_name, venue, venue_ar, blurb_en, blurb_ar, start_date, end_date
+    `SELECT code, title_en, title_ar, short_name, city, venue, venue_ar, blurb_en, blurb_ar, start_date, end_date
      FROM events WHERE code IN (${codes.map(() => '?').join(',')})`).bind(...codes).all();
   return results;
 }

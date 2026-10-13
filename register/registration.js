@@ -24,7 +24,7 @@ const CONFIG = {
    state.knownEvents (see STATE below) accumulates whatever the server has
    sent so far, keyed by code; toClientEvent() adapts one server row into
    the shape the rest of this file already expects (title/short/dates/venue/
-   blurb), so every downstream renderer is untouched. */
+   blurb/city), so every downstream renderer is untouched. */
 const MONTHS_EN = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 const MONTHS_AR = ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
 /* "D–D Month YYYY" / "D Month YYYY" for a single day -- matches the exact
@@ -46,8 +46,16 @@ function toClientEvent(se) {
     dates: formatEventDates(se.start_date, se.end_date),
     blurb: { en: se.blurb_en || '', ar: se.blurb_ar || '' },
     startDate: se.start_date, endDate: se.end_date,
-    venue: { en: se.venue || '', ar: se.venue_ar || se.venue || '' }
+    venue: { en: se.venue || '', ar: se.venue_ar || se.venue || '' },
+    city: se.city || ''
   };
+}
+/* A handful of field hints/descriptions need "the city" -- always one city,
+   since (per the confirmation email's own reasoning) no single invitation
+   spans two different cities. Falls back to empty when unknown (mock mode,
+   or an event with no city on file) rather than guessing. */
+function currentCity() {
+  return (state.events[0] && state.events[0].city) || '';
 }
 function mergeKnownEvents(serverEvents) {
   (serverEvents || []).forEach(se => { state.knownEvents[se.code] = toClientEvent(se); });
@@ -127,7 +135,15 @@ const UI = {
 };
 
 const T = (k) => (UI[k] ? UI[k][state.lang] : k);
-const L = (o) => (o && typeof o === 'object' ? (o[state.lang] ?? o.en) : o);
+/* A handful of section/field text snippets (the ones that mention "the
+   city") need to be computed at render time rather than fixed at module
+   load -- those entries are a zero-arg function returning the usual
+   {en,ar} shape instead of the shape itself. Every other caller is
+   unaffected: a plain {en,ar} object is still just read directly. */
+const L = (o) => {
+  if (typeof o === 'function') o = o();
+  return (o && typeof o === 'object') ? (o[state.lang] ?? o.en) : o;
+};
 
 /* ---------------------------------------------------------------------------
    3. OPTION SETS
@@ -182,10 +198,6 @@ const OPT = {
     ['moderator', 'Moderator', 'مدير جلسة'], ['secretariat', 'Secretariat', 'أمانة'],
     ['interpreter', 'Interpreter', 'مترجم فوري'], ['accompanying', 'Accompanying official', 'مرافق رسمي']
   ]),
-  attendance: O([
-    ['in_person', 'In person, in Cairo', 'حضورياً في القاهرة'],
-    ['online', 'Online', 'عن بُعد']
-  ]),
   interp: O([
     ['ar', 'Arabic', 'العربية'], ['en', 'English', 'الإنجليزية'],
     ['fr', 'French', 'الفرنسية'], ['es', 'Spanish', 'الإسبانية'],
@@ -237,10 +249,13 @@ const OPT = {
 };
 
 const isYes = (v) => v === 'yes';
-/* In-person sections stay visible until the delegate explicitly chooses online,
-   so the section index does not shrink and grow under them. */
+/* No field on the current form ever sets attendance_mode -- an "attending
+   online" option existed at some point (see the now-removed OPT.attendance
+   map) but isn't offered any more, so this always evaluates true and every
+   in-person section (passport, flights, accommodation, welfare) always
+   shows. Kept rather than ripping out showIf: inPerson everywhere, in case
+   a future online-attendance option needs exactly this gate restored. */
 const inPerson = (d) => d.attendance_mode !== 'online';
-const online = (d) => d.attendance_mode === 'online';
 
 /* ---------------------------------------------------------------------------
    4. FORM SCHEMA
@@ -333,13 +348,16 @@ const SCHEMA = [
 {
   id: 'travel',
   title: { en: 'Flights and transfers', ar: 'الطيران والانتقالات' },
-  desc: { en: 'Arrival airport is Cairo International. Flight details are optional now and can be added later, but the arrival terminal is what lets the welcome team find you.', ar: 'مطار الوصول هو القاهرة الدولي. بيانات الرحلة اختيارية الآن ويمكن إضافتها لاحقاً، لكن صالة الوصول هي ما يمكّن فريق الاستقبال من الوصول إليك.' },
+  desc: () => ({
+    en: `Arrival airport is ${currentCity() || 'the event city'} International. Flight details are optional now and can be added later, but the arrival terminal is what lets the welcome team find you.`,
+    ar: `مطار الوصول هو ${currentCity() || 'مدينة الفعالية'} الدولي. بيانات الرحلة اختيارية الآن ويمكن إضافتها لاحقاً، لكن صالة الوصول هي ما يمكّن فريق الاستقبال من الوصول إليك.`
+  }),
   showIf: inPerson,
   fields: [
     { k: 'arrival_airline', t: 'text', l: { en: 'Arrival airline', ar: 'شركة الطيران عند الوصول' } },
     { k: 'arrival_flight_no', t: 'text', max: 8, l: { en: 'Arrival flight number', ar: 'رقم رحلة الوصول' }, ph: 'MS 852' },
     { k: 'arrival_date', t: 'date', l: { en: 'Arrival date', ar: 'تاريخ الوصول' } },
-    { k: 'arrival_time', t: 'time', l: { en: 'Arrival time, Cairo local', ar: 'وقت الوصول بتوقيت القاهرة' } },
+    { k: 'arrival_time', t: 'time', l: { en: 'Arrival time (local)', ar: 'وقت الوصول (بالتوقيت المحلي)' } },
     { k: 'arrival_terminal', t: 'select', opts: OPT.terminal, wide: true, l: { en: 'Arrival terminal', ar: 'صالة الوصول' } },
     { k: 'has_connecting_flight', t: 'check', wide: true, l: { en: 'I have a connecting flight on arrival', ar: 'لدي رحلة ترانزيت عند الوصول' } },
     { k: 'connecting_airline', t: 'text', showIf: (d) => d.has_connecting_flight, l: { en: 'Connecting flight airline', ar: 'شركة طيران رحلة الترانزيت' } },
@@ -386,7 +404,11 @@ const SCHEMA = [
     { k: 'dietary_requirements', t: 'multi', wide: true, opts: OPT.dietary, l: { en: 'Dietary requirements', ar: 'المتطلبات الغذائية' } },
     { k: 'dietary_notes', t: 'textarea', wide: true, max: 300, showIf: (d) => Array.isArray(d.dietary_requirements) && d.dietary_requirements.includes('other'), l: { en: 'Dietary notes', ar: 'ملاحظات غذائية' } },
     { k: 'allergies', t: 'textarea', wide: true, max: 300, l: { en: 'Allergies', ar: 'الحساسية' } },
-    { k: 'medical_notes_emergency', t: 'textarea', wide: true, max: 500, l: { en: 'Medical information relevant in an emergency', ar: 'معلومات طبية تهم في حالات الطوارئ' }, hint: { en: 'Only what a first responder in Cairo would need to know.', ar: 'فقط ما يحتاج مسعف في القاهرة معرفته.' } },
+    { k: 'medical_notes_emergency', t: 'textarea', wide: true, max: 500, l: { en: 'Medical information relevant in an emergency', ar: 'معلومات طبية تهم في حالات الطوارئ' },
+      hint: () => ({
+        en: `Only what a first responder${currentCity() ? ' in ' + currentCity() : ''} would need to know.`,
+        ar: `فقط ما يحتاج مسعف${currentCity() ? ' في ' + currentCity() : ''} معرفته.`
+      }) },
     { k: 'covid_certificate', t: 'select', opts: OPT.covidCert, l: { en: 'COVID / vaccination certificate', ar: 'شهادة كوفيد / التطعيم' } }
   ]
 },
@@ -933,9 +955,9 @@ function reportClientError(flow, code, detail) {
    false in production) -- the live API's own events table is the real
    registry; this is just enough for the mock path to keep working. */
 const MOCK_EVENTS = [
-  { code: 'DEMO-EVENT-A', title_en: 'Demo Event A', title_ar: 'الفعالية التجريبية أ', short_name: 'DEMO-A',
+  { code: 'DEMO-EVENT-A', title_en: 'Demo Event A', title_ar: 'الفعالية التجريبية أ', short_name: 'DEMO-A', city: 'Demo City',
     venue: 'Demo City', venue_ar: 'مدينة تجريبية', blurb_en: '', blurb_ar: '', start_date: '2026-01-01', end_date: '2026-01-01' },
-  { code: 'DEMO-EVENT-B', title_en: 'Demo Event B', title_ar: 'الفعالية التجريبية ب', short_name: 'DEMO-B',
+  { code: 'DEMO-EVENT-B', title_en: 'Demo Event B', title_ar: 'الفعالية التجريبية ب', short_name: 'DEMO-B', city: 'Demo City',
     venue: 'Demo City', venue_ar: 'مدينة تجريبية', blurb_en: '', blurb_ar: '', start_date: '2026-01-02', end_date: '2026-01-02' }
 ];
 function mock(path, body) {
