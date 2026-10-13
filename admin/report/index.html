@@ -132,16 +132,6 @@ table.summary tr:last-child td{border-bottom:none}
         </select>
       </div>
       <div class="f">
-        <label for="fEvent">Event</label>
-        <select id="fEvent">
-          <option value="">All events</option>
-          <option value="WGITA-35-2026">35th Annual Meeting of INTOSAI Working Group on IT Audit</option>
-          <option value="KSC-SC18-2026">18th KSC Steering Committee Meeting</option>
-          <option value="TG-42-2026">Forty-second (2026) Meeting of the Technical Group</option>
-          <option value="UNPEA-66-2026">Sixty-sixth (2026) Regular Session of the UN Panel of External Auditors</option>
-        </select>
-      </div>
-      <div class="f">
         <label for="fTier">Tier</label>
         <select id="fTier">
           <option value="">All tiers</option>
@@ -167,6 +157,18 @@ table.summary tr:last-child td{border-bottom:none}
     <div class="f" id="sectionTogglesWrap" style="margin-top:16px;margin-bottom:0">
       <label>Sections to show</label>
       <div id="sectionToggles" style="display:flex;flex-wrap:wrap;gap:6px 16px;margin-top:4px"></div>
+    </div>
+  </div>
+
+  <div class="card controls">
+    <h2>Events</h2>
+    <p class="hint" style="margin-bottom:12px">Only data for the ticked events is loaded. Remembered on this device — click "Load report" again after changing this.</p>
+    <div id="eventFilterSearchWrap"></div>
+    <div id="eventToggles" style="display:flex;flex-wrap:wrap;gap:6px 16px"></div>
+    <div class="actions" style="margin-top:12px">
+      <button class="ghost" id="selectAllEvents" style="height:30px;padding:0 14px;font-size:13px">Select all</button>
+      <button class="ghost" id="clearAllEvents" style="height:30px;padding:0 14px;font-size:13px">Clear all</button>
+      <label style="font-weight:400;display:flex;gap:6px;align-items:center;font-size:13px;cursor:pointer"><input type="checkbox" id="showHiddenEventsCb">Show hidden events</label>
     </div>
   </div>
 
@@ -338,10 +340,86 @@ function buildSectionToggles() {
 }
 buildSectionToggles();
 
+/* ---------------------------------------------------------------------------
+   Event filter. Same localStorage keys every admin page's copy of this
+   widget uses, so a selection made here carries over to other report pages.
+   Drives both which rows the server returns (?events=... on export.json,
+   filtered in SQL) and the event names/groups below -- adding a future
+   event to the events table needs no change on this page. */
+const EVENTS_KEY = 'asa_selected_events';
+const SHOW_HIDDEN_EVENTS_KEY = 'asa_show_hidden_events';
+let allEvents = [];
+let selectedEventCodes = [];
+let showHiddenEvents = false;
+try { showHiddenEvents = localStorage.getItem(SHOW_HIDDEN_EVENTS_KEY) === '1'; } catch (e) { }
+
+function eventTitle(code) { const e = allEvents.find(ev => ev.code === code); return e ? e.title_en : code; }
+function visibleEventList() { return allEvents.filter(e => showHiddenEvents || e.visible_in_reports); }
+function selectedEvents() { return allEvents.filter(e => selectedEventCodes.includes(e.code)); }
+function saveSelectedEvents() { try { localStorage.setItem(EVENTS_KEY, JSON.stringify(selectedEventCodes)); } catch (e) { } }
+
+async function loadEvents() {
+  const res = await fetch(CONFIG.apiBase + '/admin/events', { headers: authHeaders() });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || data.ok === false) throw new Error(data.error || 'Could not load the event list.');
+  allEvents = data.events || [];
+  let saved = null;
+  try { saved = JSON.parse(localStorage.getItem(EVENTS_KEY) || 'null'); } catch (e) { }
+  const knownCodes = allEvents.map(e => e.code);
+  selectedEventCodes = Array.isArray(saved) ? saved.filter(c => knownCodes.includes(c)) : [];
+  if (!selectedEventCodes.length) selectedEventCodes = allEvents.filter(e => e.visible_in_reports).map(e => e.code);
+  renderEventFilter();
+}
+function renderEventFilter() {
+  const needsSearch = visibleEventList().length > 8;
+  const has = !!$('eventFilterSearch');
+  if (needsSearch && !has) {
+    $('eventFilterSearchWrap').innerHTML = `<input type="text" id="eventFilterSearch" placeholder="Search events..." style="margin-bottom:8px;width:100%;max-width:300px">`;
+    $('eventFilterSearch').addEventListener('input', renderEventChecks);
+  } else if (!needsSearch && has) {
+    $('eventFilterSearchWrap').innerHTML = '';
+  }
+  renderEventChecks();
+}
+function renderEventChecks() {
+  const list = visibleEventList();
+  const searchEl = $('eventFilterSearch');
+  const q = searchEl ? searchEl.value.trim().toLowerCase() : '';
+  const shown = q ? list.filter(e => (e.short_name || e.code).toLowerCase().includes(q) || e.title_en.toLowerCase().includes(q)) : list;
+  $('eventToggles').innerHTML = shown.length ? shown.map(e =>
+    `<label style="font-weight:400;display:flex;gap:6px;align-items:center;font-size:13px;cursor:pointer"><input type="checkbox" class="eventCb" value="${e.code}" ${selectedEventCodes.includes(e.code) ? 'checked' : ''}>${e.title_en}</label>`
+  ).join('') : '<p class="empty">No events.</p>';
+  $('showHiddenEventsCb').checked = showHiddenEvents;
+}
+$('eventToggles').addEventListener('change', (e) => {
+  const cb = e.target.closest('.eventCb');
+  if (!cb) return;
+  if (cb.checked) { if (!selectedEventCodes.includes(cb.value)) selectedEventCodes.push(cb.value); }
+  else selectedEventCodes = selectedEventCodes.filter(c => c !== cb.value);
+  saveSelectedEvents();
+});
+$('selectAllEvents').addEventListener('click', () => {
+  selectedEventCodes = visibleEventList().map(e => e.code);
+  saveSelectedEvents(); renderEventChecks();
+});
+$('clearAllEvents').addEventListener('click', () => {
+  selectedEventCodes = [];
+  saveSelectedEvents(); renderEventChecks();
+});
+$('showHiddenEventsCb').addEventListener('change', (e) => {
+  showHiddenEvents = e.target.checked;
+  try { localStorage.setItem(SHOW_HIDDEN_EVENTS_KEY, showHiddenEvents ? '1' : '0'); } catch (err) { }
+  renderEventFilter();
+});
+
 async function loadReport() {
   const msg = $('topMsg'); msg.className = 'msg';
   try {
-    const res = await fetch(CONFIG.apiBase + '/admin/export.json?src=report', { headers: authHeaders() });
+    authHeaders(); // throws before we bother loading events
+    if (!allEvents.length) await loadEvents();
+    if (!selectedEventCodes.length) throw new Error('Tick at least one event first.');
+    const qs = '&events=' + encodeURIComponent(selectedEventCodes.join(','));
+    const res = await fetch(CONFIG.apiBase + '/admin/export.json?src=report' + qs, { headers: authHeaders() });
     const data = await res.json().catch(() => ({}));
     if (!res.ok || data.ok === false) throw new Error(data.error || ('HTTP ' + res.status));
     // This report is for confirmed participants only -- rejected and
@@ -354,30 +432,10 @@ async function loadReport() {
   }
 }
 
-const EVENT_NAMES = { 'WGITA-35-2026': '35th Annual Meeting of INTOSAI Working Group on IT Audit', 'KSC-SC18-2026': '18th KSC Steering Committee Meeting',
-  'TG-42-2026': 'Forty-second (2026) Meeting of the Technical Group', 'UNPEA-66-2026': 'Sixty-sixth (2026) Regular Session of the UN Panel of External Auditors' };
-/* Registration spans one of two unrelated event clusters -- Cairo
-   (WGITA/KSC, Sept 2026) or Luxor (Technical Group/UN Panel, Dec 2026) --
-   never both, since no invitation code unlocks events from both clusters.
-   Buckets by which single event, or which pair within one cluster. */
-const CAIRO_EVENTS = ['WGITA-35-2026', 'KSC-SC18-2026'];
-const LUXOR_EVENTS = ['TG-42-2026', 'UNPEA-66-2026'];
-function eventBucketKey(codes) {
-  const cairo = codes.filter(c => CAIRO_EVENTS.includes(c));
-  const luxor = codes.filter(c => LUXOR_EVENTS.includes(c));
-  if (cairo.length > 1) return 'cairoBoth';
-  if (cairo.length === 1) return cairo[0] === 'WGITA-35-2026' ? 'wgita' : 'ksc';
-  if (luxor.length > 1) return 'luxorBoth';
-  if (luxor.length === 1) return luxor[0] === 'TG-42-2026' ? 'tg' : 'unpea';
-  return null;
-}
-
 function filteredRows() {
-  const evFilter = $('fEvent').value;
   const tierFilter = $('fTier').value;
   const search = $('fSearch').value.trim().toLowerCase();
   let rows = all;
-  if (evFilter) rows = rows.filter(r => (r.event_codes || '').split(',').includes(evFilter));
   if (tierFilter) rows = rows.filter(r => tierFilter === 'both'
     ? ['president', 'vice_president'].includes(r.participant_tier)
     : (r.participant_tier || 'other') === tierFilter);
@@ -401,31 +459,24 @@ const SUMMARY_COLS = [
   ['Speaking', r => fmt((r.data || {}).wants_to_present, 'yesno')],
   ['Social', r => fmt((r.data || {}).social_program_attending, 'yesno')]
 ];
-/* One bucket per event combination -- WGITA only, KSC only, both Cairo
-   events, TG only, UNPEA only, both Luxor events -- in that fixed reading
-   order rather than alphabetical. */
+/* One group per selected event, in display order -- someone registered for
+   more than one of them appears once in each group they attend (no more
+   "both" bucket; a future event needs no change here). */
 function groupByEvent(rows) {
-  const buckets = {
-    wgita: { title: EVENT_NAMES['WGITA-35-2026'], rows: [] },
-    ksc: { title: EVENT_NAMES['KSC-SC18-2026'], rows: [] },
-    cairoBoth: { title: 'WGITA + KSC (both Cairo events)', rows: [] },
-    tg: { title: EVENT_NAMES['TG-42-2026'], rows: [] },
-    unpea: { title: EVENT_NAMES['UNPEA-66-2026'], rows: [] },
-    luxorBoth: { title: 'Technical Group + UN Panel (both Luxor events)', rows: [] }
-  };
+  const evs = selectedEvents();
+  const groups = evs.map(e => ({ code: e.code, title: e.title_en, rows: [] }));
+  const idxByCode = Object.fromEntries(groups.map((g, i) => [g.code, i]));
   rows.forEach(r => {
     const codes = (r.event_codes || '').split(',').filter(Boolean);
-    const key = eventBucketKey(codes);
-    if (key && buckets[key]) buckets[key].rows.push(r);
+    codes.forEach(c => { if (idxByCode[c] !== undefined) groups[idxByCode[c]].rows.push(r); });
   });
-  const groups = ['wgita', 'ksc', 'cairoBoth', 'tg', 'unpea', 'luxorBoth'].map(k => buckets[k]).filter(g => g.rows.length);
   /* Sorted by organisation within each event group; same-organisation rows
      then by name, so the order is stable rather than whatever the API
      happened to return. */
   groups.forEach(g => g.rows.sort((a, b) =>
     (a.organization_name || '').localeCompare(b.organization_name || '') ||
     (a.full_name || '').localeCompare(b.full_name || '')));
-  return groups;
+  return groups.filter(g => g.rows.length);
 }
 function renderSummaryTable(rows) {
   const list = $('list');
@@ -466,7 +517,7 @@ function render() {
 
   list.innerHTML = rows.map(r => {
     const d = { ...withFileNames(r.data || {}), participant_tier: r.participant_tier || 'other' };
-    const events = (r.event_codes || '').split(',').filter(Boolean).map(c => EVENT_NAMES[c] || c).join(' & ');
+    const events = (r.event_codes || '').split(',').filter(Boolean).map(c => eventTitle(c)).join(' & ');
     const sections = SECTIONS.filter(sec => !hiddenSections.has(sec.id)).map(sec => {
       const cells = sec.fields.map(([key, label, kind]) => {
         const val = fmt(d[key], kind);
@@ -532,7 +583,7 @@ function exportToExcel() {
   const aoa = [header];
   rows.forEach(r => {
     const d = { ...withFileNames(r.data || {}), participant_tier: r.participant_tier || 'other' };
-    const events = (r.event_codes || '').split(',').filter(Boolean).map(c => EVENT_NAMES[c] || c).join(' & ');
+    const events = (r.event_codes || '').split(',').filter(Boolean).map(c => eventTitle(c)).join(' & ');
     const cells = [r.reference, r.registration_number || '', r.status, events];
     visibleSections.forEach(sec => sec.fields.forEach(([key, , kind]) => cells.push(fmt(d[key], kind))));
     if (showAccompanying) {
@@ -567,7 +618,6 @@ $('excelBtn').addEventListener('click', exportToExcel);
 $('summaryExcelBtn').addEventListener('click', exportSummaryToExcel);
 $('printBtn').addEventListener('click', () => window.print());
 $('viewMode').addEventListener('change', applyViewMode);
-$('fEvent').addEventListener('change', render);
 $('fTier').addEventListener('change', render);
 $('fSearch').addEventListener('input', render);
 $('fEmpty').addEventListener('change', render);
