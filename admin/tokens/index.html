@@ -155,7 +155,8 @@ const SCOPE_GROUPS = [
   { label: 'Reception', scopes: [['checkin', 'Reception Check-in']] },
   { label: 'Admin tools', scopes: [
     ['invitations', 'Invitation Codes'], ['registrations', 'Registrations & Reports'],
-    ['reminders', 'Reminders'], ['announce', 'Announcements'], ['audit', 'Audit Trail'], ['backups', 'Backups']
+    ['reminders', 'Reminders'], ['announce', 'Announcements'], ['audit', 'Audit Trail'], ['backups', 'Backups'],
+    ['events', 'Event Management']
   ] }
 ];
 const SCOPE_LABELS = Object.fromEntries(SCOPE_GROUPS.flatMap(g => g.scopes));

@@ -28,6 +28,16 @@ import { connect } from 'cloudflare:sockets';
                                     just flood the audit trail with nothing anyone needs to see.
      GET  /v1/admin/invitations    list invitation codes (Bearer ADMIN_TOKEN)
      POST /v1/admin/invitations    generate a new invitation code (Bearer ADMIN_TOKEN)
+     GET  /v1/admin/events         list every event, including hidden/inactive ones -- the single source of
+                                    truth every report filter, dropdown, badge/certificate, and confirmation
+                                    email reads from (Bearer ADMIN_TOKEN or VIEWER_TOKEN)
+     POST /v1/admin/events         create a new event -- in production this is the ONLY step needed to open a
+                                    future conference for registration (plus an invitation code via the
+                                    existing /v1/admin/invitations) (Bearer ADMIN_TOKEN)
+     POST /v1/admin/events/update  update one event by code (name/city/venue/dates/display_order,
+                                    registration_open which maps to registration_closes_at, visible_in_reports
+                                    which only hides it from report filters -- never touches its
+                                    registrations/checkins/audit history) (Bearer ADMIN_TOKEN)
      POST /v1/uploads               store one attachment in R2 (Bearer session), returns its key
      GET  /v1/admin/files?key=...  download a stored attachment (Bearer ADMIN_TOKEN or VIEWER_TOKEN)
      GET  /v1/admin/attachments?reference=... list one registration's attachments (Bearer ADMIN_TOKEN or VIEWER_TOKEN)
@@ -323,14 +333,6 @@ ${bodyHtml}
 <hr style="border:0;border-top:1px solid #CBD6E0;margin:24px 0">
 <p style="font-size:12px;color:#556A7D">The Organizing Secretariat<br>Accountability State Authority (SAI Egypt)</p></div>`;
 
-/* Confirmation emails need a venue/city per event -- events never mix
-   clusters within one registration (no invitation spans both), so the
-   first target event's city/venue applies to the whole email. */
-const EVENT_CITY = { 'WGITA-35-2026': 'Cairo', 'KSC-SC18-2026': 'Cairo', 'TG-42-2026': 'Luxor', 'UNPEA-66-2026': 'Luxor' };
-const EVENT_VENUE = {
-  'WGITA-35-2026': 'Steigenberger Pyramids Cairo Hotel, Giza', 'KSC-SC18-2026': 'Steigenberger Pyramids Cairo Hotel, Giza',
-  'TG-42-2026': 'Luxor, Arab Republic of Egypt', 'UNPEA-66-2026': 'Luxor, Arab Republic of Egypt'
-};
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 /* Combined "28–30 September 2026" style range across whichever events were selected. */
 function formatDateRange(events) {
@@ -567,9 +569,15 @@ async function createRegistration(req, env, ch, ipHash) {
   await audit(env, 'registration_submitted', 'registration', id, ref, ipHash);
   await notifyTelegram(env, `🆕 <b>New registration</b>\n${esc(fullName || '(no name)')} — ${esc(d.organization_name || '?')}\n${esc(regNumber)} · ${esc(ref)}`);
 
+  /* targetEvents already carries every events-table column (city/venue
+     included) from the SELECT e.* above -- events never mix unrelated
+     venues within one registration, since no single invitation spans two
+     different cities, so the first target event's city/venue is the whole
+     email's city/venue. DB-driven, not a second hardcoded map to keep in
+     sync with the events table. */
   const combinedLabel = targetEvents.map(e => e.title_en).join(' & ');
-  const city = EVENT_CITY[openTargets[0]] || '';
-  const venueText = EVENT_VENUE[openTargets[0]] || '';
+  const city = targetEvents[0].city || '';
+  const venueText = targetEvents[0].venue || '';
   const dateRange = formatDateRange(targetEvents);
   const eventList = targetEvents.map(e => `<li>${e.title_en}</li>`).join('');
   const editLink = `${env.FRONTEND_BASE || ''}/register/?edit=${encodeURIComponent(ref)}.${encodeURIComponent(await signEditToken(env, id))}`;
@@ -1334,7 +1342,7 @@ function requireAdmin(req, env) {
    strictly and separately enforced; this shared-feed nuance is the one
    accepted exception, not a general rule. */
 const ALL_SCOPES = ['report', 'dashboard', 'logistics', 'badges', 'certificates', 'checkin',
-  'invitations', 'registrations', 'reminders', 'announce', 'audit', 'backups'];
+  'invitations', 'registrations', 'reminders', 'announce', 'audit', 'backups', 'events'];
 const REPORT_SCOPES = ['report', 'dashboard', 'logistics', 'badges', 'certificates', 'checkin'];
 
 async function resolveAccess(req, env) {
@@ -1553,6 +1561,110 @@ async function adminCreateInvitation(req, env, ch, access, ipHash, actor) {
   return json({ ok: true, invitation_id: id, code, event_codes: eventCodes }, 201, ch);
 }
 
+/* ---------- events (single source of truth for every event the system runs) ---------- */
+/* List is available to any valid token -- every report page's event-filter
+   widget needs this regardless of which specific report scope it carries
+   (same reasoning as adminExportFull's shared-feed scope check). Returns
+   every event including hidden/inactive ones, since this same list backs
+   both the Event Management page (which must see everything) and the
+   filter widgets (which hide inactive/invisible ones client-side unless
+   "Show hidden events" is ticked). registration_open is derived here so
+   every consumer gets a ready-to-use boolean instead of re-deriving it
+   from registration_closes_at itself. */
+async function adminListEvents(req, env, ch, access) {
+  if (!hasScope(access, ...ALL_SCOPES)) return fail('unauthorized', 401, ch);
+  const { results } = await env.DB.prepare(
+    `SELECT code, title_en, title_ar, short_name, city, country, venue, logo_path,
+            start_date, end_date, registration_closes_at, visible_in_reports, display_order,
+            is_active, created_at, updated_at
+     FROM events ORDER BY display_order IS NULL, display_order, start_date`).all();
+  const events = results.map(r => ({
+    ...r,
+    visible_in_reports: !!r.visible_in_reports,
+    is_active: !!r.is_active,
+    registration_open: !r.registration_closes_at || Date.parse(r.registration_closes_at) >= Date.now()
+  }));
+  return json({ ok: true, count: events.length, events }, 200, ch);
+}
+
+const EVENT_CODE_RE = /^[A-Z0-9][A-Z0-9-]{0,40}$/;
+
+async function adminCreateEvent(req, env, ch, access, ipHash, actor) {
+  if (!hasScope(access, 'events')) return fail('unauthorized', 401, ch);
+  const b = await req.json().catch(() => ({}));
+  const code = String(b.code || '').trim().toUpperCase();
+  const titleEn = String(b.title_en || '').trim();
+  const titleAr = String(b.title_ar || '').trim();
+  const startDate = String(b.start_date || '').trim();
+  const endDate = String(b.end_date || '').trim();
+  if (!code || !titleEn || !titleAr || !startDate || !endDate) return fail('missing_fields', 400, ch);
+  if (!EVENT_CODE_RE.test(code)) return fail('invalid_code', 400, ch);
+
+  const existing = await env.DB.prepare('SELECT 1 FROM events WHERE code = ?').bind(code).first();
+  if (existing) return fail('code_taken', 409, ch);
+
+  const displayOrder = (b.display_order === '' || b.display_order === null || b.display_order === undefined)
+    ? null : parseInt(b.display_order, 10);
+  if (displayOrder !== null && !Number.isFinite(displayOrder)) return fail('invalid_display_order', 400, ch);
+
+  const now = new Date().toISOString();
+  await env.DB.prepare(
+    `INSERT INTO events (code, title_en, title_ar, short_name, city, country, venue, logo_path,
+       start_date, end_date, registration_closes_at, visible_in_reports, display_order, is_active, created_at, updated_at)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,?)`)
+    .bind(code, titleEn, titleAr, b.short_name || null, b.city || null, b.country || null, b.venue || null,
+      b.logo_path || null, startDate, endDate, b.registration_closes_at || null,
+      b.visible_in_reports === false ? 0 : 1, displayOrder, now, now).run();
+
+  await audit(env, 'event_created', 'event', code, `${code}: ${titleEn}`, ipHash, actor);
+  await notifyTelegram(env, `🗓️ <b>Event created</b>\n${esc(titleEn)} (${esc(code)})${actor ? `\nby ${esc(actor)}` : ''}`);
+  return json({ ok: true, code }, 201, ch);
+}
+
+/* registration_open is the admin-facing checkbox -- translates to the real
+   registration_closes_at mechanism createRegistration() already enforces
+   (true clears it to NULL/open; false sets it to right now/closed), rather
+   than adding a second, parallel "is it open" flag that could drift out of
+   sync with the timestamp that actually gates submissions. */
+async function adminUpdateEvent(req, env, ch, access, ipHash, actor) {
+  if (!hasScope(access, 'events')) return fail('unauthorized', 401, ch);
+  const b = await req.json().catch(() => ({}));
+  const code = String(b.code || '').trim().toUpperCase();
+  if (!code) return fail('missing_fields', 400, ch);
+  const existing = await env.DB.prepare('SELECT code, title_en FROM events WHERE code = ?').bind(code).first();
+  if (!existing) return fail('not_found', 404, ch);
+
+  const fields = [];
+  const vals = [];
+  const setIf = (col, val) => { if (val !== undefined) { fields.push(`${col} = ?`); vals.push(val); } };
+  setIf('title_en', b.title_en);
+  setIf('title_ar', b.title_ar);
+  setIf('short_name', b.short_name);
+  setIf('city', b.city);
+  setIf('country', b.country);
+  setIf('venue', b.venue);
+  setIf('logo_path', b.logo_path);
+  setIf('start_date', b.start_date);
+  setIf('end_date', b.end_date);
+  if (b.display_order !== undefined) {
+    const displayOrder = b.display_order === '' || b.display_order === null ? null : parseInt(b.display_order, 10);
+    if (displayOrder !== null && !Number.isFinite(displayOrder)) return fail('invalid_display_order', 400, ch);
+    fields.push('display_order = ?'); vals.push(displayOrder);
+  }
+  if (b.visible_in_reports !== undefined) { fields.push('visible_in_reports = ?'); vals.push(b.visible_in_reports ? 1 : 0); }
+  if (b.registration_open !== undefined) {
+    fields.push('registration_closes_at = ?');
+    vals.push(b.registration_open ? null : new Date().toISOString());
+  }
+  if (!fields.length) return fail('no_changes', 400, ch);
+  fields.push('updated_at = ?'); vals.push(new Date().toISOString());
+
+  await env.DB.prepare(`UPDATE events SET ${fields.join(', ')} WHERE code = ?`).bind(...vals, code).run();
+  await audit(env, 'event_updated', 'event', code, `${code}: ${Object.keys(b).filter(k => k !== 'code').join(', ')}`, ipHash, actor);
+  await notifyTelegram(env, `🗓️ <b>Event updated</b>\n${esc(existing.title_en)} (${esc(code)})${actor ? `\nby ${esc(actor)}` : ''}`);
+  return json({ ok: true, code }, 200, ch);
+}
+
 async function uploadFile(req, env, ch, ipHash) {
   // Two distinct callers hit this: a fresh registration (session token, from
   // invitation-verify) and someone editing an existing one via their edit
@@ -1659,6 +1771,9 @@ export default {
       if (req.method === 'GET'  && pathname === '/v1/admin/export.json')  return await adminExportFull(req, env, ch, access, ipHash);
       if (req.method === 'GET'  && pathname === '/v1/admin/invitations')  return await adminListInvitations(req, env, ch, access);
       if (req.method === 'POST' && pathname === '/v1/admin/invitations')  return await adminCreateInvitation(req, env, ch, access, ipHash, actor);
+      if (req.method === 'GET'  && pathname === '/v1/admin/events')       return await adminListEvents(req, env, ch, access);
+      if (req.method === 'POST' && pathname === '/v1/admin/events')       return await adminCreateEvent(req, env, ch, access, ipHash, actor);
+      if (req.method === 'POST' && pathname === '/v1/admin/events/update') return await adminUpdateEvent(req, env, ch, access, ipHash, actor);
       if (req.method === 'POST' && pathname === '/v1/uploads')            return await uploadFile(req, env, ch, ipHash);
       if (req.method === 'POST' && pathname === '/v1/client-error')       return await logClientError(req, env, ch, ipHash);
       if (req.method === 'GET'  && pathname === '/v1/admin/files')        return await adminGetFile(req, env, ch, access);

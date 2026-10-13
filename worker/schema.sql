@@ -11,14 +11,34 @@ DROP TABLE IF EXISTS invitations;
 DROP TABLE IF EXISTS events;
 DROP TABLE IF EXISTS audit_log;
 
+-- The single source of truth for every event the system has ever run. Adding
+-- a future event is one INSERT here -- every report filter, dropdown, badge/
+-- certificate, and confirmation email reads from this table, never from a
+-- hardcoded list. code is the natural business key (invitations/
+-- invitation_events/registrations.event_codes all reference it directly) --
+-- no separate surrogate id. registration_open is deliberately NOT a plain
+-- boolean: registration_closes_at (a timestamp) is the real mechanism
+-- (createRegistration()'s openTargets check), admin UI just presents it as a
+-- checkbox (checked = NULL/cleared, unchecked = set to now). visible_in_reports
+-- is a pure display toggle -- hiding an event from filters never deletes or
+-- otherwise affects its registrations/checkins/audit history.
 CREATE TABLE events (
   code                   TEXT PRIMARY KEY,
   title_en               TEXT NOT NULL,
   title_ar               TEXT NOT NULL,
+  short_name             TEXT,
+  city                   TEXT,
+  country                TEXT,
+  venue                  TEXT,
+  logo_path              TEXT, -- filename under register/, e.g. 'asa-logo.jpg'
   start_date             TEXT NOT NULL,
   end_date               TEXT NOT NULL,
-  registration_closes_at TEXT,
-  is_active              INTEGER NOT NULL DEFAULT 1
+  registration_closes_at TEXT, -- NULL/future = open; past = closed (see note above)
+  visible_in_reports     INTEGER NOT NULL DEFAULT 1,
+  display_order          INTEGER,
+  is_active              INTEGER NOT NULL DEFAULT 1,
+  created_at             TEXT,
+  updated_at             TEXT
 );
 
 CREATE TABLE invitations (
@@ -145,11 +165,11 @@ CREATE TABLE audit_log (
   created_at TEXT NOT NULL
 );
 
-INSERT INTO events (code, title_en, title_ar, start_date, end_date, registration_closes_at) VALUES
- ('WGITA-35-2026','INTOSAI Working Group on IT Audit','فريق عمل الإنتوساي المعني بتدقيق تكنولوجيا المعلومات','2026-09-28','2026-09-29','2026-10-13T00:00:00+02:00'),
- ('KSC-SC18-2026','KSC Steering Committee Meeting','اجتماع اللجنة التوجيهية لـ KSC','2026-09-30','2026-09-30','2026-10-13T00:00:00+02:00'),
- ('TG-42-2026','Forty-second (2026) Meeting of the Technical Group','الاجتماع الثاني والأربعون (2026) للفريق الفني','2026-12-02','2026-12-04','2026-12-01T23:59:00+02:00'),
- ('UNPEA-66-2026','Sixty-sixth (2026) Regular Session of the UN Panel of External Auditors','الدورة العادية السادسة والستون (2026) للجنة المراجعين الخارجيين للأمم المتحدة','2026-12-07','2026-12-08','2026-12-01T23:59:00+02:00');
+INSERT INTO events (code, title_en, title_ar, short_name, city, country, venue, logo_path, start_date, end_date, registration_closes_at, visible_in_reports, display_order, created_at, updated_at) VALUES
+ ('WGITA-35-2026','INTOSAI Working Group on IT Audit','فريق عمل الإنتوساي المعني بتدقيق تكنولوجيا المعلومات','WGITA','Cairo','Arab Republic of Egypt','Steigenberger Pyramids Cairo Hotel, Giza','wgita-logo.jpg','2026-09-28','2026-09-29','2026-10-13T00:00:00+02:00',1,1,'2026-10-13T18:00:00Z','2026-10-13T18:00:00Z'),
+ ('KSC-SC18-2026','KSC Steering Committee Meeting','اجتماع اللجنة التوجيهية لـ KSC','KSC','Cairo','Arab Republic of Egypt','Steigenberger Pyramids Cairo Hotel, Giza','intosai-logo.png','2026-09-30','2026-09-30','2026-10-13T00:00:00+02:00',1,2,'2026-10-13T18:00:00Z','2026-10-13T18:00:00Z'),
+ ('TG-42-2026','Forty-second (2026) Meeting of the Technical Group','الاجتماع الثاني والأربعون (2026) للفريق الفني','TG','Luxor','Arab Republic of Egypt','Luxor, Arab Republic of Egypt','asa-logo.jpg','2026-12-02','2026-12-04','2026-12-01T23:59:00+02:00',1,3,'2026-10-13T18:00:00Z','2026-10-13T18:00:00Z'),
+ ('UNPEA-66-2026','Sixty-sixth (2026) Regular Session of the UN Panel of External Auditors','الدورة العادية السادسة والستون (2026) للجنة المراجعين الخارجيين للأمم المتحدة','UNPEA','Luxor','Arab Republic of Egypt','Luxor, Arab Republic of Egypt','asa-logo.jpg','2026-12-07','2026-12-08','2026-12-01T23:59:00+02:00',1,4,'2026-10-13T18:00:00Z','2026-10-13T18:00:00Z');
 
 -- Three invitations so the public test link works out of the box.
 INSERT INTO invitations (invitation_id, event_code, code, organization_name, country, org_type, liaison_email, max_uses, allow_free_email, expires_at, is_active) VALUES

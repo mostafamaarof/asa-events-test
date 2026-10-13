@@ -98,6 +98,8 @@ function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ 
    grouped with the admin tools but still accepts a report-tier token,
    same split as before this page became dynamic. */
 const CARDS = [
+  { scope: 'events',       section: 'tools',   tag: 'admin',  title: 'Event Management', url: 'events/',
+    desc: 'The single source of truth for every event — add a future conference here (one record, no code changes), set its city/venue, open or close registration, and hide completed events from report filters.' },
   { scope: 'invitations',  section: 'tools',   tag: 'admin',  title: 'Invitation Codes', url: 'invitations/',
     desc: 'Generate and track the codes SAIs use to unlock the registration form.' },
   { scope: 'registrations', section: 'tools',  tag: 'admin',  title: 'Registrations & Reports', url: 'registrations/',

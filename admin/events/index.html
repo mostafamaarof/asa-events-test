@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow, noarchive">
+<title>Event Management — ASA Events Admin</title>
+<style>
+:root{
+  --ink:#0B2135; --ink-soft:#1C3A56; --surface:#EEF2F6; --sheet:#FFFFFF;
+  --rule:#CBD6E0; --rule-strong:#93A6B8; --muted:#556A7D;
+  --brass:#A8842C; --brass-tint:#F3EBD8;
+  --ok:#1D6B4C; --ok-tint:#E9F4EE; --err:#A02226; --err-tint:#FAECEC; --warn-tint:#FBF3DF; --warn:#8A6100;
+  --f-body:"IBM Plex Sans",system-ui,sans-serif; --f-num:ui-monospace,Consolas,monospace;
+}
+*,*::before,*::after{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{font-family:var(--f-body);font-size:15px;line-height:1.55;color:var(--ink);background:var(--surface)}
+header{background:var(--ink);color:#fff;padding:16px 24px;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+header h1{margin:0;font-size:18px;font-weight:500}
+header p{margin:4px 0 0;font-size:13px;color:#A9BDD0}
+header nav{margin-inline-start:auto;display:flex;gap:14px}
+header nav a{color:#fff;font-size:13px;text-decoration:underline}
+main{max-width:1100px;margin:0 auto;padding:24px 20px 64px;display:grid;gap:20px}
+.card{background:var(--sheet);border:1px solid var(--rule);padding:20px 24px}
+.card h2{font-size:16px;margin:0 0 4px}
+.card .cap{font-size:13px;color:var(--muted);margin:0 0 16px}
+.grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px 20px}
+@media (max-width:760px){.grid{grid-template-columns:1fr}}
+.f{display:flex;flex-direction:column;gap:5px}
+.f.wide{grid-column:1/-1}
+label{font-size:13px;font-weight:500}
+.req{color:var(--brass)}
+input,select{font:inherit;font-size:14px;padding:8px 10px;border:1px solid var(--rule-strong);border-radius:2px;background:#fff;color:var(--ink)}
+.hint{font-size:12px;color:var(--muted);margin-top:2px}
+.actions{display:flex;align-items:center;gap:12px;margin-top:18px}
+button{font:inherit;font-size:14px;font-weight:500;padding:10px 20px;border-radius:2px;border:1px solid transparent;background:var(--ink);color:#fff;cursor:pointer}
+button:hover{background:var(--ink-soft)}
+button:disabled{opacity:.5;cursor:not-allowed}
+button.ghost{background:transparent;color:var(--ink);border-color:var(--rule-strong)}
+button.ghost:hover{background:#F1F5F8}
+.msg{font-size:13px;padding:10px 12px;border-radius:2px;display:none}
+.msg.ok{display:block;background:var(--ok-tint);color:var(--ok)}
+.msg.err{display:block;background:var(--err-tint);color:var(--err)}
+.tblwrap{overflow-x:auto;border:1px solid var(--rule)}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th,td{text-align:left;padding:8px 12px;border-bottom:1px solid var(--rule);white-space:nowrap}
+th{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:600;background:#FAFCFD}
+tr:last-child td{border-bottom:none}
+tr.hidden-row{background:var(--warn-tint)}
+td.code{font-family:var(--f-num)}
+.empty{color:var(--muted);font-size:13px;padding:8px 0}
+.ordernum{width:56px}
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>ASA Events — Event Management</h1>
+    <p>Internal tool. The single source of truth for every event — every report filter, dropdown, badge, and confirmation email reads from this list.</p>
+  </div>
+  <nav><a href="../">All tools</a><a href="../invitations/">Invitation codes</a><a href="../dashboard/">Dashboard</a><a href="../audit/">Audit trail</a></nav>
+</header>
+
+<main>
+  <div class="card">
+    <h2>Admin token</h2>
+    <div class="grid">
+      <div class="f wide">
+        <label for="token">Admin token <span class="req">*</span></label>
+        <input type="password" id="token" autocomplete="off" placeholder="paste ADMIN_TOKEN">
+        <span class="hint">Kept only in this browser tab (sessionStorage). Creating/editing events needs the 'events' scope.</span>
+      </div>
+      <div class="f wide">
+        <label for="actorName">Your name (optional)</label>
+        <input type="text" id="actorName" autocomplete="off" placeholder="e.g. Mostafa">
+        <span class="hint">Remembered on this device. Shown next to any change you make in the Audit Trail and Telegram alert.</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Add a new event</h2>
+    <p class="cap">This is the only step needed to support a future conference — once created, it automatically appears in every report filter, dropdown, and the Invitation Codes page. Open registration for it by creating an invitation code as usual.</p>
+    <div class="grid">
+      <div class="f">
+        <label for="code">Code <span class="req">*</span></label>
+        <input type="text" id="code" placeholder="e.g. INCOSAI-2028" style="text-transform:uppercase">
+        <span class="hint">Letters, numbers, hyphens. Uppercased automatically.</span>
+      </div>
+      <div class="f">
+        <label for="shortName">Short name</label>
+        <input type="text" id="shortName" placeholder="e.g. INCOSAI">
+      </div>
+      <div class="f">
+        <label for="logoPath">Logo filename</label>
+        <input type="text" id="logoPath" placeholder="e.g. asa-logo.jpg">
+        <span class="hint">A file already present under register/. Falls back to the ASA seal if blank or missing.</span>
+      </div>
+      <div class="f wide">
+        <label for="titleEn">Full name (English) <span class="req">*</span></label>
+        <input type="text" id="titleEn" placeholder="e.g. 24th INCOSAI">
+      </div>
+      <div class="f wide">
+        <label for="titleAr">Full name (Arabic) <span class="req">*</span></label>
+        <input type="text" id="titleAr" dir="rtl" placeholder="الاسم الكامل بالعربية">
+      </div>
+      <div class="f">
+        <label for="city">City</label>
+        <input type="text" id="city" placeholder="e.g. Luxor">
+      </div>
+      <div class="f">
+        <label for="country">Country</label>
+        <input type="text" id="country" placeholder="e.g. Arab Republic of Egypt">
+      </div>
+      <div class="f">
+        <label for="venue">Venue</label>
+        <input type="text" id="venue" placeholder="e.g. hotel name, or city/country">
+      </div>
+      <div class="f">
+        <label for="startDate">Start date <span class="req">*</span></label>
+        <input type="date" id="startDate">
+      </div>
+      <div class="f">
+        <label for="endDate">End date <span class="req">*</span></label>
+        <input type="date" id="endDate">
+      </div>
+      <div class="f">
+        <label for="displayOrder">Display order</label>
+        <input type="number" id="displayOrder" placeholder="e.g. 5">
+      </div>
+    </div>
+    <div class="actions">
+      <button id="create">Create event</button>
+      <span id="createMsg" class="msg"></span>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Existing events</h2>
+    <p class="cap">Registration Open / Visible in Reports / Display Order save immediately on change. "Visible in Reports" only hides an event from report filters — it never touches its registrations, check-ins, or audit history, and exports still work if the event is explicitly selected via "Show hidden events" elsewhere.</p>
+    <div class="actions" style="margin-top:0">
+      <button class="ghost" id="refresh">Refresh list</button>
+      <span id="listMsg" class="msg"></span>
+    </div>
+    <div id="listWrap" style="margin-top:14px"></div>
+  </div>
+</main>
+
+<script>
+const CONFIG = { apiBase: 'https://asa-events-api.mostafamaarof.workers.dev/v1' };
+const $ = (id) => document.getElementById(id);
+const tokenInput = $('token');
+tokenInput.value = sessionStorage.getItem('asa_admin_token') || '';
+tokenInput.addEventListener('input', () => sessionStorage.setItem('asa_admin_token', tokenInput.value));
+const actorInput = $('actorName');
+actorInput.value = localStorage.getItem('asa_actor_name') || '';
+actorInput.addEventListener('input', () => localStorage.setItem('asa_actor_name', actorInput.value));
+
+function showMsg(el, text, ok) { el.textContent = text; el.className = 'msg ' + (ok ? 'ok' : 'err'); }
+function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c])); }
+
+async function callApi(path, opts) {
+  const token = tokenInput.value.trim();
+  if (!token) throw new Error('Enter the admin token first.');
+  const headers = { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json', ...(opts && opts.headers) };
+  const actor = actorInput.value.trim();
+  if (actor) headers['X-Actor-Name'] = actor;
+  const res = await fetch(CONFIG.apiBase + path, { ...opts, headers });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || data.ok === false) throw new Error(data.error || ('HTTP ' + res.status));
+  return data;
+}
+
+$('create').addEventListener('click', async () => {
+  const msg = $('createMsg'); msg.className = 'msg';
+  const code = $('code').value.trim().toUpperCase();
+  const titleEn = $('titleEn').value.trim();
+  const titleAr = $('titleAr').value.trim();
+  const startDate = $('startDate').value;
+  const endDate = $('endDate').value;
+  if (!code || !titleEn || !titleAr || !startDate || !endDate) {
+    showMsg(msg, 'Code, both names, and both dates are required.', false);
+    return;
+  }
+  const body = {
+    code, title_en: titleEn, title_ar: titleAr,
+    short_name: $('shortName').value.trim() || undefined,
+    city: $('city').value.trim() || undefined,
+    country: $('country').value.trim() || undefined,
+    venue: $('venue').value.trim() || undefined,
+    logo_path: $('logoPath').value.trim() || undefined,
+    start_date: startDate, end_date: endDate,
+    display_order: $('displayOrder').value ? Number($('displayOrder').value) : undefined
+  };
+  $('create').disabled = true;
+  try {
+    await callApi('/admin/events', { method: 'POST', body: JSON.stringify(body) });
+    showMsg(msg, `Created ${code}.`, true);
+    ['code','shortName','logoPath','titleEn','titleAr','city','country','venue','startDate','endDate','displayOrder']
+      .forEach(id => { $(id).value = ''; });
+    loadList();
+  } catch (e) {
+    showMsg(msg, e.message, false);
+  } finally {
+    $('create').disabled = false;
+  }
+});
+
+let allEvents = [];
+
+async function loadList() {
+  const listMsg = $('listMsg'); listMsg.className = 'msg';
+  const wrap = $('listWrap');
+  try {
+    const data = await callApi('/admin/events', { method: 'GET' });
+    allEvents = data.events;
+    if (!allEvents.length) { wrap.innerHTML = '<p class="empty">No events yet — add one above.</p>'; return; }
+    const rows = allEvents.map(e => `
+      <tr class="${e.visible_in_reports ? '' : 'hidden-row'}" data-code="${esc(e.code)}">
+        <td class="code">${esc(e.code)}</td>
+        <td>${esc(e.title_en)}${e.short_name ? ' (' + esc(e.short_name) + ')' : ''}</td>
+        <td>${esc(e.city || '')}</td>
+        <td>${esc(e.venue || '')}</td>
+        <td>${esc(e.start_date)}${e.end_date !== e.start_date ? ' – ' + esc(e.end_date) : ''}</td>
+        <td><input type="checkbox" class="regOpenChk" data-prev="${e.registration_open ? '1' : '0'}" ${e.registration_open ? 'checked' : ''}></td>
+        <td><input type="checkbox" class="visibleChk" data-prev="${e.visible_in_reports ? '1' : '0'}" ${e.visible_in_reports ? 'checked' : ''}></td>
+        <td><input type="number" class="ordernum orderInput" data-prev="${e.display_order ?? ''}" value="${e.display_order ?? ''}" placeholder="—"></td>
+      </tr>`).join('');
+    wrap.innerHTML = `<div class="tblwrap"><table>
+      <thead><tr><th>Code</th><th>Name</th><th>City</th><th>Venue</th><th>Dates</th><th>Registration open</th><th>Visible in reports</th><th>Order</th></tr></thead>
+      <tbody>${rows}</tbody></table></div>`;
+  } catch (e) {
+    showMsg(listMsg, e.message, false);
+  }
+}
+
+/* Optimistic save on any field change within a row -- revert that one
+   control on failure, matching the pattern already used for the Speakers
+   tab's presentation-track selector in Logistics Reports. */
+$('listWrap').addEventListener('change', async (e) => {
+  const ctrl = e.target.closest('.regOpenChk, .visibleChk, .orderInput');
+  if (!ctrl) return;
+  const row = ctrl.closest('tr');
+  const code = row.dataset.code;
+  const body = { code };
+  if (ctrl.classList.contains('regOpenChk')) body.registration_open = ctrl.checked;
+  if (ctrl.classList.contains('visibleChk')) body.visible_in_reports = ctrl.checked;
+  if (ctrl.classList.contains('orderInput')) body.display_order = ctrl.value;
+  ctrl.disabled = true;
+  try {
+    await callApi('/admin/events/update', { method: 'POST', body: JSON.stringify(body) });
+    row.classList.toggle('hidden-row', !row.querySelector('.visibleChk').checked);
+  } catch (err) {
+    if (ctrl.type === 'checkbox') ctrl.checked = ctrl.dataset.prev === '1';
+    else ctrl.value = ctrl.dataset.prev;
+    alert('Could not save that change: ' + err.message);
+  } finally {
+    ctrl.disabled = false;
+  }
+});
+
+$('refresh').addEventListener('click', loadList);
+if (tokenInput.value) loadList();
+</script>
+</body>
+</html>
