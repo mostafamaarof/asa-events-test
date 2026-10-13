@@ -101,16 +101,6 @@ td.muted{color:var(--rule-strong);white-space:nowrap}
     </div>
     <div class="filters" style="margin-top:16px">
       <div class="f">
-        <label for="fEvent">Event</label>
-        <select id="fEvent">
-          <option value="">All events</option>
-          <option value="WGITA-35-2026">35th Annual Meeting of INTOSAI Working Group on IT Audit</option>
-          <option value="KSC-SC18-2026">18th KSC Steering Committee Meeting</option>
-          <option value="TG-42-2026">Forty-second (2026) Meeting of the Technical Group</option>
-          <option value="UNPEA-66-2026">Sixty-sixth (2026) Regular Session of the UN Panel of External Auditors</option>
-        </select>
-      </div>
-      <div class="f">
         <label for="fTier">Tier</label>
         <select id="fTier">
           <option value="">All tiers</option>
@@ -136,6 +126,17 @@ td.muted{color:var(--rule-strong);white-space:nowrap}
         <label class="choice"><input type="checkbox" class="catFilter" value="attachments" checked>Attachments</label>
       </div>
       <span class="hint">Only people missing at least one ticked category are listed. Each row still lets you pick exactly which of their gaps to remind about.</span>
+    </div>
+    <div class="f" style="margin-top:14px;margin-bottom:0">
+      <label>Events</label>
+      <p class="hint" style="margin:2px 0 8px">Only data for the ticked events is loaded. Remembered on this device — click "Load registrations" again after changing this.</p>
+      <div id="eventFilterSearchWrap"></div>
+      <div id="eventToggles" style="display:flex;flex-wrap:wrap;gap:6px 16px"></div>
+      <div class="actions" style="margin-top:12px">
+        <button class="ghost" id="selectAllEvents" style="height:30px;padding:0 14px;font-size:13px">Select all</button>
+        <button class="ghost" id="clearAllEvents" style="height:30px;padding:0 14px;font-size:13px">Clear all</button>
+        <label class="choice"><input type="checkbox" id="showHiddenEventsCb">Show hidden events</label>
+      </div>
     </div>
   </div>
 
@@ -225,12 +226,84 @@ function computeMissing(d) {
 
 function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c])); }
 
+/* ---------------------------------------------------------------------------
+   Event filter. Same localStorage keys every admin page's copy of this
+   widget uses, so a selection made here carries over to other report pages.
+   Drives which rows the server returns (?events=... on export.json,
+   filtered in SQL) -- adding a future event to the events table needs no
+   change on this page. */
+const EVENTS_KEY = 'asa_selected_events';
+const SHOW_HIDDEN_EVENTS_KEY = 'asa_show_hidden_events';
+let allEvents = [];
+let selectedEventCodes = [];
+let showHiddenEvents = false;
+try { showHiddenEvents = localStorage.getItem(SHOW_HIDDEN_EVENTS_KEY) === '1'; } catch (e) { }
+
+function visibleEventList() { return allEvents.filter(e => showHiddenEvents || e.visible_in_reports); }
+function saveSelectedEvents() { try { localStorage.setItem(EVENTS_KEY, JSON.stringify(selectedEventCodes)); } catch (e) { } }
+
+async function loadEvents() {
+  const data = await apiFetch('/admin/events', { method: 'GET' });
+  allEvents = data.events || [];
+  let saved = null;
+  try { saved = JSON.parse(localStorage.getItem(EVENTS_KEY) || 'null'); } catch (e) { }
+  const knownCodes = allEvents.map(e => e.code);
+  selectedEventCodes = Array.isArray(saved) ? saved.filter(c => knownCodes.includes(c)) : [];
+  if (!selectedEventCodes.length) selectedEventCodes = allEvents.filter(e => e.visible_in_reports).map(e => e.code);
+  renderEventFilter();
+}
+function renderEventFilter() {
+  const needsSearch = visibleEventList().length > 8;
+  const has = !!$('eventFilterSearch');
+  if (needsSearch && !has) {
+    $('eventFilterSearchWrap').innerHTML = `<input type="text" id="eventFilterSearch" placeholder="Search events..." style="margin-bottom:8px;width:100%;max-width:300px">`;
+    $('eventFilterSearch').addEventListener('input', renderEventChecks);
+  } else if (!needsSearch && has) {
+    $('eventFilterSearchWrap').innerHTML = '';
+  }
+  renderEventChecks();
+}
+function renderEventChecks() {
+  const list = visibleEventList();
+  const searchEl = $('eventFilterSearch');
+  const q = searchEl ? searchEl.value.trim().toLowerCase() : '';
+  const shown = q ? list.filter(e => (e.short_name || e.code).toLowerCase().includes(q) || e.title_en.toLowerCase().includes(q)) : list;
+  $('eventToggles').innerHTML = shown.length ? shown.map(e =>
+    `<label class="choice"><input type="checkbox" class="eventCb" value="${e.code}" ${selectedEventCodes.includes(e.code) ? 'checked' : ''}>${e.title_en}</label>`
+  ).join('') : '<p class="empty">No events.</p>';
+  $('showHiddenEventsCb').checked = showHiddenEvents;
+}
+$('eventToggles').addEventListener('change', (e) => {
+  const cb = e.target.closest('.eventCb');
+  if (!cb) return;
+  if (cb.checked) { if (!selectedEventCodes.includes(cb.value)) selectedEventCodes.push(cb.value); }
+  else selectedEventCodes = selectedEventCodes.filter(c => c !== cb.value);
+  saveSelectedEvents();
+});
+$('selectAllEvents').addEventListener('click', () => {
+  selectedEventCodes = visibleEventList().map(e => e.code);
+  saveSelectedEvents(); renderEventChecks();
+});
+$('clearAllEvents').addEventListener('click', () => {
+  selectedEventCodes = [];
+  saveSelectedEvents(); renderEventChecks();
+});
+$('showHiddenEventsCb').addEventListener('change', (e) => {
+  showHiddenEvents = e.target.checked;
+  try { localStorage.setItem(SHOW_HIDDEN_EVENTS_KEY, showHiddenEvents ? '1' : '0'); } catch (err) { }
+  renderEventFilter();
+});
+
 let all = [];
 
 async function loadData() {
   const msg = $('topMsg'); msg.className = 'msg';
   try {
-    const data = await apiFetch('/admin/export.json', { method: 'GET' });
+    authHeaders(); // throws before we bother loading events
+    if (!allEvents.length) await loadEvents();
+    if (!selectedEventCodes.length) throw new Error('Tick at least one event first.');
+    const qs = '?events=' + encodeURIComponent(selectedEventCodes.join(','));
+    const data = await apiFetch('/admin/export.json' + qs, { method: 'GET' });
     all = (data.registrations || []).filter(r => r.status === 'approved');
     showMsg(msg, `Loaded ${all.length} approved registration(s).`, true);
     render();
@@ -240,13 +313,11 @@ async function loadData() {
 }
 
 function computeRows() {
-  const evFilter = $('fEvent').value;
   const tierFilter = $('fTier').value;
   const search = $('fSearch').value.trim().toLowerCase();
   const catFilters = [...document.querySelectorAll('.catFilter:checked')].map(c => c.value);
 
   return all
-    .filter(r => !evFilter || (r.event_codes || '').split(',').includes(evFilter))
     .filter(r => !tierFilter || (tierFilter === 'both'
       ? ['president', 'vice_president'].includes(r.participant_tier)
       : (r.participant_tier || 'other') === tierFilter))
@@ -387,7 +458,6 @@ async function sendReminders() {
 }
 
 $('load').addEventListener('click', loadData);
-$('fEvent').addEventListener('change', render);
 $('fTier').addEventListener('change', render);
 $('fSearch').addEventListener('input', render);
 document.querySelectorAll('.catFilter').forEach(cb => cb.addEventListener('change', render));
