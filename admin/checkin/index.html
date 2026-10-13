@@ -13,10 +13,16 @@
   --ok:#1D6B4C; --ok-tint:#E9F4EE; --err:#A02226; --err-tint:#FAECEC;
   --warn:#8A5A00; --warn-tint:#FBF0DA;
   --f-body:"IBM Plex Sans",system-ui,sans-serif; --f-num:ui-monospace,Consolas,monospace;
-  --wgita:#2A78D6; --wgita-tint:#E4EFFB;
-  --ksc:#D9642C; --ksc-tint:#FBEBE0;
-  --tg:#1D7A4C; --tg-tint:#E3F3EA;
-  --unpea:#6A3FA0; --unpea-tint:#EFE7F7;
+  /* Fixed palette assigned by an event's position (display_order), not by
+     its code -- a future event automatically gets a chip color with no
+     per-event-code CSS ever needed again. Cycles if there are ever more
+     than 6 events. */
+  --pal1:#2A78D6; --pal1-tint:#E4EFFB;
+  --pal2:#D9642C; --pal2-tint:#FBEBE0;
+  --pal3:#1D7A4C; --pal3-tint:#E3F3EA;
+  --pal4:#6A3FA0; --pal4-tint:#EFE7F7;
+  --pal5:#B23A6B; --pal5-tint:#F8E8EE;
+  --pal6:#8A7B00; --pal6-tint:#F7F3D9;
 }
 *,*::before,*::after{box-sizing:border-box}
 html,body{margin:0;padding:0}
@@ -64,10 +70,12 @@ button.ghost:hover{background:#F1F5F8}
 .rescard .sub{font-size:14px;color:var(--ink-soft);margin-top:4px}
 .rescard .chips{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
 .chip{font-size:11.5px;font-weight:700;letter-spacing:.03em;padding:3px 10px;border-radius:10px;white-space:nowrap}
-.chip.wgita{background:var(--wgita-tint);color:var(--wgita)}
-.chip.ksc{background:var(--ksc-tint);color:var(--ksc)}
-.chip.tg{background:var(--tg-tint);color:var(--tg)}
-.chip.unpea{background:var(--unpea-tint);color:var(--unpea)}
+.chip.pal1{background:var(--pal1-tint);color:var(--pal1)}
+.chip.pal2{background:var(--pal2-tint);color:var(--pal2)}
+.chip.pal3{background:var(--pal3-tint);color:var(--pal3)}
+.chip.pal4{background:var(--pal4-tint);color:var(--pal4)}
+.chip.pal5{background:var(--pal5-tint);color:var(--pal5)}
+.chip.pal6{background:var(--pal6-tint);color:var(--pal6)}
 .chip.tier{background:var(--brass-tint);color:var(--brass)}
 .rescard .time{font-size:12.5px;color:var(--muted);margin-top:10px}
 .rescard .ref{font-family:var(--f-num);font-size:12px;color:var(--muted);margin-top:2px}
@@ -121,10 +129,6 @@ td.num{font-family:var(--f-num)}
         <label for="evSelect">Event</label>
         <select id="evSelect">
           <option value="">Auto-detect from the badge</option>
-          <option value="WGITA-35-2026">35th Annual Meeting of INTOSAI Working Group on IT Audit</option>
-          <option value="KSC-SC18-2026">18th KSC Steering Committee Meeting</option>
-          <option value="TG-42-2026">Forty-second (2026) Meeting of the Technical Group</option>
-          <option value="UNPEA-66-2026">Sixty-sixth (2026) Regular Session of the UN Panel of External Auditors</option>
         </select>
         <span class="hint">Leave blank to read the event straight off the badge. Attending both? Pick the event you're checking in for here before scanning each badge.</span>
       </div>
@@ -241,12 +245,26 @@ function playErrorSound() {
   try { ensureAudioCtx(); beep(220, 0.16, 0, 'square'); beep(180, 0.2, 0.18, 'square'); } catch (e) { /* audio is best-effort */ }
 }
 
-const EVENT_META = {
-  'WGITA-35-2026': { short: 'WGITA', cls: 'wgita', title: '35th Annual Meeting of INTOSAI Working Group on IT Audit' },
-  'KSC-SC18-2026':  { short: 'KSC',   cls: 'ksc',   title: '18th KSC Steering Committee Meeting' },
-  'TG-42-2026':     { short: 'TG',    cls: 'tg',    title: 'Forty-second (2026) Meeting of the Technical Group' },
-  'UNPEA-66-2026':  { short: 'UNPEA', cls: 'unpea', title: 'Sixty-sixth (2026) Regular Session of the UN Panel of External Auditors' }
-};
+/* Built from GET /admin/events the first time it's needed, keyed by code --
+   never hardcoded, so a future event needs no change here. cls is a fixed
+   palette slot assigned by the event's position (display_order), not by
+   its code, so a future event automatically gets a chip color too. */
+let allEvents = [];
+let EVENT_META = {};
+const PALETTE_SIZE = 6;
+async function loadEventMeta() {
+  const res = await fetch(CONFIG.apiBase + '/admin/events', { headers: authHeaders() });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || data.ok === false) throw new Error(data.error || 'Could not load the event list.');
+  allEvents = (data.events || []).filter(e => e.visible_in_reports);
+  EVENT_META = {};
+  allEvents.forEach((e, i) => { EVENT_META[e.code] = { short: e.short_name || e.code, cls: 'pal' + ((i % PALETTE_SIZE) + 1), title: e.title_en }; });
+  const sel = $('evSelect');
+  const cur = sel.value;
+  sel.innerHTML = '<option value="">Auto-detect from the badge</option>' +
+    allEvents.map(e => `<option value="${esc(e.code)}">${esc(e.title_en)}</option>`).join('');
+  sel.value = allEvents.some(e => e.code === cur) ? cur : '';
+}
 const TIER_LABELS = { president: 'President', vice_president: 'Vice President', other: '' };
 
 const ERROR_MESSAGES = {
@@ -266,6 +284,9 @@ let qrScanner = null, scanLocked = false, autoResumeTimer = null;
 
 async function startCam() {
   try { authHeaders(); } catch (e) { showMsg($('topMsg'), e.message, false); return; }
+  if (!allEvents.length) {
+    try { await loadEventMeta(); } catch (e) { showMsg($('topMsg'), e.message, false); return; }
+  }
   if (typeof QrScanner !== 'function') { showMsg($('topMsg'), 'QR scanner library failed to load.', false); return; }
   ensureAudioCtx(); // unlock audio now, on a real click, so the first scan's sound isn't silently blocked
   const video = $('video');
@@ -445,6 +466,7 @@ function scheduleAutoResume() {
 /* ---------- attendance summary + recent feed ---------- */
 async function loadCounts() {
   try {
+    if (!allEvents.length) await loadEventMeta();
     const [expRes, ciRes] = await Promise.all([
       fetch(CONFIG.apiBase + '/admin/export.json', { headers: authHeaders() }),
       fetch(CONFIG.apiBase + '/admin/checkins', { headers: authHeaders() })
