@@ -12,10 +12,16 @@
   --brass:#A8842C; --brass-tint:#F3EBD8;
   --ok:#1D6B4C; --ok-tint:#E9F4EE; --err:#A02226; --err-tint:#FAECEC;
   --f-body:"IBM Plex Sans",system-ui,sans-serif; --f-num:ui-monospace,Consolas,monospace;
-  --wgita:#2A78D6; --wgita-tint:#E4EFFB;
-  --ksc:#D9642C; --ksc-tint:#FBEBE0;
-  --tg:#1D7A4C; --tg-tint:#E3F3EA;
-  --unpea:#6A3FA0; --unpea-tint:#EFE7F7;
+  /* Fixed palette assigned by an event's position (display_order), not by
+     its code -- a future event automatically gets a tag color with no
+     per-event-code CSS ever needed again. Cycles if there are ever more
+     than 6 events. */
+  --pal1:#2A78D6; --pal1-tint:#E4EFFB;
+  --pal2:#D9642C; --pal2-tint:#FBEBE0;
+  --pal3:#1D7A4C; --pal3-tint:#E3F3EA;
+  --pal4:#6A3FA0; --pal4-tint:#EFE7F7;
+  --pal5:#B23A6B; --pal5-tint:#F8E8EE;
+  --pal6:#8A7B00; --pal6-tint:#F7F3D9;
 }
 *,*::before,*::after{box-sizing:border-box}
 html,body{margin:0;padding:0}
@@ -61,10 +67,12 @@ button.ghost:hover{background:#F1F5F8}
 .badgecard .evtag{
   font-size:10.5px;font-weight:700;letter-spacing:.04em;padding:2.5px 9px;border-radius:9px;white-space:nowrap;
 }
-.evtag.wgita{background:var(--wgita-tint);color:var(--wgita)}
-.evtag.ksc{background:var(--ksc-tint);color:var(--ksc)}
-.evtag.tg{background:var(--tg-tint);color:var(--tg)}
-.evtag.unpea{background:var(--unpea-tint);color:var(--unpea)}
+.evtag.pal1{background:var(--pal1-tint);color:var(--pal1)}
+.evtag.pal2{background:var(--pal2-tint);color:var(--pal2)}
+.evtag.pal3{background:var(--pal3-tint);color:var(--pal3)}
+.evtag.pal4{background:var(--pal4-tint);color:var(--pal4)}
+.evtag.pal5{background:var(--pal5-tint);color:var(--pal5)}
+.evtag.pal6{background:var(--pal6-tint);color:var(--pal6)}
 .badgecard .evdate{font-size:8px;color:#8A98A3;white-space:nowrap}
 .badgecard .tier{
   flex:0 0 auto;margin-top:2mm;font-size:9.5px;font-weight:700;
@@ -122,16 +130,6 @@ button.ghost:hover{background:#F1F5F8}
     </div>
     <div class="filters" style="margin-top:16px;margin-bottom:0">
       <div class="f">
-        <label for="fEvent">Event</label>
-        <select id="fEvent">
-          <option value="">All events</option>
-          <option value="WGITA-35-2026">35th Annual Meeting of INTOSAI Working Group on IT Audit</option>
-          <option value="KSC-SC18-2026">18th KSC Steering Committee Meeting</option>
-          <option value="TG-42-2026">Forty-second (2026) Meeting of the Technical Group</option>
-          <option value="UNPEA-66-2026">Sixty-sixth (2026) Regular Session of the UN Panel of External Auditors</option>
-        </select>
-      </div>
-      <div class="f">
         <label for="fTier">Tier</label>
         <select id="fTier">
           <option value="">All tiers</option>
@@ -152,6 +150,17 @@ button.ghost:hover{background:#F1F5F8}
       each scoped to that event's own access. Untick the checkbox on any card to leave it out
       of the printed sheet.
     </p>
+    <div class="f" style="margin-top:14px;margin-bottom:0">
+      <label>Events</label>
+      <p class="hint" style="margin:2px 0 8px">Which events' badges to print below. Doesn't affect "Quick reprint" (that always ignores every filter here).</p>
+      <div id="eventFilterSearchWrap"></div>
+      <div id="eventToggles" style="display:flex;flex-wrap:wrap;gap:6px 16px"></div>
+      <div class="actions" style="margin-top:12px">
+        <button class="ghost" id="selectAllEvents" style="height:30px;padding:0 14px;font-size:13px">Select all</button>
+        <button class="ghost" id="clearAllEvents" style="height:30px;padding:0 14px;font-size:13px">Clear all</button>
+        <label style="font-weight:400;display:flex;gap:6px;align-items:center;font-size:13px;cursor:pointer"><input type="checkbox" id="showHiddenEventsCb">Show hidden events</label>
+      </div>
+    </div>
   </div>
 
   <div class="card">
@@ -199,21 +208,111 @@ const OPT = {
 const COUNTRIES_RAW = "AF:Afghanistan|AL:Albania|DZ:Algeria|AS:American Samoa|AD:Andorra|AO:Angola|AI:Anguilla|AQ:Antarctica|AG:Antigua and Barbuda|AR:Argentina|AM:Armenia|AW:Aruba|AU:Australia|AT:Austria|AZ:Azerbaijan|BS:Bahamas|BH:Bahrain|BD:Bangladesh|BB:Barbados|BY:Belarus|BE:Belgium|BZ:Belize|BJ:Benin|BM:Bermuda|BT:Bhutan|BO:Bolivia|BQ:Bonaire, Sint Eustatius and Saba|BA:Bosnia and Herzegovina|BW:Botswana|BV:Bouvet Island|BR:Brazil|IO:British Indian Ocean Territory|BN:Brunei Darussalam|BG:Bulgaria|BF:Burkina Faso|BI:Burundi|CV:Cabo Verde|KH:Cambodia|CM:Cameroon|CA:Canada|KY:Cayman Islands|CF:Central African Republic|TD:Chad|CL:Chile|CN:China|CX:Christmas Island|CC:Cocos (Keeling) Islands|CO:Colombia|KM:Comoros|CG:Congo|CD:Congo, The Democratic Republic of the|CK:Cook Islands|CR:Costa Rica|HR:Croatia|CU:Cuba|CW:Curaçao|CY:Cyprus|CZ:Czechia|CI:Côte d'Ivoire|DK:Denmark|DJ:Djibouti|DM:Dominica|DO:Dominican Republic|EC:Ecuador|EG:Egypt|SV:El Salvador|GQ:Equatorial Guinea|ER:Eritrea|EE:Estonia|SZ:Eswatini|ET:Ethiopia|FK:Falkland Islands (Malvinas)|FO:Faroe Islands|FJ:Fiji|FI:Finland|FR:France|GF:French Guiana|PF:French Polynesia|TF:French Southern Territories|GA:Gabon|GM:Gambia|GE:Georgia|DE:Germany|GH:Ghana|GI:Gibraltar|GR:Greece|GL:Greenland|GD:Grenada|GP:Guadeloupe|GU:Guam|GT:Guatemala|GG:Guernsey|GN:Guinea|GW:Guinea-Bissau|GY:Guyana|HT:Haiti|HM:Heard Island and McDonald Islands|VA:Holy See (Vatican City State)|HN:Honduras|HK:Hong Kong|HU:Hungary|IS:Iceland|IN:India|ID:Indonesia|IR:Iran|IQ:Iraq|IE:Ireland|IM:Isle of Man|IL:Israel|IT:Italy|JM:Jamaica|JP:Japan|JE:Jersey|JO:Jordan|KZ:Kazakhstan|KE:Kenya|KI:Kiribati|KP:North Korea|KR:South Korea|KW:Kuwait|KG:Kyrgyzstan|LA:Laos|LV:Latvia|LB:Lebanon|LS:Lesotho|LR:Liberia|LY:Libya|LI:Liechtenstein|LT:Lithuania|LU:Luxembourg|MO:Macao|MG:Madagascar|MW:Malawi|MY:Malaysia|MV:Maldives|ML:Mali|MT:Malta|MH:Marshall Islands|MQ:Martinique|MR:Mauritania|MU:Mauritius|YT:Mayotte|MX:Mexico|FM:Micronesia, Federated States of|MD:Moldova|MC:Monaco|MN:Mongolia|ME:Montenegro|MS:Montserrat|MA:Morocco|MZ:Mozambique|MM:Myanmar|NA:Namibia|NR:Nauru|NP:Nepal|NL:Netherlands|NC:New Caledonia|NZ:New Zealand|NI:Nicaragua|NE:Niger|NG:Nigeria|NU:Niue|NF:Norfolk Island|MK:North Macedonia|MP:Northern Mariana Islands|NO:Norway|OM:Oman|PK:Pakistan|PW:Palau|PS:Palestine, State of|PA:Panama|PG:Papua New Guinea|PY:Paraguay|PE:Peru|PH:Philippines|PN:Pitcairn|PL:Poland|PT:Portugal|PR:Puerto Rico|QA:Qatar|RO:Romania|RU:Russian Federation|RW:Rwanda|RE:Réunion|BL:Saint Barthélemy|SH:Saint Helena, Ascension and Tristan da Cunha|KN:Saint Kitts and Nevis|LC:Saint Lucia|MF:Saint Martin (French part)|PM:Saint Pierre and Miquelon|VC:Saint Vincent and the Grenadines|WS:Samoa|SM:San Marino|ST:Sao Tome and Principe|SA:Saudi Arabia|SN:Senegal|RS:Serbia|SC:Seychelles|SL:Sierra Leone|SG:Singapore|SX:Sint Maarten (Dutch part)|SK:Slovakia|SI:Slovenia|SB:Solomon Islands|SO:Somalia|ZA:South Africa|GS:South Georgia and the South Sandwich Islands|SS:South Sudan|ES:Spain|LK:Sri Lanka|SD:Sudan|SR:Suriname|SJ:Svalbard and Jan Mayen|SE:Sweden|CH:Switzerland|SY:Syria|TW:Taiwan|TJ:Tajikistan|TZ:Tanzania|TH:Thailand|TL:Timor-Leste|TG:Togo|TK:Tokelau|TO:Tonga|TT:Trinidad and Tobago|TN:Tunisia|TM:Turkmenistan|TC:Turks and Caicos Islands|TV:Tuvalu|TR:Türkiye|UG:Uganda|UA:Ukraine|AE:United Arab Emirates|GB:United Kingdom|US:United States|UM:United States Minor Outlying Islands|UY:Uruguay|UZ:Uzbekistan|VU:Vanuatu|VE:Venezuela|VN:Vietnam|VG:Virgin Islands, British|VI:Virgin Islands, U.S.|WF:Wallis and Futuna|EH:Western Sahara|YE:Yemen|ZM:Zambia|ZW:Zimbabwe|AX:Åland Islands";
 OPT.country = O(COUNTRIES_RAW.split('|').map(s => { const i = s.indexOf(':'); return [s.slice(0,i), s.slice(i+1)]; }));
 
-/* logo: WGITA badges carry the working group's own logo; KSC badges carry
-   the general INTOSAI logo, since KSC is an INTOSAI committee rather than
-   its own working group. */
-const EVENT_META = {
-  'WGITA-35-2026': { short: 'WGITA', cls: 'wgita', title: '35th Annual Meeting of INTOSAI Working Group on IT Audit', dates: '28–29 September 2026', logo: '../../register/wgita-logo.jpg' },
-  'KSC-SC18-2026':  { short: 'KSC',   cls: 'ksc',   title: '18th KSC Steering Committee Meeting',                     dates: '30 September 2026',    logo: '../../register/intosai-logo.png' },
-  'TG-42-2026':     { short: 'TG',    cls: 'tg',    title: 'Forty-second (2026) Meeting of the Technical Group',      dates: '2–4 December 2026',    logo: '../../register/asa-logo.jpg' },
-  'UNPEA-66-2026':  { short: 'UNPEA', cls: 'unpea', title: 'Sixty-sixth (2026) Regular Session of the UN Panel of External Auditors', dates: '7–8 December 2026', logo: '../../register/asa-logo.jpg' }
-};
+const MONTHS_EN = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+function formatDatesEn(startDate, endDate) {
+  const s = new Date(startDate + 'T00:00:00Z'), e = new Date(endDate + 'T00:00:00Z');
+  const sD = s.getUTCDate(), eD = e.getUTCDate(), y = s.getUTCFullYear(), m = MONTHS_EN[s.getUTCMonth()];
+  return startDate === endDate ? `${sD} ${m} ${y}` : `${sD}–${eD} ${m} ${y}`;
+}
+
+/* ---------------------------------------------------------------------------
+   Events, all built from GET /admin/events -- never hardcoded, so a future
+   event prints correctly with zero changes to this page. EVENT_META covers
+   every event (not just the ticked ones), since "Quick reprint" must be
+   able to resolve a badge for ANY event regardless of the filter below.
+   cls (tag color) is a fixed palette slot assigned by the event's position
+   (display_order), not its code, so a future event gets a color too. logo
+   comes straight from the events table's logo_path. */
+let allEvents = [];
+let EVENT_META = {};
+const PALETTE_SIZE = 6;
+
+/* ---------------------------------------------------------------------------
+   Event filter -- same localStorage keys every admin page's copy of this
+   widget uses. Unlike the report pages, this only narrows the badge sheet
+   below; it's deliberately NOT sent to the server as ?events=, since "Quick
+   reprint" needs the full approved dataset loaded regardless of which
+   events are ticked (a judgment call: this page's dataset is bounded to
+   current approved registrations, not the thousands-of-rows scale the
+   SQL-side filter on export.json/dashboard exists to avoid loading). */
+const EVENTS_KEY = 'asa_selected_events';
+const SHOW_HIDDEN_EVENTS_KEY = 'asa_show_hidden_events';
+let selectedEventCodes = [];
+let showHiddenEvents = false;
+try { showHiddenEvents = localStorage.getItem(SHOW_HIDDEN_EVENTS_KEY) === '1'; } catch (e) { }
+
+function visibleEventList() { return allEvents.filter(e => showHiddenEvents || e.visible_in_reports); }
+function saveSelectedEvents() { try { localStorage.setItem(EVENTS_KEY, JSON.stringify(selectedEventCodes)); } catch (e) { } }
+
+async function loadEvents() {
+  const res = await fetch(CONFIG.apiBase + '/admin/events', { headers: authHeaders() });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || data.ok === false) throw new Error(data.error || 'Could not load the event list.');
+  allEvents = data.events || [];
+  EVENT_META = {};
+  allEvents.forEach((e, i) => {
+    EVENT_META[e.code] = {
+      short: e.short_name || e.code, cls: 'pal' + ((i % PALETTE_SIZE) + 1), title: e.title_en,
+      dates: formatDatesEn(e.start_date, e.end_date),
+      logo: e.logo_path ? '../../register/' + e.logo_path : '../../register/asa-logo.jpg'
+    };
+  });
+  let saved = null;
+  try { saved = JSON.parse(localStorage.getItem(EVENTS_KEY) || 'null'); } catch (e) { }
+  const knownCodes = allEvents.map(e => e.code);
+  selectedEventCodes = Array.isArray(saved) ? saved.filter(c => knownCodes.includes(c)) : [];
+  if (!selectedEventCodes.length) selectedEventCodes = allEvents.filter(e => e.visible_in_reports).map(e => e.code);
+  renderEventFilter();
+}
+function renderEventFilter() {
+  const needsSearch = visibleEventList().length > 8;
+  const has = !!$('eventFilterSearch');
+  if (needsSearch && !has) {
+    $('eventFilterSearchWrap').innerHTML = `<input type="text" id="eventFilterSearch" placeholder="Search events..." style="margin-bottom:8px;width:100%;max-width:300px">`;
+    $('eventFilterSearch').addEventListener('input', renderEventChecks);
+  } else if (!needsSearch && has) {
+    $('eventFilterSearchWrap').innerHTML = '';
+  }
+  renderEventChecks();
+}
+function renderEventChecks() {
+  const list = visibleEventList();
+  const searchEl = $('eventFilterSearch');
+  const q = searchEl ? searchEl.value.trim().toLowerCase() : '';
+  const shown = q ? list.filter(e => (e.short_name || e.code).toLowerCase().includes(q) || e.title_en.toLowerCase().includes(q)) : list;
+  $('eventToggles').innerHTML = shown.length ? shown.map(e =>
+    `<label style="font-weight:400;display:flex;gap:6px;align-items:center;font-size:13px;cursor:pointer"><input type="checkbox" class="eventCb" value="${e.code}" ${selectedEventCodes.includes(e.code) ? 'checked' : ''}>${e.title_en}</label>`
+  ).join('') : '<p class="empty">No events.</p>';
+  $('showHiddenEventsCb').checked = showHiddenEvents;
+}
+$('eventToggles').addEventListener('change', (e) => {
+  const cb = e.target.closest('.eventCb');
+  if (!cb) return;
+  if (cb.checked) { if (!selectedEventCodes.includes(cb.value)) selectedEventCodes.push(cb.value); }
+  else selectedEventCodes = selectedEventCodes.filter(c => c !== cb.value);
+  saveSelectedEvents(); render();
+});
+$('selectAllEvents').addEventListener('click', () => {
+  selectedEventCodes = visibleEventList().map(e => e.code);
+  saveSelectedEvents(); renderEventChecks(); render();
+});
+$('clearAllEvents').addEventListener('click', () => {
+  selectedEventCodes = [];
+  saveSelectedEvents(); renderEventChecks(); render();
+});
+$('showHiddenEventsCb').addEventListener('change', (e) => {
+  showHiddenEvents = e.target.checked;
+  try { localStorage.setItem(SHOW_HIDDEN_EVENTS_KEY, showHiddenEvents ? '1' : '0'); } catch (err) { }
+  renderEventFilter();
+});
 
 let all = [];
 
 async function loadData() {
   const msg = $('topMsg'); msg.className = 'msg';
   try {
+    authHeaders(); // throws before we bother loading events
+    if (!allEvents.length) await loadEvents();
     const res = await fetch(CONFIG.apiBase + '/admin/export.json?src=badges', { headers: authHeaders() });
     const data = await res.json().catch(() => ({}));
     if (!res.ok || data.ok === false) throw new Error(data.error || ('HTTP ' + res.status));
@@ -258,11 +357,10 @@ function computeBadges() {
       .sort((a, b) => a.eventCode.localeCompare(b.eventCode));
   }
 
-  const evFilter = $('fEvent').value;
   const tierFilter = $('fTier').value;
   const search = $('fSearch').value.trim().toLowerCase();
   return badges
-    .filter(b => !evFilter || b.eventCode === evFilter)
+    .filter(b => selectedEventCodes.includes(b.eventCode))
     .filter(b => !tierFilter || (tierFilter === 'both' ? ['president', 'vice_president'].includes(b.tier) : b.tier === tierFilter))
     .filter(b => !search || b.name.toLowerCase().includes(search) || b.org.toLowerCase().includes(search))
     .sort((a, b) => a.name.localeCompare(b.name) || a.eventCode.localeCompare(b.eventCode));
@@ -361,7 +459,6 @@ async function exportPngs() {
 }
 
 $('load').addEventListener('click', loadData);
-$('fEvent').addEventListener('change', render);
 $('fTier').addEventListener('change', render);
 $('fSearch').addEventListener('input', render);
 $('selectAll').addEventListener('click', () => document.querySelectorAll('.pick').forEach(c => c.checked = true));
