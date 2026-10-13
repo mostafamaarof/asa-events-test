@@ -85,13 +85,8 @@ td.code{font-family:var(--f-num)}
     <div class="grid">
       <div class="f wide">
         <label>Event(s) <span class="req">*</span></label>
-        <div style="display:flex;gap:20px;flex-wrap:wrap">
-          <label class="choice"><input type="checkbox" class="eventCb" value="WGITA-35-2026"> 35th WGITA Annual Meeting (closed)</label>
-          <label class="choice"><input type="checkbox" class="eventCb" value="KSC-SC18-2026"> 18th KSC Steering Committee (closed)</label>
-          <label class="choice"><input type="checkbox" class="eventCb" value="TG-42-2026" checked> 42nd Technical Group Meeting</label>
-          <label class="choice"><input type="checkbox" class="eventCb" value="UNPEA-66-2026"> 66th UN Panel of External Auditors</label>
-        </div>
-        <span class="hint">Check both to generate one code that covers both events — the invitee registers once and gets a separate submission per event.</span>
+        <div id="eventCbWrap" style="display:flex;gap:20px;flex-wrap:wrap"><span class="hint">Enter the admin token and load this page to see the current events.</span></div>
+        <span class="hint">Check more than one to generate one code that covers several events — the invitee registers once and gets a separate submission per event.</span>
       </div>
       <div class="f">
         <label for="org">Organization / invitee <span class="req">*</span></label>
@@ -161,6 +156,7 @@ function showMsg(el, text, ok) {
   el.textContent = text;
   el.className = 'msg ' + (ok ? 'ok' : 'err');
 }
+function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c])); }
 
 async function callApi(path, opts) {
   const token = tokenInput.value.trim();
@@ -172,6 +168,26 @@ async function callApi(path, opts) {
   const data = await res.json().catch(() => ({}));
   if (!res.ok || data.ok === false) throw new Error(data.error || ('HTTP ' + res.status));
   return data;
+}
+
+/* The event checkbox list is built from GET /admin/events, not hardcoded
+   -- adding a future event to the events table needs no change here. Shows
+   every event (even hidden/closed ones) since this is a one-off admin
+   action, not a report: occasionally re-issuing a code for an event no
+   longer in the regular report filters is a deliberate, explicit choice. */
+async function loadEventCheckboxes() {
+  const wrap = $('eventCbWrap');
+  try {
+    const data = await callApi('/admin/events', { method: 'GET' });
+    const events = data.events || [];
+    if (!events.length) { wrap.innerHTML = '<span class="hint">No events found. Create one on the Event Management page first.</span>'; return; }
+    wrap.innerHTML = events.map(e => {
+      const label = esc(e.short_name || e.code) + (e.registration_open ? '' : ' (registration closed)');
+      return `<label class="choice"><input type="checkbox" class="eventCb" value="${esc(e.code)}">${label}</label>`;
+    }).join('');
+  } catch (e) {
+    wrap.innerHTML = `<span class="hint">Could not load events: ${e.message}</span>`;
+  }
 }
 
 $('generate').addEventListener('click', async () => {
@@ -236,7 +252,7 @@ async function loadList() {
 }
 
 $('refresh').addEventListener('click', loadList);
-if (tokenInput.value) loadList();
+if (tokenInput.value) { loadList(); loadEventCheckboxes(); }
 </script>
 </body>
 </html>
