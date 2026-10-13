@@ -7,13 +7,17 @@ import { connect } from 'cloudflare:sockets';
                                     token immediately — no email-ownership
                                     check (an invitation may cover more than
                                     one event; returns event_codes it
-                                    currently unlocks, not tied to one event)
+                                    currently unlocks, not tied to one event).
+                                    Also returns events[] -- the full events-table row (title/short_name/
+                                    venue, both languages, dates/blurb) for each unlocked event, so the
+                                    public form never needs its own hardcoded event registry.
      POST /v1/registrations        store the submission as under_review — one
                                     row per person, covering every event_code
                                     in event_codes[] they selected
      POST /v1/registrations/edit-link   email a 30-day self-service edit link
                                     for a (reference, email) pair, if it matches
-     POST /v1/registrations/edit-fetch  return one registration's data (reference + token)
+     POST /v1/registrations/edit-fetch  return one registration's data (reference + token), plus the
+                                    same events[] shape as invitations/verify for its event_codes
      POST /v1/registrations/edit        update it in place (reference + token)
      POST /v1/registrations/edit-delete let the registrant permanently withdraw their own registration
                                     (reference + token) -- same edit link as the two above, but rejects
@@ -377,9 +381,14 @@ async function verifyInvitation(req, env, ch, ipHash) {
   if (inv.expires_at && Date.parse(inv.expires_at + 'T23:59:59Z') < Date.now()) { await auditError(env, 'invitation_verify', 'code_expired', code, ipHash); return fail('invalid_code', 400, ch); }
   if (inv.max_uses !== null && inv.used_count >= inv.max_uses) { await auditError(env, 'invitation_verify', 'code_exhausted', code, ipHash); return fail('invalid_code', 400, ch); }
 
-  /* A code can cover more than one event; only offer the ones still open. */
+  /* A code can cover more than one event; only offer the ones still open.
+     Selects everything the public registration form needs to display this
+     event (title/short name/venue/blurb, both languages) directly, so the
+     client never needs its own hardcoded event registry -- see `events` in
+     the response below. */
   const { results: coveredEvents } = await env.DB.prepare(
-    `SELECT e.code, e.title_en, e.title_ar, e.registration_closes_at
+    `SELECT e.code, e.title_en, e.title_ar, e.short_name, e.venue, e.venue_ar, e.blurb_en, e.blurb_ar,
+            e.start_date, e.end_date, e.registration_closes_at
      FROM invitation_events ie JOIN events e ON e.code = ie.event_code
      WHERE ie.invitation_id = ? AND e.is_active = 1`).bind(inv.invitation_id).all();
   const openEvents = coveredEvents.filter(e => !e.registration_closes_at || Date.parse(e.registration_closes_at) >= Date.now());
@@ -399,7 +408,8 @@ async function verifyInvitation(req, env, ch, ipHash) {
   await audit(env, 'invitation_verified', 'invitation', inv.invitation_id, email, ipHash);
   return json({ ok: true, organization_name: inv.organization_name, country: inv.country,
                 allow_free_email: !!inv.allow_free_email, session,
-                invitation_id: inv.invitation_id, event_codes: openEvents.map(e => e.code) }, 200, ch);
+                invitation_id: inv.invitation_id, event_codes: openEvents.map(e => e.code),
+                events: openEvents.map(({ registration_closes_at, ...e }) => e) }, 200, ch);
 }
 
 /* Shared by create and edit: the rules the browser already checked, re-checked here. */
@@ -631,6 +641,19 @@ async function eventTitles(env, eventCodesStr) {
   return { codes, titlesEn: results.map(e => e.title_en).join(' & ') || codes.join(', ') };
 }
 
+/* The exact shape the public registration form needs per event (title/short
+   name/venue/blurb, both languages, plus raw dates it formats itself) --
+   shared by verifyInvitation (inlined into its own join query) and
+   fetchForEdit here, so there's one place, not two, that could drift from
+   what the events table actually holds. */
+async function publicEventsForCodes(env, codes) {
+  if (!codes.length) return [];
+  const { results } = await env.DB.prepare(
+    `SELECT code, title_en, title_ar, short_name, venue, venue_ar, blurb_en, blurb_ar, start_date, end_date
+     FROM events WHERE code IN (${codes.map(() => '?').join(',')})`).bind(...codes).all();
+  return results;
+}
+
 async function fetchForEdit(req, env, ch, ipHash) {
   const b = await req.json().catch(() => ({}));
   const reference = String(b.reference || '').trim().toUpperCase();
@@ -639,7 +662,8 @@ async function fetchForEdit(req, env, ch, ipHash) {
   const reg = await env.DB.prepare('SELECT * FROM registrations WHERE reference = ? AND registration_id = ?')
     .bind(reference, t.r).first();
   if (!reg) { await auditError(env, 'edit_fetch', 'invalid_edit_link', reference, ipHash); return fail('invalid_edit_link', 401, ch); }
-  return json({ ok: true, reference: reg.reference, event_codes: (reg.event_codes || '').split(',').filter(Boolean), status: reg.status,
+  const codes = (reg.event_codes || '').split(',').filter(Boolean);
+  return json({ ok: true, reference: reg.reference, event_codes: codes, events: await publicEventsForCodes(env, codes), status: reg.status,
     registration: JSON.parse(reg.data_json || '{}'), consents: JSON.parse(reg.consents_json || '{}') }, 200, ch);
 }
 
@@ -1574,7 +1598,7 @@ async function adminCreateInvitation(req, env, ch, access, ipHash, actor) {
 async function adminListEvents(req, env, ch, access) {
   if (!hasScope(access, ...ALL_SCOPES)) return fail('unauthorized', 401, ch);
   const { results } = await env.DB.prepare(
-    `SELECT code, title_en, title_ar, short_name, city, country, venue, logo_path,
+    `SELECT code, title_en, title_ar, short_name, city, country, venue, venue_ar, logo_path, blurb_en, blurb_ar,
             start_date, end_date, registration_closes_at, visible_in_reports, display_order,
             is_active, created_at, updated_at
      FROM events ORDER BY display_order IS NULL, display_order, start_date`).all();
@@ -1609,12 +1633,13 @@ async function adminCreateEvent(req, env, ch, access, ipHash, actor) {
 
   const now = new Date().toISOString();
   await env.DB.prepare(
-    `INSERT INTO events (code, title_en, title_ar, short_name, city, country, venue, logo_path,
-       start_date, end_date, registration_closes_at, visible_in_reports, display_order, is_active, created_at, updated_at)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,?)`)
+    `INSERT INTO events (code, title_en, title_ar, short_name, city, country, venue, venue_ar, logo_path,
+       blurb_en, blurb_ar, start_date, end_date, registration_closes_at, visible_in_reports, display_order,
+       is_active, created_at, updated_at)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,?)`)
     .bind(code, titleEn, titleAr, b.short_name || null, b.city || null, b.country || null, b.venue || null,
-      b.logo_path || null, startDate, endDate, b.registration_closes_at || null,
-      b.visible_in_reports === false ? 0 : 1, displayOrder, now, now).run();
+      b.venue_ar || null, b.logo_path || null, b.blurb_en || null, b.blurb_ar || null, startDate, endDate,
+      b.registration_closes_at || null, b.visible_in_reports === false ? 0 : 1, displayOrder, now, now).run();
 
   await audit(env, 'event_created', 'event', code, `${code}: ${titleEn}`, ipHash, actor);
   await notifyTelegram(env, `🗓️ <b>Event created</b>\n${esc(titleEn)} (${esc(code)})${actor ? `\nby ${esc(actor)}` : ''}`);
@@ -1643,7 +1668,10 @@ async function adminUpdateEvent(req, env, ch, access, ipHash, actor) {
   setIf('city', b.city);
   setIf('country', b.country);
   setIf('venue', b.venue);
+  setIf('venue_ar', b.venue_ar);
   setIf('logo_path', b.logo_path);
+  setIf('blurb_en', b.blurb_en);
+  setIf('blurb_ar', b.blurb_ar);
   setIf('start_date', b.start_date);
   setIf('end_date', b.end_date);
   if (b.display_order !== undefined) {

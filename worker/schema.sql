@@ -29,8 +29,12 @@ CREATE TABLE events (
   short_name             TEXT,
   city                   TEXT,
   country                TEXT,
-  venue                  TEXT,
+  venue                  TEXT,    -- specific place (e.g. a hotel name), not just city -- used by the
+  venue_ar               TEXT,    -- confirmation email, badges/certificates, AND the public registration
+                                   -- form's masthead alike, so this is the one place it's ever written
   logo_path              TEXT, -- filename under register/, e.g. 'asa-logo.jpg'
+  blurb_en               TEXT, -- optional multi-line description shown on the events-picker screen when
+  blurb_ar               TEXT, -- an invitation covers more than one event; blank is fine, just shows nothing extra
   start_date             TEXT NOT NULL,
   end_date               TEXT NOT NULL,
   registration_closes_at TEXT, -- NULL/future = open; past = closed (see note above)
@@ -165,11 +169,13 @@ CREATE TABLE audit_log (
   created_at TEXT NOT NULL
 );
 
-INSERT INTO events (code, title_en, title_ar, short_name, city, country, venue, logo_path, start_date, end_date, registration_closes_at, visible_in_reports, display_order, created_at, updated_at) VALUES
- ('WGITA-35-2026','INTOSAI Working Group on IT Audit','فريق عمل الإنتوساي المعني بتدقيق تكنولوجيا المعلومات','WGITA','Cairo','Arab Republic of Egypt','Steigenberger Pyramids Cairo Hotel, Giza','wgita-logo.jpg','2026-09-28','2026-09-29','2026-10-13T00:00:00+02:00',1,1,'2026-10-13T18:00:00Z','2026-10-13T18:00:00Z'),
- ('KSC-SC18-2026','KSC Steering Committee Meeting','اجتماع اللجنة التوجيهية لـ KSC','KSC','Cairo','Arab Republic of Egypt','Steigenberger Pyramids Cairo Hotel, Giza','intosai-logo.png','2026-09-30','2026-09-30','2026-10-13T00:00:00+02:00',1,2,'2026-10-13T18:00:00Z','2026-10-13T18:00:00Z'),
- ('TG-42-2026','Forty-second (2026) Meeting of the Technical Group','الاجتماع الثاني والأربعون (2026) للفريق الفني','TG','Luxor','Arab Republic of Egypt','Luxor, Arab Republic of Egypt','asa-logo.jpg','2026-12-02','2026-12-04','2026-12-01T23:59:00+02:00',1,3,'2026-10-13T18:00:00Z','2026-10-13T18:00:00Z'),
- ('UNPEA-66-2026','Sixty-sixth (2026) Regular Session of the UN Panel of External Auditors','الدورة العادية السادسة والستون (2026) للجنة المراجعين الخارجيين للأمم المتحدة','UNPEA','Luxor','Arab Republic of Egypt','Luxor, Arab Republic of Egypt','asa-logo.jpg','2026-12-07','2026-12-08','2026-12-01T23:59:00+02:00',1,4,'2026-10-13T18:00:00Z','2026-10-13T18:00:00Z');
+-- blurb_en/blurb_ar are deliberately left NULL here (optional, free-form --
+-- add them later via the admin/events/ page or POST /v1/admin/events/update).
+INSERT INTO events (code, title_en, title_ar, short_name, city, country, venue, venue_ar, logo_path, start_date, end_date, registration_closes_at, visible_in_reports, display_order, created_at, updated_at) VALUES
+ ('WGITA-35-2026','INTOSAI Working Group on IT Audit','فريق عمل الإنتوساي المعني بتدقيق تكنولوجيا المعلومات','WGITA','Cairo','Arab Republic of Egypt','Steigenberger Pyramids Cairo Hotel, Giza','فندق ستيجنبرجر بيراميدز كايرو، الجيزة','wgita-logo.jpg','2026-09-28','2026-09-29','2026-10-13T00:00:00+02:00',1,1,'2026-10-13T18:00:00Z','2026-10-13T18:00:00Z'),
+ ('KSC-SC18-2026','KSC Steering Committee Meeting','اجتماع اللجنة التوجيهية لـ KSC','KSC','Cairo','Arab Republic of Egypt','Steigenberger Pyramids Cairo Hotel, Giza','فندق ستيجنبرجر بيراميدز كايرو، الجيزة','intosai-logo.png','2026-09-30','2026-09-30','2026-10-13T00:00:00+02:00',1,2,'2026-10-13T18:00:00Z','2026-10-13T18:00:00Z'),
+ ('TG-42-2026','Forty-second (2026) Meeting of the Technical Group','الاجتماع الثاني والأربعون (2026) للفريق الفني','TG','Luxor','Arab Republic of Egypt','Luxor, Arab Republic of Egypt','الأقصر، جمهورية مصر العربية','asa-logo.jpg','2026-12-02','2026-12-04','2026-12-01T23:59:00+02:00',1,3,'2026-10-13T18:00:00Z','2026-10-13T18:00:00Z'),
+ ('UNPEA-66-2026','Sixty-sixth (2026) Regular Session of the UN Panel of External Auditors','الدورة العادية السادسة والستون (2026) للجنة المراجعين الخارجيين للأمم المتحدة','UNPEA','Luxor','Arab Republic of Egypt','Luxor, Arab Republic of Egypt','الأقصر، جمهورية مصر العربية','asa-logo.jpg','2026-12-07','2026-12-08','2026-12-01T23:59:00+02:00',1,4,'2026-10-13T18:00:00Z','2026-10-13T18:00:00Z');
 
 -- Three invitations so the public test link works out of the box.
 INSERT INTO invitations (invitation_id, event_code, code, organization_name, country, org_type, liaison_email, max_uses, allow_free_email, expires_at, is_active) VALUES

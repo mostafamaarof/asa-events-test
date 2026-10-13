@@ -18,61 +18,40 @@ const CONFIG = {
   supportEmail: 'asa.eg.events@gmail.com'
 };
 
-/* Event registry. Add an entry per event; nothing else needs to change. */
-const EVENTS = {
-  'WGITA-35-2026': {
-    code: 'WGITA-35-2026',
-    title: { en: '35th Annual Meeting of INTOSAI Working Group on IT Audit', ar: 'الاجتماع السنوي الخامس والثلاثون لفريق عمل الإنتوساي المعني بتدقيق تكنولوجيا المعلومات' },
-    short: { en: 'WGITA 2026', ar: 'WGITA 2026' },
-    dates: { en: '28–29 September 2026', ar: '28 – 29 سبتمبر 2026' },
-    blurb: {
-      en: '28 September: 35th Annual Meeting of INTOSAI Working Group on IT Audit.\n29 September: INTOSAI WGITA Seminar — Operationalizing & Scaling AI across SAIs – From Pilot to Practice.',
-      ar: '28 سبتمبر: الاجتماع السنوي الخامس والثلاثون لفريق عمل الإنتوساي المعني بتدقيق تكنولوجيا المعلومات.\n29 سبتمبر: ندوة WGITA للإنتوساي — تفعيل وتوسيع نطاق الذكاء الاصطناعي في الأجهزة الرقابية العليا: من التجربة إلى التطبيق.'
-    },
-    startDate: '2026-09-28', endDate: '2026-09-29',
-    venue: { en: 'Cairo, Arab Republic of Egypt', ar: 'القاهرة، جمهورية مصر العربية' },
-    closesAt: '2026-09-21T23:59:00+02:00'
-  },
-  'KSC-SC18-2026': {
-    code: 'KSC-SC18-2026',
-    title: { en: '18th KSC Steering Committee Meeting', ar: 'الاجتماع الثامن عشر للجنة التوجيهية لـ KSC' },
-    short: { en: 'KSC SC 2026', ar: 'KSC SC 2026' },
-    dates: { en: '30 September 2026', ar: '30 سبتمبر 2026' },
-    blurb: {
-      en: '18th KSC Steering Committee Meeting — the KSC meeting takes place as a distinct event on the final day of the Cairo programme.',
-      ar: 'الاجتماع الثامن عشر للجنة التوجيهية لـ KSC — يُعقد اجتماع KSC كحدث مستقل في اليوم الأخير من برنامج القاهرة.'
-    },
-    startDate: '2026-09-30', endDate: '2026-09-30',
-    venue: { en: 'Cairo, Arab Republic of Egypt', ar: 'القاهرة، جمهورية مصر العربية' },
-    closesAt: '2026-09-21T23:59:00+02:00'
-  },
-  'TG-42-2026': {
-    code: 'TG-42-2026',
-    title: { en: 'Forty-second (2026) Meeting of the Technical Group', ar: 'الاجتماع الثاني والأربعون (2026) للفريق الفني' },
-    short: { en: 'TG 2026', ar: 'TG 2026' },
-    dates: { en: '2–4 December 2026', ar: '2 – 4 ديسمبر 2026' },
-    blurb: {
-      en: 'Forty-second (2026) Meeting of the Technical Group, hosted by the Accountability State Authority in Luxor.',
-      ar: 'الاجتماع الثاني والأربعون (2026) للفريق الفني، يستضيفه الجهاز المركزي للمحاسبات في الأقصر.'
-    },
-    startDate: '2026-12-02', endDate: '2026-12-04',
-    venue: { en: 'Luxor, Arab Republic of Egypt', ar: 'الأقصر، جمهورية مصر العربية' },
-    closesAt: '2026-12-01T23:59:00+02:00'
-  },
-  'UNPEA-66-2026': {
-    code: 'UNPEA-66-2026',
-    title: { en: 'Sixty-sixth (2026) Regular Session of the UN Panel of External Auditors', ar: 'الدورة العادية السادسة والستون (2026) للجنة المراجعين الخارجيين للأمم المتحدة' },
-    short: { en: 'UNPEA 2026', ar: 'UNPEA 2026' },
-    dates: { en: '7–8 December 2026', ar: '7 – 8 ديسمبر 2026' },
-    blurb: {
-      en: 'Sixty-sixth (2026) Regular Session of the UN Panel of External Auditors, hosted by the Accountability State Authority in Luxor.',
-      ar: 'الدورة العادية السادسة والستون (2026) للجنة المراجعين الخارجيين للأمم المتحدة، يستضيفها الجهاز المركزي للمحاسبات في الأقصر.'
-    },
-    startDate: '2026-12-07', endDate: '2026-12-08',
-    venue: { en: 'Luxor, Arab Republic of Egypt', ar: 'الأقصر، جمهورية مصر العربية' },
-    closesAt: '2026-12-01T23:59:00+02:00'
-  }
-};
+/* Events come from the server now (verify/edit-fetch responses embed the
+   events-table row for each event_code they resolve), not a hardcoded
+   registry -- adding a future event to the system needs zero changes here.
+   state.knownEvents (see STATE below) accumulates whatever the server has
+   sent so far, keyed by code; toClientEvent() adapts one server row into
+   the shape the rest of this file already expects (title/short/dates/venue/
+   blurb), so every downstream renderer is untouched. */
+const MONTHS_EN = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+const MONTHS_AR = ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
+/* "D–D Month YYYY" / "D Month YYYY" for a single day -- matches the exact
+   style every event has used so far. Assumes a same-month range, true of
+   every event the system has run or has planned; a range spanning two
+   different months would need a richer formatter than this, not needed yet. */
+function formatEventDates(startDate, endDate) {
+  const s = new Date(startDate + 'T00:00:00Z'), e = new Date(endDate + 'T00:00:00Z');
+  const sD = s.getUTCDate(), eD = e.getUTCDate(), y = s.getUTCFullYear();
+  const mEn = MONTHS_EN[s.getUTCMonth()], mAr = MONTHS_AR[s.getUTCMonth()];
+  if (startDate === endDate) return { en: `${sD} ${mEn} ${y}`, ar: `${sD} ${mAr} ${y}` };
+  return { en: `${sD}–${eD} ${mEn} ${y}`, ar: `${sD} – ${eD} ${mAr} ${y}` };
+}
+function toClientEvent(se) {
+  return {
+    code: se.code,
+    title: { en: se.title_en, ar: se.title_ar },
+    short: { en: se.short_name || se.code, ar: se.short_name || se.code },
+    dates: formatEventDates(se.start_date, se.end_date),
+    blurb: { en: se.blurb_en || '', ar: se.blurb_ar || '' },
+    startDate: se.start_date, endDate: se.end_date,
+    venue: { en: se.venue || '', ar: se.venue_ar || se.venue || '' }
+  };
+}
+function mergeKnownEvents(serverEvents) {
+  (serverEvents || []).forEach(se => { state.knownEvents[se.code] = toClientEvent(se); });
+}
 
 /* Never written to the device draft. */
 const SENSITIVE = new Set([
@@ -469,6 +448,7 @@ const SCHEMA = [
    ============================================================================= */
 const state = {
   lang: 'en',
+  knownEvents: {},         // code -> client-shaped event object, accumulated from every verify/edit-fetch response
   events: [],             // Event objects the applicant is actually registering for (finalized after the picker)
   coveredEvents: [],      // event codes this invitation currently unlocks (from the server, before picking)
   selectedEventCodes: [], // checkbox state on the events-picker screen
@@ -949,15 +929,25 @@ function reportClientError(flow, code, detail) {
     }).catch(() => {});
   } catch (e) { /* telemetry must never break the real flow */ }
 }
+/* Stand-in server-shaped event rows for demo mode only (CONFIG.MOCK is
+   false in production) -- the live API's own events table is the real
+   registry; this is just enough for the mock path to keep working. */
+const MOCK_EVENTS = [
+  { code: 'DEMO-EVENT-A', title_en: 'Demo Event A', title_ar: 'الفعالية التجريبية أ', short_name: 'DEMO-A',
+    venue: 'Demo City', venue_ar: 'مدينة تجريبية', blurb_en: '', blurb_ar: '', start_date: '2026-01-01', end_date: '2026-01-01' },
+  { code: 'DEMO-EVENT-B', title_en: 'Demo Event B', title_ar: 'الفعالية التجريبية ب', short_name: 'DEMO-B',
+    venue: 'Demo City', venue_ar: 'مدينة تجريبية', blurb_en: '', blurb_ar: '', start_date: '2026-01-02', end_date: '2026-01-02' }
+];
 function mock(path, body) {
   return new Promise((res, rej) => setTimeout(() => {
     if (path === '/invitations/verify') {
       if (!RE.code.test(body.invitation_code)) return rej(new Error('invalid_code'));
       const allowFree = CONFIG.mockFreeEmailCodes.includes(body.invitation_code);
       if (FREE_MAIL.includes(domainOf(body.email)) && !allowFree) return rej(new Error('free_email_not_allowed'));
-      const eventCodes = body.invitation_code.includes('BOTH') ? Object.keys(EVENTS) : [Object.keys(EVENTS)[0]];
+      const events = body.invitation_code.includes('BOTH') ? MOCK_EVENTS : [MOCK_EVENTS[0]];
       return res({ ok: true, organization_name: 'Office of the Auditor-General', country: 'KE',
-                   allow_free_email: allowFree, session: 'mock-session', invitation_id: 'mock-inv', event_codes: eventCodes });
+                   allow_free_email: allowFree, session: 'mock-session', invitation_id: 'mock-inv',
+                   event_codes: events.map(e => e.code), events });
     }
     if (path === '/registrations') {
       return res({ ok: true, status: 'approved', reference: 'SUB-' + Math.random().toString(36).slice(2, 8).toUpperCase(),
@@ -965,11 +955,12 @@ function mock(path, body) {
     }
     if (path === '/registrations/edit-link') return res({ ok: true });
     if (path === '/registrations/edit-fetch') {
-      return body.token === 'mock-token' ? res({ ok: true, event_codes: [Object.keys(EVENTS)[0]], status: 'under_review', registration: {}, consents: {} })
-                                          : rej(new Error('invalid_edit_link'));
+      return body.token === 'mock-token'
+        ? res({ ok: true, event_codes: [MOCK_EVENTS[0].code], events: [MOCK_EVENTS[0]], status: 'under_review', registration: {}, consents: {} })
+        : rej(new Error('invalid_edit_link'));
     }
     if (path === '/registrations/edit') {
-      return body.token === 'mock-token' ? res({ ok: true, status: 'under_review', reference: body.reference, event_codes: [Object.keys(EVENTS)[0]] })
+      return body.token === 'mock-token' ? res({ ok: true, status: 'under_review', reference: body.reference, event_codes: [MOCK_EVENTS[0].code] })
                                           : rej(new Error('invalid_edit_link'));
     }
     if (path === '/registrations/edit-delete') {
@@ -1176,12 +1167,13 @@ async function submitGate(btn) {
     state.data.email = m;
     state.session = r.session || '';
     state.invitationId = r.invitation_id || '';
+    mergeKnownEvents(r.events);
     state.coveredEvents = r.event_codes || [];
     state.selectedEventCodes = [...state.coveredEvents];
     if (state.coveredEvents.length > 1) {
       state.screen = 'events'; state.errors = {}; render(); window.scrollTo(0, 0);
     } else {
-      state.events = state.coveredEvents.map(c => EVENTS[c]).filter(Boolean);
+      state.events = state.coveredEvents.map(c => state.knownEvents[c]).filter(Boolean);
       proceedToForm();
     }
   } catch (err) {
@@ -1206,7 +1198,7 @@ function renderEventsPick() {
   const err = state.errors.events;
   const wrap = el('div', { class: 'choices' });
   state.coveredEvents.forEach(code => {
-    const ev = EVENTS[code]; if (!ev) return;
+    const ev = state.knownEvents[code]; if (!ev) return;
     const checked = state.selectedEventCodes.includes(code);
     const cb = el('input', { type: 'checkbox', checked });
     cb.addEventListener('change', () => {
@@ -1229,7 +1221,7 @@ function renderEventsPick() {
 }
 function confirmEventsPick() {
   if (!state.selectedEventCodes.length) { state.errors = { events: T('errNoEvents') }; reportClientError('events_pick', 'no_events_selected'); renderEventsPick(); return; }
-  state.events = state.selectedEventCodes.map(c => EVENTS[c]).filter(Boolean);
+  state.events = state.selectedEventCodes.map(c => state.knownEvents[c]).filter(Boolean);
   proceedToForm();
 }
 function proceedToForm() {
@@ -1393,7 +1385,7 @@ function renderDone() {
       : 'A confirmation with your registration number has been sent to your email.');
   const b = body();
   b.append(el('div', { class: 'stamp' }, state.lang === 'ar' ? 'مؤكَّد' : 'Confirmed'));
-  const eventNames = (state.confirmedEvents || []).map(c => EVENTS[c] ? L(EVENTS[c].short) : c).join(state.lang === 'ar' ? '، ' : ', ');
+  const eventNames = (state.confirmedEvents || []).map(c => state.knownEvents[c] ? L(state.knownEvents[c].short) : c).join(state.lang === 'ar' ? '، ' : ', ');
   if (state.registrationNumber) b.append(el('p', { style: 'margin-top:20px;font-size:20px;font-weight:600;letter-spacing:.04em' }, state.registrationNumber));
   if (state.reference) b.append(el('p', { style: 'margin-top:8px' },
     (state.lang === 'ar' ? 'الرقم المرجعي: ' : 'Reference: '), el('b', {}, state.reference),
@@ -1446,7 +1438,8 @@ async function loadForEdit(reference, token) {
   try {
     const r = await call('/registrations/edit-fetch', { reference, token });
     state.editMode = { reference, token };
-    state.events = (r.event_codes || []).map(c => EVENTS[c]).filter(Boolean);
+    mergeKnownEvents(r.events);
+    state.events = (r.event_codes || []).map(c => state.knownEvents[c]).filter(Boolean);
     Object.assign(state.data, r.registration);
     for (const [k, c] of Object.entries(r.consents || {})) state.data[k] = !!c.value;
     state.screen = 'review'; render(); window.scrollTo(0, 0);
