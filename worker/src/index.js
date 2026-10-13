@@ -755,18 +755,30 @@ async function deleteOwnRegistration(req, env, ch, ipHash) {
   return json({ ok: true, reference: reg.reference }, 200, ch);
 }
 
+/* Optional ?events=CODE1,CODE2 SQL-side filter, shared by every admin
+   endpoint that lists registrations (adminRead, adminExportFull) --
+   filters in SQL rather than loading everything and filtering in JS.
+   event_codes is a comma-joined TEXT column (not a junction table), so
+   each requested code is matched with a bounded, false-positive-safe LIKE
+   against ",event_codes," rather than a plain substring LIKE (which could
+   match e.g. "TG-42-2026" inside some future "TG-42-2026-B"). Returns a
+   ready-to-splice `where` clause (empty string if no filter requested) and
+   the positional binds for it, in the same order the clause's `?`s need. */
+function eventsFilterClause(req) {
+  const codes = (new URL(req.url).searchParams.get('events') || '').split(',').map(s => s.trim()).filter(Boolean);
+  const where = codes.length
+    ? 'WHERE ' + codes.map(() => `(',' || event_codes || ',') LIKE ('%,' || ? || ',%')`).join(' OR ')
+    : '';
+  return { where, binds: codes };
+}
+
 async function adminRead(req, env, ch, csv, access) {
   if (!hasScope(access, 'registrations')) return fail('unauthorized', 401, ch);
-  /* Same optional ?events=CODE1,CODE2 SQL-side filter as adminExportFull --
-     see the comment there for why a bounded LIKE rather than a plain one. */
-  const eventsParam = (new URL(req.url).searchParams.get('events') || '').split(',').map(s => s.trim()).filter(Boolean);
-  const where = eventsParam.length
-    ? 'WHERE ' + eventsParam.map(() => `(',' || event_codes || ',') LIKE ('%,' || ? || ',%')`).join(' OR ')
-    : '';
+  const { where, binds } = eventsFilterClause(req);
   const { results } = await env.DB.prepare(
     `SELECT reference, registration_number, created_at, status, event_codes, full_name, email, organization_name, country,
             attendance_mode, role_in_delegation, participant_tier, visa_letter_needed, flag_personal_email, flag_org_mismatch
-     FROM registrations ${where} ORDER BY created_at DESC LIMIT 500`).bind(...eventsParam).all();
+     FROM registrations ${where} ORDER BY created_at DESC LIMIT 500`).bind(...binds).all();
   if (!csv) return json({ ok: true, count: results.length, registrations: results }, 200, ch);
   const cols = Object.keys(results[0] || { reference: '' });
   const esc = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
@@ -1222,23 +1234,13 @@ async function adminExportFull(req, env, ch, access, ipHash) {
   const isFullAdmin = access.tier === 'admin';
   const url = new URL(req.url);
   await logReportAccess(env, access, url.searchParams.get('src'), ipHash);
-  /* Optional ?events=CODE1,CODE2 -- every report page's event-filter widget
-     passes the selected codes here so filtering happens in SQL, not by
-     loading all 1000 rows into JS. event_codes is a comma-joined TEXT
-     column (not a junction table), so each requested code is matched with a
-     bounded, false-positive-safe LIKE against ",event_codes," rather than a
-     plain substring LIKE (which could match e.g. "TG-42-2026" inside some
-     future "TG-42-2026-B"). */
-  const eventsParam = (url.searchParams.get('events') || '').split(',').map(s => s.trim()).filter(Boolean);
-  const where = eventsParam.length
-    ? 'WHERE ' + eventsParam.map(() => `(',' || event_codes || ',') LIKE ('%,' || ? || ',%')`).join(' OR ')
-    : '';
+  const { where, binds } = eventsFilterClause(req);
   const { results } = await env.DB.prepare(
     `SELECT registration_id, reference, registration_number, created_at, status, event_codes, invitation_id, email, full_name,
             organization_name, country, attendance_mode, role_in_delegation, participant_tier, presentation_track, presentation_order,
             visa_letter_needed, flag_personal_email, flag_org_mismatch, fill_seconds, locale, reminder_sent_at, reminder_categories,
             data_json, consents_json
-     FROM registrations ${where} ORDER BY created_at DESC LIMIT 1000`).bind(...eventsParam).all();
+     FROM registrations ${where} ORDER BY created_at DESC LIMIT 1000`).bind(...binds).all();
   const registrations = results.map(r => {
     const data = JSON.parse(r.data_json || '{}');
     if (!isFullAdmin) SENSITIVE_WELFARE_FIELDS.forEach(f => delete data[f]);

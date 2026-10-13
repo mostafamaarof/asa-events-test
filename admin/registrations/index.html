@@ -505,10 +505,21 @@ $('fStatus').addEventListener('change', render);
 $('fTier').addEventListener('change', render);
 $('fSearch').addEventListener('input', render);
 
+/* All three export buttons below respect the same ticked Events selection
+   as the table above (the server does the filtering, same ?events= param
+   as loadData) -- exporting "everything" while the on-screen data and its
+   own hint claim "only the ticked events" would be a confusing mismatch. */
+async function eventsQuery() {
+  authHeaders(); // throws before we bother loading events
+  if (!allEvents.length) await loadEvents();
+  if (!selectedEventCodes.length) throw new Error('Tick at least one event first.');
+  return '?events=' + encodeURIComponent(selectedEventCodes.join(','));
+}
+
 $('exportCsv').addEventListener('click', async () => {
   const msg = $('topMsg'); msg.className = 'msg';
   try {
-    const res = await fetch(CONFIG.apiBase + '/admin/export.csv', { headers: authHeaders() });
+    const res = await fetch(CONFIG.apiBase + '/admin/export.csv' + (await eventsQuery()), { headers: authHeaders() });
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const blob = await res.blob();
     const url = URL.createObjectURL(blob);
@@ -572,7 +583,7 @@ function downloadText(text, filename, mime) {
 $('exportFullCsv').addEventListener('click', async () => {
   const msg = $('topMsg'); msg.className = 'msg';
   try {
-    const res = await fetch(CONFIG.apiBase + '/admin/export.json', { headers: authHeaders() });
+    const res = await fetch(CONFIG.apiBase + '/admin/export.json' + (await eventsQuery()), { headers: authHeaders() });
     const data = await res.json().catch(() => ({}));
     if (!res.ok || data.ok === false) throw new Error(data.error || ('HTTP ' + res.status));
     downloadText(fullExportToCsv(data), 'registrations-full.csv', 'text/csv; charset=utf-8');
@@ -584,7 +595,7 @@ $('exportFullCsv').addEventListener('click', async () => {
 $('exportJson').addEventListener('click', async () => {
   const msg = $('topMsg'); msg.className = 'msg';
   try {
-    const res = await fetch(CONFIG.apiBase + '/admin/export.json', { headers: authHeaders() });
+    const res = await fetch(CONFIG.apiBase + '/admin/export.json' + (await eventsQuery()), { headers: authHeaders() });
     const data = await res.json().catch(() => ({}));
     if (!res.ok || data.ok === false) throw new Error(data.error || ('HTTP ' + res.status));
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
