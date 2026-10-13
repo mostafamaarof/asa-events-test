@@ -285,7 +285,7 @@ const SCHEMA = [
     { k: 'email', t: 'email', req: true, ro: true, l: { en: 'Email', ar: 'البريد الإلكتروني' }, hint: { en: 'Verified at the start. Contact the secretariat to change it.', ar: 'تم التحقق منه في البداية. راسل الأمانة لتغييره.' } },
     { k: 'alt_email', t: 'email', l: { en: 'Alternative email', ar: 'بريد إلكتروني بديل' } },
     { k: 'mobile', t: 'tel', req: true, rule: 'phone', l: { en: 'Mobile, with country code', ar: 'المحمول مع رمز الدولة' }, ph: '+20 100 000 0000' },
-    { k: 'whatsapp_same', t: 'check', l: { en: 'This number is also on WhatsApp', ar: 'هذا الرقم متاح على واتساب' }, hint: { en: 'The secretariat runs a WhatsApp group for on-the-ground coordination.', ar: 'تدير الأمانة مجموعة واتساب للتنسيق الميداني.' } },
+    { k: 'whatsapp_same', t: 'check', l: { en: 'This number is also on WhatsApp', ar: 'هذا الرقم متاح على واتساب' } },
     { k: 'whatsapp_number', t: 'tel', rule: 'phone', showIf: (d) => !d.whatsapp_same, l: { en: 'WhatsApp number', ar: 'رقم واتساب' } },
     { k: 'correspondence_language', t: 'select', opts: OPT.corrLang, l: { en: 'Language for correspondence', ar: 'لغة المراسلات' } }
   ]
@@ -447,7 +447,7 @@ const SCHEMA = [
   desc: { en: 'Headcounts are given to the venue and the caterer a week in advance, so an accurate answer here matters more than it looks.', ar: 'تُسلَّم الأعداد للمقر ومتعهد الضيافة قبل أسبوع، فدقة الإجابة هنا أهم مما تبدو.' },
   showIf: inPerson,
   fields: [
-    { k: 'social_program_attending', t: 'radio', req: true, wide: true, opts: OPT.yesno, l: { en: 'Will you join the social programme — the Grand Egyptian Museum visit and the official dinner, on 29 September 2026?', ar: 'هل ستحضر البرنامج الاجتماعي — زيارة المتحف المصري الكبير والعشاء الرسمي، يوم 29 سبتمبر 2026؟' } }
+    { k: 'social_program_attending', t: 'radio', req: true, wide: true, opts: OPT.yesno, l: { en: 'Will you join the social programme organised alongside this event?', ar: 'هل ستحضر البرنامج الاجتماعي المصاحب لهذا الحدث؟' } }
   ]
 },
 
