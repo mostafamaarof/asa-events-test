@@ -757,10 +757,16 @@ async function deleteOwnRegistration(req, env, ch, ipHash) {
 
 async function adminRead(req, env, ch, csv, access) {
   if (!hasScope(access, 'registrations')) return fail('unauthorized', 401, ch);
+  /* Same optional ?events=CODE1,CODE2 SQL-side filter as adminExportFull --
+     see the comment there for why a bounded LIKE rather than a plain one. */
+  const eventsParam = (new URL(req.url).searchParams.get('events') || '').split(',').map(s => s.trim()).filter(Boolean);
+  const where = eventsParam.length
+    ? 'WHERE ' + eventsParam.map(() => `(',' || event_codes || ',') LIKE ('%,' || ? || ',%')`).join(' OR ')
+    : '';
   const { results } = await env.DB.prepare(
     `SELECT reference, registration_number, created_at, status, event_codes, full_name, email, organization_name, country,
             attendance_mode, role_in_delegation, participant_tier, visa_letter_needed, flag_personal_email, flag_org_mismatch
-     FROM registrations ORDER BY created_at DESC LIMIT 500`).all();
+     FROM registrations ${where} ORDER BY created_at DESC LIMIT 500`).bind(...eventsParam).all();
   if (!csv) return json({ ok: true, count: results.length, registrations: results }, 200, ch);
   const cols = Object.keys(results[0] || { reference: '' });
   const esc = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;

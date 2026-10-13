@@ -96,19 +96,19 @@ td.ref{font-family:var(--f-num)}
   </div>
 
   <div class="card">
-    <h2>Summary</h2>
-    <div class="filters">
-      <div class="f">
-        <label for="fEvent">Event</label>
-        <select id="fEvent">
-          <option value="">All events</option>
-          <option value="WGITA-35-2026">35th WGITA Annual Meeting</option>
-          <option value="KSC-SC18-2026">18th KSC Steering Committee</option>
-          <option value="TG-42-2026">42nd Technical Group Meeting</option>
-          <option value="UNPEA-66-2026">66th UN Panel of External Auditors</option>
-        </select>
-      </div>
+    <h2>Events</h2>
+    <p class="hint" style="margin-bottom:12px">Only data for the ticked events is loaded. Remembered on this device — click "Load registrations" again after changing this.</p>
+    <div id="eventFilterSearchWrap"></div>
+    <div id="eventToggles" style="display:flex;flex-wrap:wrap;gap:6px 16px"></div>
+    <div class="actions" style="margin-top:12px">
+      <button class="ghost" id="selectAllEvents" style="height:30px;padding:0 14px;font-size:13px">Select all</button>
+      <button class="ghost" id="clearAllEvents" style="height:30px;padding:0 14px;font-size:13px">Clear all</button>
+      <label style="font-weight:400;display:flex;gap:6px;align-items:center;font-size:13px;cursor:pointer"><input type="checkbox" id="showHiddenEventsCb">Show hidden events</label>
     </div>
+  </div>
+
+  <div class="card">
+    <h2>Summary</h2>
     <div class="tiles" id="tiles"><p class="empty">Load registrations to see the summary.</p></div>
   </div>
 
@@ -215,10 +215,82 @@ async function apiFetch(path, opts) {
   return data;
 }
 
+/* ---------------------------------------------------------------------------
+   Event filter. Same localStorage keys every admin page's copy of this
+   widget uses, so a selection made here carries over to other report pages.
+   Drives which rows the server returns (?events=... on /admin/registrations,
+   filtered in SQL) -- adding a future event to the events table needs no
+   change on this page. */
+const EVENTS_KEY = 'asa_selected_events';
+const SHOW_HIDDEN_EVENTS_KEY = 'asa_show_hidden_events';
+let allEvents = [];
+let selectedEventCodes = [];
+let showHiddenEvents = false;
+try { showHiddenEvents = localStorage.getItem(SHOW_HIDDEN_EVENTS_KEY) === '1'; } catch (e) { }
+
+function visibleEventList() { return allEvents.filter(e => showHiddenEvents || e.visible_in_reports); }
+function saveSelectedEvents() { try { localStorage.setItem(EVENTS_KEY, JSON.stringify(selectedEventCodes)); } catch (e) { } }
+
+async function loadEvents() {
+  const data = await apiFetch('/admin/events', { method: 'GET' });
+  allEvents = data.events || [];
+  let saved = null;
+  try { saved = JSON.parse(localStorage.getItem(EVENTS_KEY) || 'null'); } catch (e) { }
+  const knownCodes = allEvents.map(e => e.code);
+  selectedEventCodes = Array.isArray(saved) ? saved.filter(c => knownCodes.includes(c)) : [];
+  if (!selectedEventCodes.length) selectedEventCodes = allEvents.filter(e => e.visible_in_reports).map(e => e.code);
+  renderEventFilter();
+}
+function renderEventFilter() {
+  const needsSearch = visibleEventList().length > 8;
+  const has = !!$('eventFilterSearch');
+  if (needsSearch && !has) {
+    $('eventFilterSearchWrap').innerHTML = `<input type="text" id="eventFilterSearch" placeholder="Search events..." style="margin-bottom:8px;width:100%;max-width:300px">`;
+    $('eventFilterSearch').addEventListener('input', renderEventChecks);
+  } else if (!needsSearch && has) {
+    $('eventFilterSearchWrap').innerHTML = '';
+  }
+  renderEventChecks();
+}
+function renderEventChecks() {
+  const list = visibleEventList();
+  const searchEl = $('eventFilterSearch');
+  const q = searchEl ? searchEl.value.trim().toLowerCase() : '';
+  const shown = q ? list.filter(e => (e.short_name || e.code).toLowerCase().includes(q) || e.title_en.toLowerCase().includes(q)) : list;
+  $('eventToggles').innerHTML = shown.length ? shown.map(e =>
+    `<label style="font-weight:400;display:flex;gap:6px;align-items:center;font-size:13px;cursor:pointer"><input type="checkbox" class="eventCb" value="${e.code}" ${selectedEventCodes.includes(e.code) ? 'checked' : ''}>${e.title_en}</label>`
+  ).join('') : '<p class="empty">No events.</p>';
+  $('showHiddenEventsCb').checked = showHiddenEvents;
+}
+$('eventToggles').addEventListener('change', (e) => {
+  const cb = e.target.closest('.eventCb');
+  if (!cb) return;
+  if (cb.checked) { if (!selectedEventCodes.includes(cb.value)) selectedEventCodes.push(cb.value); }
+  else selectedEventCodes = selectedEventCodes.filter(c => c !== cb.value);
+  saveSelectedEvents();
+});
+$('selectAllEvents').addEventListener('click', () => {
+  selectedEventCodes = visibleEventList().map(e => e.code);
+  saveSelectedEvents(); renderEventChecks();
+});
+$('clearAllEvents').addEventListener('click', () => {
+  selectedEventCodes = [];
+  saveSelectedEvents(); renderEventChecks();
+});
+$('showHiddenEventsCb').addEventListener('change', (e) => {
+  showHiddenEvents = e.target.checked;
+  try { localStorage.setItem(SHOW_HIDDEN_EVENTS_KEY, showHiddenEvents ? '1' : '0'); } catch (err) { }
+  renderEventFilter();
+});
+
 async function loadData() {
   const msg = $('topMsg'); msg.className = 'msg';
   try {
-    const res = await fetch(CONFIG.apiBase + '/admin/registrations', { headers: authHeaders() });
+    authHeaders(); // throws before we bother loading events
+    if (!allEvents.length) await loadEvents();
+    if (!selectedEventCodes.length) throw new Error('Tick at least one event first.');
+    const qs = '?events=' + encodeURIComponent(selectedEventCodes.join(','));
+    const res = await fetch(CONFIG.apiBase + '/admin/registrations' + qs, { headers: authHeaders() });
     const data = await res.json().catch(() => ({}));
     if (!res.ok || data.ok === false) throw new Error(data.error || ('HTTP ' + res.status));
     all = data.registrations;
@@ -239,10 +311,6 @@ function populateStatusFilter() {
   sel.value = statuses.includes(current) ? current : '';
 }
 
-function filteredByEvent() {
-  const ev = $('fEvent').value;
-  return ev ? all.filter(r => (r.event_codes || '').split(',').includes(ev)) : all;
-}
 
 function renderTiles(rows) {
   const tiles = $('tiles');
@@ -428,13 +496,11 @@ wrap0.addEventListener('click', async (e) => {
 });
 
 function render() {
-  const rows = filteredByEvent();
-  renderTiles(rows);
-  renderTable(rows);
+  renderTiles(all);
+  renderTable(all);
 }
 
 $('load').addEventListener('click', loadData);
-$('fEvent').addEventListener('change', render);
 $('fStatus').addEventListener('change', render);
 $('fTier').addEventListener('change', render);
 $('fSearch').addEventListener('input', render);
