@@ -323,7 +323,14 @@ ${bodyHtml}
 <hr style="border:0;border-top:1px solid #CBD6E0;margin:24px 0">
 <p style="font-size:12px;color:#556A7D">The Organizing Secretariat<br>Accountability State Authority (SAI Egypt)</p></div>`;
 
-const VENUE = 'Steigenberger Pyramids Cairo Hotel, Giza';
+/* Confirmation emails need a venue/city per event -- events never mix
+   clusters within one registration (no invitation spans both), so the
+   first target event's city/venue applies to the whole email. */
+const EVENT_CITY = { 'WGITA-35-2026': 'Cairo', 'KSC-SC18-2026': 'Cairo', 'TG-42-2026': 'Luxor', 'UNPEA-66-2026': 'Luxor' };
+const EVENT_VENUE = {
+  'WGITA-35-2026': 'Steigenberger Pyramids Cairo Hotel, Giza', 'KSC-SC18-2026': 'Steigenberger Pyramids Cairo Hotel, Giza',
+  'TG-42-2026': 'Luxor, Arab Republic of Egypt', 'UNPEA-66-2026': 'Luxor, Arab Republic of Egypt'
+};
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 /* Combined "28–30 September 2026" style range across whichever events were selected. */
 function formatDateRange(events) {
@@ -516,8 +523,16 @@ async function createRegistration(req, env, ch, ipHash) {
     return json({ ok: false, error: 'validation_failed', fields: missing }, 400, ch);
   }
 
-  /* One person, one row — even when the invitation covers more than one event. */
-  const dup = await env.DB.prepare('SELECT reference FROM registrations WHERE email = ?').bind(s.e).first();
+  /* One person, one row per event cluster -- not one row ever. Different
+     clusters (e.g. the Cairo events in September vs. the Luxor events in
+     December) are genuinely separate trips with their own travel/passport
+     details, so the same email registering for an unrelated cluster is not
+     a duplicate. Only block when an existing registration already covers
+     at least one of the SAME event(s) being requested now (registrations
+     table's email column is no longer unique at the database level either,
+     for exactly this reason). */
+  const { results: existingForEmail } = await env.DB.prepare('SELECT reference, event_codes FROM registrations WHERE email = ?').bind(s.e).all();
+  const dup = existingForEmail.find(r => (r.event_codes || '').split(',').some(c => openTargets.includes(c)));
   if (dup) {
     await auditError(env, 'registration_submit', 'duplicate_registration', `${s.e} (already ${dup.reference})`, ipHash);
     return json({ ok: false, error: 'duplicate_registration', reference: dup.reference }, 409, ch);
@@ -552,18 +567,20 @@ async function createRegistration(req, env, ch, ipHash) {
   await audit(env, 'registration_submitted', 'registration', id, ref, ipHash);
   await notifyTelegram(env, `🆕 <b>New registration</b>\n${esc(fullName || '(no name)')} — ${esc(d.organization_name || '?')}\n${esc(regNumber)} · ${esc(ref)}`);
 
-  const combinedLabel = targetEvents.length > 1 ? 'WGITA & KSC Annual Meetings' : targetEvents[0].title_en;
+  const combinedLabel = targetEvents.map(e => e.title_en).join(' & ');
+  const city = EVENT_CITY[openTargets[0]] || '';
+  const venueText = EVENT_VENUE[openTargets[0]] || '';
   const dateRange = formatDateRange(targetEvents);
   const eventList = targetEvents.map(e => `<li>${e.title_en}</li>`).join('');
   const editLink = `${env.FRONTEND_BASE || ''}/register/?edit=${encodeURIComponent(ref)}.${encodeURIComponent(await signEditToken(env, id))}`;
   const body = `<h2 style="font-size:18px;margin:0 0 4px">Registration confirmed</h2>
     <p>Dear ${greetingName(d)},</p>
-    <p>Your registration for the ${combinedLabel} in Cairo, ${dateRange} has been received successfully.</p>
+    <p>Your registration for the ${combinedLabel}${city ? ' in ' + city : ''}, ${dateRange} has been received successfully.</p>
     <p style="font-size:20px;font-weight:600;letter-spacing:.04em;margin:16px 0">${regNumber}</p>
     <p style="font-weight:600;margin:0 0 4px">Events</p>
     <ul style="margin:0 0 12px;padding-inline-start:20px">${eventList}</ul>
-    <p>Venue: ${VENUE}<br>Dates: ${dateRange}</p>
-    <p style="margin-top:16px">We look forward to welcoming you in Cairo.</p>
+    <p>${venueText ? `Venue: ${venueText}<br>` : ''}Dates: ${dateRange}</p>
+    <p style="margin-top:16px">We look forward to welcoming you${city ? ' in ' + city : ''}.</p>
     <hr style="border:0;border-top:1px solid #CBD6E0;margin:20px 0">
     <p style="font-size:13px;color:#556A7D">Submission reference <b>${ref}</b>. Need to review or change something?
        Use <a href="${editLink}">this link</a> (valid 30 days), or request a fresh one from the registration page with this

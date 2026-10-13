@@ -60,15 +60,21 @@ CREATE TABLE otps (
   PRIMARY KEY (email, invitation_id)
 );
 
--- One row per person, even when they attend more than one event: event_codes
--- is a comma-joined list (e.g. "WGITA-35-2026,KSC-SC18-2026"), not a foreign
--- key, since a registration can span several. A person registers once.
+-- One row per person per event cluster, even when they attend more than one
+-- event within that cluster: event_codes is a comma-joined list (e.g.
+-- "WGITA-35-2026,KSC-SC18-2026"), not a foreign key, since a registration
+-- can span several. email is deliberately NOT unique: the same person can
+-- have a separate registration row for an unrelated event cluster (e.g.
+-- Cairo in September vs. Luxor in December), since each is a genuinely
+-- different trip with its own travel/passport details. createRegistration()
+-- enforces "no duplicate within the same event(s)" at the application
+-- layer instead (see the duplicate-registration check there).
 CREATE TABLE registrations (
   registration_id     TEXT PRIMARY KEY,
   reference           TEXT NOT NULL UNIQUE,
   event_codes         TEXT NOT NULL,
   invitation_id       TEXT REFERENCES invitations(invitation_id),
-  email               TEXT NOT NULL UNIQUE,
+  email               TEXT NOT NULL,
   full_name           TEXT,
   organization_name   TEXT,
   country             TEXT,
