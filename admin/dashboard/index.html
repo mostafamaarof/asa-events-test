@@ -169,7 +169,7 @@ const UI = {
   presidentsHeading: { en: (n) => `Presidents (${n})`, ar: (n) => `الرؤساء (${n})` },
   vpsHeading:     { en: (n) => `Vice Presidents (${n})`, ar: (n) => `نواب الرؤساء (${n})` },
   secByEvent:     { en: 'Registrations by event', ar: 'التسجيلات حسب الفعالية' },
-  byEventCap:     { en: 'One person attending both events is counted once, under "Both".', ar: 'يُحسب الشخص الحاضر للفعاليتين مرة واحدة فقط، ضمن "كلاهما".' },
+  byEventCap:     { en: 'Someone attending both events of a cluster (Cairo: WGITA+KSC, or Luxor: TG+UNPEA) is counted once, under that cluster\'s combined row.', ar: 'يُحسب الشخص الحاضر لفعاليتي مجموعة واحدة (القاهرة: WGITA وKSC، أو الأقصر: TG وUNPEA) مرة واحدة، ضمن صف تلك المجموعة المجمّع.' },
   secAccommodation: { en: 'Accommodation', ar: 'الإقامة' },
   accommodationCap: { en: 'Where confirmed participants are staying. Adds up to the total above.', ar: 'أماكن إقامة المشاركين المعتمدين، ومجموعها يساوي الإجمالي أعلاه.' },
   secTier:        { en: 'Protocol tier by event', ar: 'الفئة البروتوكولية حسب الفعالية' },
@@ -198,6 +198,8 @@ const UI = {
   kpiTotalReg:    { en: 'Total confirmed registrations', ar: 'إجمالي التسجيلات المعتمدة' },
   kpiWgita:       { en: 'WGITA attendance', ar: 'حضور WGITA' },
   kpiKsc:         { en: 'KSC attendance', ar: 'حضور KSC' },
+  kpiTg:          { en: 'TG attendance', ar: 'حضور TG' },
+  kpiUnpea:       { en: 'UNPEA attendance', ar: 'حضور UNPEA' },
   kpiAccompanying: { en: 'Accompanying persons', ar: 'المرافقون' },
   kpiOrgs:        { en: 'Organisations represented', ar: 'الجهات المشاركة' },
   kpiPresidents:  { en: 'Presidents attending', ar: 'عدد الرؤساء الحاضرين' },
@@ -215,6 +217,10 @@ const UI = {
   count:          { en: 'Count', ar: 'العدد' },
   wgitaOnly:      { en: 'WGITA only', ar: 'WGITA فقط' },
   kscOnly:        { en: 'KSC only', ar: 'KSC فقط' },
+  tgOnly:         { en: 'TG only', ar: 'TG فقط' },
+  unpeaOnly:      { en: 'UNPEA only', ar: 'UNPEA فقط' },
+  cairoBoth:      { en: 'WGITA + KSC', ar: 'WGITA + KSC' },
+  luxorBoth:      { en: 'TG + UNPEA', ar: 'TG + UNPEA' },
   both:           { en: 'Both', ar: 'كلاهما' },
   total:          { en: 'Total', ar: 'الإجمالي' },
   officialHotel:  { en: 'Official hotel', ar: 'فندق رسمي' },
@@ -345,6 +351,22 @@ function kpiTile(value, label) {
   return `<div class="kpi"><div class="v">${value}</div><div class="l">${esc(label)}</div></div>`;
 }
 
+/* Registrations span one of two unrelated event clusters -- Cairo
+   (WGITA/KSC, Sept 2026) or Luxor (Technical Group/UN Panel, Dec 2026) --
+   never both, since no invitation code unlocks events from both clusters.
+   Buckets by which single event, or which pair within one cluster. */
+const CAIRO_EVENTS = ['WGITA-35-2026', 'KSC-SC18-2026'];
+const LUXOR_EVENTS = ['TG-42-2026', 'UNPEA-66-2026'];
+function eventBucketKey(e) {
+  const cairo = e.filter(c => CAIRO_EVENTS.includes(c));
+  const luxor = e.filter(c => LUXOR_EVENTS.includes(c));
+  if (cairo.length > 1) return 'cairoBoth';
+  if (cairo.length === 1) return cairo[0] === 'WGITA-35-2026' ? 'wgita' : 'ksc';
+  if (luxor.length > 1) return 'luxorBoth';
+  if (luxor.length === 1) return luxor[0] === 'TG-42-2026' ? 'tg' : 'unpea';
+  return null;
+}
+
 /* Every category (role, country, organisation, job title, hotel, diet...)
    broken down by which event(s) each person is attending. No folding into
    "Other" -- every distinct value gets its own row. */
@@ -353,13 +375,12 @@ function groupCountByEvent(rows, keyFn, nameMap) {
   rows.forEach(r => {
     const raw = keyFn(r);
     const vals = Array.isArray(raw) ? raw : [raw];
-    const e = events(r);
-    const bucket = e.length > 1 ? 'both' : e[0] === 'WGITA-35-2026' ? 'wgita' : e[0] === 'KSC-SC18-2026' ? 'ksc' : null;
+    const bucket = eventBucketKey(events(r));
     if (!bucket) return;
     vals.forEach(v => {
       if (!v) return;
       const label = (nameMap && nameMap[v]) || v;
-      if (!counts[label]) counts[label] = { label, wgita: 0, ksc: 0, both: 0 };
+      if (!counts[label]) counts[label] = { label, wgita: 0, ksc: 0, cairoBoth: 0, tg: 0, unpea: 0, luxorBoth: 0 };
       counts[label][bucket]++;
     });
   });
@@ -463,7 +484,8 @@ function renderDashboard(rows) {
   const content = $('content');
   if (!rows.length) { content.innerHTML = `<p class="empty">${esc(T('noApprovedYet'))}</p>`; return; }
 
-  const eventCols = [{ key: 'wgita', label: 'WGITA' }, { key: 'ksc', label: 'KSC' }, { key: 'both', label: T('both') }];
+  const eventCols = [{ key: 'wgita', label: 'WGITA' }, { key: 'ksc', label: 'KSC' }, { key: 'cairoBoth', label: T('cairoBoth') },
+    { key: 'tg', label: 'TG' }, { key: 'unpea', label: 'UNPEA' }, { key: 'luxorBoth', label: T('luxorBoth') }];
   const tierCols = [{ key: 'president', label: T('president') }, { key: 'vice_president', label: T('vicePresident') }, { key: 'other', label: T('other') }];
   const participantsCols = [{ key: 'main', label: T('mainParticipants') }, { key: 'accompanying', label: T('kpiAccompanying') }];
 
@@ -474,15 +496,21 @@ function renderDashboard(rows) {
     if (d.accommodation_type === 'own') return d.own_hotel_name_address || T('ownNotGiven');
     return T('notDecided');
   };
-  const bothCount = rows.filter(r => events(r).length > 1).length;
-  const wgitaOnly = rows.filter(r => { const e = events(r); return e.length === 1 && e[0] === 'WGITA-35-2026'; }).length;
-  const kscOnly = rows.filter(r => { const e = events(r); return e.length === 1 && e[0] === 'KSC-SC18-2026'; }).length;
+  const cairoBothCount = rows.filter(r => eventBucketKey(events(r)) === 'cairoBoth').length;
+  const luxorBothCount = rows.filter(r => eventBucketKey(events(r)) === 'luxorBoth').length;
+  const wgitaOnly = rows.filter(r => eventBucketKey(events(r)) === 'wgita').length;
+  const kscOnly = rows.filter(r => eventBucketKey(events(r)) === 'ksc').length;
+  const tgOnly = rows.filter(r => eventBucketKey(events(r)) === 'tg').length;
+  const unpeaOnly = rows.filter(r => eventBucketKey(events(r)) === 'unpea').length;
   /* Total headcount for each event -- unlike wgitaOnly/kscOnly above (which
      the "Registrations by event" table needs so a dual-event person is
-     counted once, under "Both"), this is the number actually attending
-     that event, so someone on both events counts toward both totals. */
+     counted once, under its cluster's "both" row), this is the number
+     actually attending that event, so someone on both of a cluster's
+     events counts toward both totals. */
   const wgitaAttendance = rows.filter(r => events(r).includes('WGITA-35-2026')).length;
   const kscAttendance = rows.filter(r => events(r).includes('KSC-SC18-2026')).length;
+  const tgAttendance = rows.filter(r => events(r).includes('TG-42-2026')).length;
+  const unpeaAttendance = rows.filter(r => events(r).includes('UNPEA-66-2026')).length;
   const orgs = new Set(rows.map(r => r.organization_name).filter(Boolean));
   const speaking = rows.filter(r => dset(r).wants_to_present === 'yes').length;
   /* Reused below for anything an accompanying person answers for themself
@@ -544,6 +572,8 @@ function renderDashboard(rows) {
         ${kpiTile(rows.length, T('kpiTotalReg'))}
         ${kpiTile(wgitaAttendance, T('kpiWgita'))}
         ${kpiTile(kscAttendance, T('kpiKsc'))}
+        ${kpiTile(tgAttendance, T('kpiTg'))}
+        ${kpiTile(unpeaAttendance, T('kpiUnpea'))}
         ${kpiTile(totalAccompanying, T('kpiAccompanying'))}
         ${kpiTile(orgs.size, T('kpiOrgs'))}
         ${kpiTile(presidents, T('kpiPresidents'))}
@@ -586,8 +616,11 @@ function renderDashboard(rows) {
           <tbody>
             <tr><td>${esc(T('wgitaOnly'))}</td><td class="n">${wgitaOnly}</td></tr>
             <tr><td>${esc(T('kscOnly'))}</td><td class="n">${kscOnly}</td></tr>
-            <tr><td>${esc(T('both'))}</td><td class="n">${bothCount}</td></tr>
-            <tr class="totalrow"><td>${esc(T('total'))}</td><td class="n">${wgitaOnly + kscOnly + bothCount}</td></tr>
+            <tr><td>${esc(T('cairoBoth'))}</td><td class="n">${cairoBothCount}</td></tr>
+            <tr><td>${esc(T('tgOnly'))}</td><td class="n">${tgOnly}</td></tr>
+            <tr><td>${esc(T('unpeaOnly'))}</td><td class="n">${unpeaOnly}</td></tr>
+            <tr><td>${esc(T('luxorBoth'))}</td><td class="n">${luxorBothCount}</td></tr>
+            <tr class="totalrow"><td>${esc(T('total'))}</td><td class="n">${wgitaOnly + kscOnly + cairoBothCount + tgOnly + unpeaOnly + luxorBothCount}</td></tr>
           </tbody>
         </table></div>
       </div>
@@ -658,6 +691,8 @@ function renderDashboard(rows) {
       [T('kpiTotalReg'), rows.length],
       [T('kpiWgita'), wgitaAttendance],
       [T('kpiKsc'), kscAttendance],
+      [T('kpiTg'), tgAttendance],
+      [T('kpiUnpea'), unpeaAttendance],
       [T('kpiAccompanying'), totalAccompanying],
       [T('kpiOrgs'), orgs.size],
       [T('kpiPresidents'), presidents],
@@ -677,8 +712,11 @@ function renderDashboard(rows) {
       [T('event'), T('count')],
       [T('wgitaOnly'), wgitaOnly],
       [T('kscOnly'), kscOnly],
-      [T('both'), bothCount],
-      [T('total'), wgitaOnly + kscOnly + bothCount]
+      [T('cairoBoth'), cairoBothCount],
+      [T('tgOnly'), tgOnly],
+      [T('unpeaOnly'), unpeaOnly],
+      [T('luxorBoth'), luxorBothCount],
+      [T('total'), wgitaOnly + kscOnly + cairoBothCount + tgOnly + unpeaOnly + luxorBothCount]
     ],
     tierRoster: [
       [T('xlPresidentsCol'), T('xlVpsCol')],

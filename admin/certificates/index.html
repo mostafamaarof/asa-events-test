@@ -16,6 +16,8 @@
   --f-body:"IBM Plex Sans",system-ui,sans-serif; --f-serif:"IBM Plex Serif",Georgia,serif; --f-num:ui-monospace,Consolas,monospace;
   --wgita:#2A78D6; --wgita-tint:#E4EFFB;
   --ksc:#D9642C; --ksc-tint:#FBEBE0;
+  --tg:#1D7A4C; --tg-tint:#E3F3EA;
+  --unpea:#6A3FA0; --unpea-tint:#EFE7F7;
 }
 *,*::before,*::after{box-sizing:border-box}
 html,body{margin:0;padding:0}
@@ -67,6 +69,8 @@ button.ghost:hover{background:#F1F5F8}
 .certcard .evtag{font-size:11px;font-weight:700;letter-spacing:.06em;padding:4px 12px;border-radius:11px;white-space:nowrap}
 .evtag.wgita{background:var(--wgita-tint);color:var(--wgita)}
 .evtag.ksc{background:var(--ksc-tint);color:var(--ksc)}
+.evtag.tg{background:var(--tg-tint);color:var(--tg)}
+.evtag.unpea{background:var(--unpea-tint);color:var(--unpea)}
 .certcard .host{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-top:3mm}
 .certcard .title{font-family:var(--f-serif);font-size:26px;font-weight:600;letter-spacing:.03em;text-transform:uppercase;color:var(--ink);margin-top:9mm}
 .certcard .lede{font-size:13px;color:var(--muted);margin-top:6mm;font-style:italic}
@@ -127,6 +131,8 @@ button.ghost:hover{background:#F1F5F8}
           <option value="">All events</option>
           <option value="WGITA-35-2026">35th Annual Meeting of INTOSAI Working Group on IT Audit</option>
           <option value="KSC-SC18-2026">18th KSC Steering Committee Meeting</option>
+          <option value="TG-42-2026">Forty-second (2026) Meeting of the Technical Group</option>
+          <option value="UNPEA-66-2026">Sixty-sixth (2026) Regular Session of the UN Panel of External Auditors</option>
         </select>
       </div>
       <div class="f" style="flex:1;min-width:220px">
@@ -163,8 +169,10 @@ function authHeaders() {
 function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c])); }
 
 const EVENT_META = {
-  'WGITA-35-2026': { short: 'WGITA', cls: 'wgita', title: '35th Annual Meeting of INTOSAI Working Group on IT Audit', dates: '28–29 September 2026', logo: '../../register/wgita-logo.jpg' },
-  'KSC-SC18-2026':  { short: 'KSC',   cls: 'ksc',   title: '18th KSC Steering Committee Meeting',                     dates: '30 September 2026',    logo: '../../register/intosai-logo.png' }
+  'WGITA-35-2026': { short: 'WGITA', cls: 'wgita', title: '35th Annual Meeting of INTOSAI Working Group on IT Audit', dates: '28–29 September 2026', logo: '../../register/wgita-logo.jpg', venue: 'Cairo, Arab Republic of Egypt' },
+  'KSC-SC18-2026':  { short: 'KSC',   cls: 'ksc',   title: '18th KSC Steering Committee Meeting',                     dates: '30 September 2026',    logo: '../../register/intosai-logo.png', venue: 'Cairo, Arab Republic of Egypt' },
+  'TG-42-2026':     { short: 'TG',    cls: 'tg',    title: 'Forty-second (2026) Meeting of the Technical Group',      dates: '2–4 December 2026',    logo: '../../register/asa-logo.jpg', venue: 'Luxor, Arab Republic of Egypt' },
+  'UNPEA-66-2026':  { short: 'UNPEA', cls: 'unpea', title: 'Sixty-sixth (2026) Regular Session of the UN Panel of External Auditors', dates: '7–8 December 2026', logo: '../../register/asa-logo.jpg', venue: 'Luxor, Arab Republic of Egypt' }
 };
 
 let all = [];
@@ -216,7 +224,7 @@ function certCard(c) {
       <div class="name">${esc(c.name)}</div>
       <div class="rule"></div>
       <div class="org">${[c.org, c.country].filter(Boolean).join(', ')}</div>
-      <div class="body">has attended the <b>${esc(c.meta.title)}</b>, held in Cairo, Arab Republic of Egypt,
+      <div class="body">has attended the <b>${esc(c.meta.title)}</b>, held in ${esc(c.meta.venue)},
         on ${esc(c.meta.dates)}.</div>
       <div class="sig">
         <div class="sigblock"><div class="sigline">Date</div></div>

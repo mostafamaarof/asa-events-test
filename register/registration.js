@@ -45,6 +45,32 @@ const EVENTS = {
     startDate: '2026-09-30', endDate: '2026-09-30',
     venue: { en: 'Cairo, Arab Republic of Egypt', ar: 'القاهرة، جمهورية مصر العربية' },
     closesAt: '2026-09-21T23:59:00+02:00'
+  },
+  'TG-42-2026': {
+    code: 'TG-42-2026',
+    title: { en: 'Forty-second (2026) Meeting of the Technical Group', ar: 'الاجتماع الثاني والأربعون (2026) للفريق الفني' },
+    short: { en: 'TG 2026', ar: 'TG 2026' },
+    dates: { en: '2–4 December 2026', ar: '2 – 4 ديسمبر 2026' },
+    blurb: {
+      en: 'Forty-second (2026) Meeting of the Technical Group, hosted by the Accountability State Authority in Luxor.',
+      ar: 'الاجتماع الثاني والأربعون (2026) للفريق الفني، يستضيفه الجهاز المركزي للمحاسبات في الأقصر.'
+    },
+    startDate: '2026-12-02', endDate: '2026-12-04',
+    venue: { en: 'Luxor, Arab Republic of Egypt', ar: 'الأقصر، جمهورية مصر العربية' },
+    closesAt: '2026-12-01T23:59:00+02:00'
+  },
+  'UNPEA-66-2026': {
+    code: 'UNPEA-66-2026',
+    title: { en: 'Sixty-sixth (2026) Regular Session of the UN Panel of External Auditors', ar: 'الدورة العادية السادسة والستون (2026) للجنة المراجعين الخارجيين للأمم المتحدة' },
+    short: { en: 'UNPEA 2026', ar: 'UNPEA 2026' },
+    dates: { en: '7–8 December 2026', ar: '7 – 8 ديسمبر 2026' },
+    blurb: {
+      en: 'Sixty-sixth (2026) Regular Session of the UN Panel of External Auditors, hosted by the Accountability State Authority in Luxor.',
+      ar: 'الدورة العادية السادسة والستون (2026) للجنة المراجعين الخارجيين للأمم المتحدة، يستضيفها الجهاز المركزي للمحاسبات في الأقصر.'
+    },
+    startDate: '2026-12-07', endDate: '2026-12-08',
+    venue: { en: 'Luxor, Arab Republic of Egypt', ar: 'الأقصر، جمهورية مصر العربية' },
+    closesAt: '2026-12-01T23:59:00+02:00'
   }
 };
 
@@ -465,9 +491,20 @@ const state = {
 
 /* A display-only stand-in event for screens shown before/across a specific
    selection: the masthead before code entry, and date-range logic for a
-   multi-event registration. Never sent to the server. */
+   multi-event registration. Never sent to the server.
+   With four events now spanning two unrelated venues and months (Cairo in
+   September, Luxor in December), concatenating every event in the registry
+   into one masthead -- the old behaviour here -- would read as a garbled
+   mess before a code is even entered. So an empty list gets a neutral
+   stand-in instead: the real title/dates/venue appear the moment the
+   invitation code resolves which event(s) it actually covers. */
 function combinedEvent(list) {
-  const items = list && list.length ? list : Object.values(EVENTS);
+  const items = list && list.length ? list : [];
+  if (!items.length) return {
+    code: '', title: { en: 'SAI Egypt Events', ar: 'فعاليات الجهاز المركزي للمحاسبات' },
+    short: { en: 'SAI Egypt Events', ar: 'فعاليات الجهاز المركزي للمحاسبات' },
+    dates: { en: '', ar: '' }, venue: { en: '', ar: '' }, endDate: '', hotels: []
+  };
   if (items.length === 1) return items[0];
   return {
     code: items.map(e => e.code).join('+'),
@@ -818,8 +855,11 @@ function renderChrome() {
   document.getElementById('ev-org').textContent = state.lang === 'ar'
     ? 'الجهاز المركزي للمحاسبات — جمهورية مصر العربية'
     : 'Accountability State Authority — Arab Republic of Egypt';
-  document.getElementById('dr-event').innerHTML = `<b>${L(ev.title)}</b>`;
-  document.getElementById('dr-dates').textContent = `${L(ev.dates)}, ${L(ev.venue)}`;
+  /* Blank, not the neutral placeholder's title repeated -- this bar exists
+     to say *which* event, so it has nothing worth saying before a code
+     resolves one. */
+  document.getElementById('dr-event').innerHTML = state.events.length ? `<b>${L(ev.title)}</b>` : '';
+  document.getElementById('dr-dates').textContent = state.events.length ? [L(ev.dates), L(ev.venue)].filter(Boolean).join(', ') : '';
 }
 
 function renderLedger() {

@@ -14,6 +14,8 @@
   --f-body:"IBM Plex Sans",system-ui,sans-serif; --f-num:ui-monospace,Consolas,monospace;
   --wgita:#2A78D6; --wgita-tint:#E4EFFB;
   --ksc:#D9642C; --ksc-tint:#FBEBE0;
+  --tg:#1D7A4C; --tg-tint:#E3F3EA;
+  --unpea:#6A3FA0; --unpea-tint:#EFE7F7;
 }
 *,*::before,*::after{box-sizing:border-box}
 html,body{margin:0;padding:0}
@@ -61,6 +63,8 @@ button.ghost:hover{background:#F1F5F8}
 }
 .evtag.wgita{background:var(--wgita-tint);color:var(--wgita)}
 .evtag.ksc{background:var(--ksc-tint);color:var(--ksc)}
+.evtag.tg{background:var(--tg-tint);color:var(--tg)}
+.evtag.unpea{background:var(--unpea-tint);color:var(--unpea)}
 .badgecard .evdate{font-size:8px;color:#8A98A3;white-space:nowrap}
 .badgecard .tier{
   flex:0 0 auto;margin-top:2mm;font-size:9.5px;font-weight:700;
@@ -123,6 +127,8 @@ button.ghost:hover{background:#F1F5F8}
           <option value="">All events</option>
           <option value="WGITA-35-2026">35th Annual Meeting of INTOSAI Working Group on IT Audit</option>
           <option value="KSC-SC18-2026">18th KSC Steering Committee Meeting</option>
+          <option value="TG-42-2026">Forty-second (2026) Meeting of the Technical Group</option>
+          <option value="UNPEA-66-2026">Sixty-sixth (2026) Regular Session of the UN Panel of External Auditors</option>
         </select>
       </div>
       <div class="f">
@@ -198,7 +204,9 @@ OPT.country = O(COUNTRIES_RAW.split('|').map(s => { const i = s.indexOf(':'); re
    its own working group. */
 const EVENT_META = {
   'WGITA-35-2026': { short: 'WGITA', cls: 'wgita', title: '35th Annual Meeting of INTOSAI Working Group on IT Audit', dates: '28–29 September 2026', logo: '../../register/wgita-logo.jpg' },
-  'KSC-SC18-2026':  { short: 'KSC',   cls: 'ksc',   title: '18th KSC Steering Committee Meeting',                     dates: '30 September 2026',    logo: '../../register/intosai-logo.png' }
+  'KSC-SC18-2026':  { short: 'KSC',   cls: 'ksc',   title: '18th KSC Steering Committee Meeting',                     dates: '30 September 2026',    logo: '../../register/intosai-logo.png' },
+  'TG-42-2026':     { short: 'TG',    cls: 'tg',    title: 'Forty-second (2026) Meeting of the Technical Group',      dates: '2–4 December 2026',    logo: '../../register/asa-logo.jpg' },
+  'UNPEA-66-2026':  { short: 'UNPEA', cls: 'unpea', title: 'Sixty-sixth (2026) Regular Session of the UN Panel of External Auditors', dates: '7–8 December 2026', logo: '../../register/asa-logo.jpg' }
 };
 
 let all = [];

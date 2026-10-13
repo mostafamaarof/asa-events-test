@@ -137,6 +137,8 @@ table.summary tr:last-child td{border-bottom:none}
           <option value="">All events</option>
           <option value="WGITA-35-2026">35th Annual Meeting of INTOSAI Working Group on IT Audit</option>
           <option value="KSC-SC18-2026">18th KSC Steering Committee Meeting</option>
+          <option value="TG-42-2026">Forty-second (2026) Meeting of the Technical Group</option>
+          <option value="UNPEA-66-2026">Sixty-sixth (2026) Regular Session of the UN Panel of External Auditors</option>
         </select>
       </div>
       <div class="f">
@@ -352,7 +354,23 @@ async function loadReport() {
   }
 }
 
-const EVENT_NAMES = { 'WGITA-35-2026': '35th Annual Meeting of INTOSAI Working Group on IT Audit', 'KSC-SC18-2026': '18th KSC Steering Committee Meeting' };
+const EVENT_NAMES = { 'WGITA-35-2026': '35th Annual Meeting of INTOSAI Working Group on IT Audit', 'KSC-SC18-2026': '18th KSC Steering Committee Meeting',
+  'TG-42-2026': 'Forty-second (2026) Meeting of the Technical Group', 'UNPEA-66-2026': 'Sixty-sixth (2026) Regular Session of the UN Panel of External Auditors' };
+/* Registration spans one of two unrelated event clusters -- Cairo
+   (WGITA/KSC, Sept 2026) or Luxor (Technical Group/UN Panel, Dec 2026) --
+   never both, since no invitation code unlocks events from both clusters.
+   Buckets by which single event, or which pair within one cluster. */
+const CAIRO_EVENTS = ['WGITA-35-2026', 'KSC-SC18-2026'];
+const LUXOR_EVENTS = ['TG-42-2026', 'UNPEA-66-2026'];
+function eventBucketKey(codes) {
+  const cairo = codes.filter(c => CAIRO_EVENTS.includes(c));
+  const luxor = codes.filter(c => LUXOR_EVENTS.includes(c));
+  if (cairo.length > 1) return 'cairoBoth';
+  if (cairo.length === 1) return cairo[0] === 'WGITA-35-2026' ? 'wgita' : 'ksc';
+  if (luxor.length > 1) return 'luxorBoth';
+  if (luxor.length === 1) return luxor[0] === 'TG-42-2026' ? 'tg' : 'unpea';
+  return null;
+}
 
 function filteredRows() {
   const evFilter = $('fEvent').value;
@@ -383,22 +401,24 @@ const SUMMARY_COLS = [
   ['Speaking', r => fmt((r.data || {}).wants_to_present, 'yesno')],
   ['Social', r => fmt((r.data || {}).social_program_attending, 'yesno')]
 ];
-/* One bucket per event combination -- WGITA only, KSC only, Both -- in that
-   fixed reading order rather than alphabetical, since there are always
-   exactly these three and that's the order every other report on this site
-   uses them in. */
+/* One bucket per event combination -- WGITA only, KSC only, both Cairo
+   events, TG only, UNPEA only, both Luxor events -- in that fixed reading
+   order rather than alphabetical. */
 function groupByEvent(rows) {
   const buckets = {
-    'WGITA-35-2026': { title: EVENT_NAMES['WGITA-35-2026'], rows: [] },
-    'KSC-SC18-2026': { title: EVENT_NAMES['KSC-SC18-2026'], rows: [] },
-    both: { title: 'Both events', rows: [] }
+    wgita: { title: EVENT_NAMES['WGITA-35-2026'], rows: [] },
+    ksc: { title: EVENT_NAMES['KSC-SC18-2026'], rows: [] },
+    cairoBoth: { title: 'WGITA + KSC (both Cairo events)', rows: [] },
+    tg: { title: EVENT_NAMES['TG-42-2026'], rows: [] },
+    unpea: { title: EVENT_NAMES['UNPEA-66-2026'], rows: [] },
+    luxorBoth: { title: 'Technical Group + UN Panel (both Luxor events)', rows: [] }
   };
   rows.forEach(r => {
     const codes = (r.event_codes || '').split(',').filter(Boolean);
-    const key = codes.length > 1 ? 'both' : codes[0];
-    if (buckets[key]) buckets[key].rows.push(r);
+    const key = eventBucketKey(codes);
+    if (key && buckets[key]) buckets[key].rows.push(r);
   });
-  const groups = ['WGITA-35-2026', 'KSC-SC18-2026', 'both'].map(k => buckets[k]).filter(g => g.rows.length);
+  const groups = ['wgita', 'ksc', 'cairoBoth', 'tg', 'unpea', 'luxorBoth'].map(k => buckets[k]).filter(g => g.rows.length);
   /* Sorted by organisation within each event group; same-organisation rows
      then by name, so the order is stable rather than whatever the API
      happened to return. */

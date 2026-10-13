@@ -140,8 +140,10 @@ CREATE TABLE audit_log (
 );
 
 INSERT INTO events (code, title_en, title_ar, start_date, end_date, registration_closes_at) VALUES
- ('WGITA-35-2026','INTOSAI Working Group on IT Audit','فريق عمل الإنتوساي المعني بتدقيق تكنولوجيا المعلومات','2026-09-28','2026-09-29','2026-12-31T23:59:00+02:00'),
- ('KSC-SC18-2026','KSC Steering Committee Meeting','اجتماع اللجنة التوجيهية لـ KSC','2026-09-30','2026-09-30','2026-12-31T23:59:00+02:00');
+ ('WGITA-35-2026','INTOSAI Working Group on IT Audit','فريق عمل الإنتوساي المعني بتدقيق تكنولوجيا المعلومات','2026-09-28','2026-09-29','2026-10-13T00:00:00+02:00'),
+ ('KSC-SC18-2026','KSC Steering Committee Meeting','اجتماع اللجنة التوجيهية لـ KSC','2026-09-30','2026-09-30','2026-10-13T00:00:00+02:00'),
+ ('TG-42-2026','Forty-second (2026) Meeting of the Technical Group','الاجتماع الثاني والأربعون (2026) للفريق الفني','2026-12-02','2026-12-04','2026-12-01T23:59:00+02:00'),
+ ('UNPEA-66-2026','Sixty-sixth (2026) Regular Session of the UN Panel of External Auditors','الدورة العادية السادسة والستون (2026) للجنة المراجعين الخارجيين للأمم المتحدة','2026-12-07','2026-12-08','2026-12-01T23:59:00+02:00');
 
 -- Three invitations so the public test link works out of the box.
 INSERT INTO invitations (invitation_id, event_code, code, organization_name, country, org_type, liaison_email, max_uses, allow_free_email, expires_at, is_active) VALUES
