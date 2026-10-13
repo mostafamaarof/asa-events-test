@@ -1214,13 +1214,25 @@ const SENSITIVE_WELFARE_FIELDS = ['emergency_contact_name', 'emergency_contact_r
 async function adminExportFull(req, env, ch, access, ipHash) {
   if (!hasScope(access, ...ALL_SCOPES)) return fail('unauthorized', 401, ch);
   const isFullAdmin = access.tier === 'admin';
-  await logReportAccess(env, access, new URL(req.url).searchParams.get('src'), ipHash);
+  const url = new URL(req.url);
+  await logReportAccess(env, access, url.searchParams.get('src'), ipHash);
+  /* Optional ?events=CODE1,CODE2 -- every report page's event-filter widget
+     passes the selected codes here so filtering happens in SQL, not by
+     loading all 1000 rows into JS. event_codes is a comma-joined TEXT
+     column (not a junction table), so each requested code is matched with a
+     bounded, false-positive-safe LIKE against ",event_codes," rather than a
+     plain substring LIKE (which could match e.g. "TG-42-2026" inside some
+     future "TG-42-2026-B"). */
+  const eventsParam = (url.searchParams.get('events') || '').split(',').map(s => s.trim()).filter(Boolean);
+  const where = eventsParam.length
+    ? 'WHERE ' + eventsParam.map(() => `(',' || event_codes || ',') LIKE ('%,' || ? || ',%')`).join(' OR ')
+    : '';
   const { results } = await env.DB.prepare(
     `SELECT registration_id, reference, registration_number, created_at, status, event_codes, invitation_id, email, full_name,
             organization_name, country, attendance_mode, role_in_delegation, participant_tier, presentation_track, presentation_order,
             visa_letter_needed, flag_personal_email, flag_org_mismatch, fill_seconds, locale, reminder_sent_at, reminder_categories,
             data_json, consents_json
-     FROM registrations ORDER BY created_at DESC LIMIT 1000`).all();
+     FROM registrations ${where} ORDER BY created_at DESC LIMIT 1000`).bind(...eventsParam).all();
   const registrations = results.map(r => {
     const data = JSON.parse(r.data_json || '{}');
     if (!isFullAdmin) SENSITIVE_WELFARE_FIELDS.forEach(f => delete data[f]);

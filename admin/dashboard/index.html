@@ -115,6 +115,18 @@ table.datatable tr:last-child td{border-bottom:none}
   </div>
 
   <div class="card controls">
+    <h2 id="eventsCardTitle">Events</h2>
+    <p class="cap" id="eventsHint">Only data for the ticked events is loaded and shown below. Remembered on this device.</p>
+    <div id="eventFilterSearchWrap"></div>
+    <div class="choicelist" id="eventToggles"></div>
+    <div class="actions" style="margin-top:12px">
+      <button class="ghost" id="selectAllEvents" style="height:30px;padding:0 14px;font-size:13px">Select all</button>
+      <button class="ghost" id="clearAllEvents" style="height:30px;padding:0 14px;font-size:13px">Clear all</button>
+      <label class="choice"><input type="checkbox" id="showHiddenEventsCb"><span id="showHiddenEventsLabel">Show hidden events</span></label>
+    </div>
+  </div>
+
+  <div class="card controls">
     <h2 id="sectionsCardTitle">Show / hide tables</h2>
     <p class="cap" id="sectionsHint">Untick anything not relevant right now — for a focused screen share, a print for one audience, or a lighter Excel export. Remembered on this device.</p>
     <div class="choicelist" id="sectionToggles"></div>
@@ -156,6 +168,15 @@ const UI = {
                      ar: 'أزل التحديد عن أي جدول غير مطلوب الآن — لمشاركة شاشة مركّزة، أو طباعة لجمهور محدد، أو تصدير إكسل أخف. يُحفظ هذا الاختيار على هذا الجهاز.' },
   showAll:        { en: 'Show all', ar: 'إظهار الكل' },
   hideAll:        { en: 'Hide all', ar: 'إخفاء الكل' },
+  eventsCardTitle: { en: 'Events', ar: 'الفعاليات' },
+  eventsHint:     { en: 'Only data for the ticked events is loaded. Remembered on this device — click "Load dashboard" again after changing this.',
+                     ar: 'يتم تحميل بيانات الفعاليات المحددة فقط. يُحفظ هذا الاختيار على هذا الجهاز — اضغط "تحميل لوحة المعلومات" مرة أخرى بعد التغيير.' },
+  selectAllEvents: { en: 'Select all', ar: 'تحديد الكل' },
+  clearAllEvents: { en: 'Clear all', ar: 'إلغاء تحديد الكل' },
+  showHiddenEvents: { en: 'Show hidden events', ar: 'إظهار الفعاليات المخفية' },
+  eventSearchPh:  { en: 'Search events…', ar: 'بحث في الفعاليات…' },
+  needEvents:     { en: 'Tick at least one event first.', ar: 'حدد فعالية واحدة على الأقل أولاً.' },
+  eventsLoadError: { en: 'Could not load the event list.', ar: 'تعذّر تحميل قائمة الفعاليات.' },
   needToken:      { en: 'Enter the access token first.', ar: 'أدخل رمز الوصول أولاً.' },
   loadedMsg:      { en: (n) => `Loaded ${n} approved registration(s).`, ar: (n) => `تم تحميل ${n} من التسجيلات المعتمدة.` },
   noApprovedYet:  { en: 'No approved registrations yet.', ar: 'لا توجد تسجيلات معتمدة بعد.' },
@@ -169,7 +190,8 @@ const UI = {
   presidentsHeading: { en: (n) => `Presidents (${n})`, ar: (n) => `الرؤساء (${n})` },
   vpsHeading:     { en: (n) => `Vice Presidents (${n})`, ar: (n) => `نواب الرؤساء (${n})` },
   secByEvent:     { en: 'Registrations by event', ar: 'التسجيلات حسب الفعالية' },
-  byEventCap:     { en: 'Someone attending both events of a cluster (Cairo: WGITA+KSC, or Luxor: TG+UNPEA) is counted once, under that cluster\'s combined row.', ar: 'يُحسب الشخص الحاضر لفعاليتي مجموعة واحدة (القاهرة: WGITA وKSC، أو الأقصر: TG وUNPEA) مرة واحدة، ضمن صف تلك المجموعة المجمّع.' },
+  byEventCap:     { en: 'Someone registered for more than one of the selected events is counted once under each event they attend, so this column\'s total can exceed the overall registration count above.',
+                     ar: 'يُحسب الشخص المسجَّل في أكثر من فعالية مختارة مرة واحدة ضمن كل فعالية يحضرها، لذا قد يتجاوز إجمالي هذا الجدول إجمالي التسجيلات أعلاه.' },
   secAccommodation: { en: 'Accommodation', ar: 'الإقامة' },
   accommodationCap: { en: 'Where confirmed participants are staying. Adds up to the total above.', ar: 'أماكن إقامة المشاركين المعتمدين، ومجموعها يساوي الإجمالي أعلاه.' },
   secTier:        { en: 'Protocol tier by event', ar: 'الفئة البروتوكولية حسب الفعالية' },
@@ -194,12 +216,9 @@ const UI = {
   secHotelTier:   { en: 'Hotels, by protocol tier', ar: 'الفنادق، حسب الفئة البروتوكولية' },
   hotelTierCap:   { en: 'Which hotels the President/Vice President attendees are staying at.', ar: 'الفنادق التي يقيم فيها الحاضرون من الرؤساء ونواب الرؤساء.' },
 
-  kpiCap:         { en: 'Confirmed (approved) registrations only.', ar: 'التسجيلات المعتمدة فقط.' },
+  kpiCap:         { en: 'Confirmed (approved) registrations, for the selected events only.', ar: 'التسجيلات المعتمدة فقط، للفعاليات المحددة.' },
   kpiTotalReg:    { en: 'Total confirmed registrations', ar: 'إجمالي التسجيلات المعتمدة' },
-  kpiWgita:       { en: 'WGITA attendance', ar: 'حضور WGITA' },
-  kpiKsc:         { en: 'KSC attendance', ar: 'حضور KSC' },
-  kpiTg:          { en: 'TG attendance', ar: 'حضور TG' },
-  kpiUnpea:       { en: 'UNPEA attendance', ar: 'حضور UNPEA' },
+  kpiEventAttendance: { en: (name) => `${name} attendance`, ar: (name) => `حضور ${name}` },
   kpiAccompanying: { en: 'Accompanying persons', ar: 'المرافقون' },
   kpiOrgs:        { en: 'Organisations represented', ar: 'الجهات المشاركة' },
   kpiPresidents:  { en: 'Presidents attending', ar: 'عدد الرؤساء الحاضرين' },
@@ -215,13 +234,6 @@ const UI = {
   orgCountry:     { en: 'Organisation / Country', ar: 'الجهة / الدولة' },
   event:          { en: 'Event', ar: 'الفعالية' },
   count:          { en: 'Count', ar: 'العدد' },
-  wgitaOnly:      { en: 'WGITA only', ar: 'WGITA فقط' },
-  kscOnly:        { en: 'KSC only', ar: 'KSC فقط' },
-  tgOnly:         { en: 'TG only', ar: 'TG فقط' },
-  unpeaOnly:      { en: 'UNPEA only', ar: 'UNPEA فقط' },
-  cairoBoth:      { en: 'WGITA + KSC', ar: 'WGITA + KSC' },
-  luxorBoth:      { en: 'TG + UNPEA', ar: 'TG + UNPEA' },
-  both:           { en: 'Both', ar: 'كلاهما' },
   total:          { en: 'Total', ar: 'الإجمالي' },
   officialHotel:  { en: 'Official hotel', ar: 'فندق رسمي' },
   ownArrangement: { en: 'Own arrangement', ar: 'إقامة خاصة' },
@@ -336,6 +348,89 @@ $('hideAllSections').addEventListener('click', () => {
   saveSections(); renderSectionToggles(); applySectionVisibility();
 });
 
+/* ---------------------------------------------------------------------------
+   Event filter. Same localStorage keys every admin page's copy of this
+   widget uses (asa_selected_events / asa_show_hidden_events), so a selection
+   made here is remembered when switching to another report page. Drives
+   both which rows the server returns (?events=... on export.json, filtered
+   in SQL, not by loading everything into JS) and which per-event columns
+   the breakdown tables below render -- adding a future event to the events
+   table needs no change here. */
+const EVENTS_KEY = 'asa_selected_events';
+const SHOW_HIDDEN_EVENTS_KEY = 'asa_show_hidden_events';
+let allEvents = [];            // every event from GET /admin/events, in display_order
+let selectedEventCodes = [];   // codes currently ticked
+let showHiddenEvents = false;
+try { showHiddenEvents = localStorage.getItem(SHOW_HIDDEN_EVENTS_KEY) === '1'; } catch (e) { /* storage blocked -- default false */ }
+
+function eventLabel(e) { return e.short_name || e.code; }
+function visibleEventList() { return allEvents.filter(e => showHiddenEvents || e.visible_in_reports); }
+function saveSelectedEvents() { try { localStorage.setItem(EVENTS_KEY, JSON.stringify(selectedEventCodes)); } catch (e) { } }
+/* Events actually driving the breakdown tables right now: the ticked codes,
+   resolved to full event rows (for their label/display_order), in display
+   order -- never the raw localStorage array, so a stale/removed code from an
+   old selection silently drops out instead of producing an empty column. */
+function selectedEvents() { return allEvents.filter(e => selectedEventCodes.includes(e.code)); }
+
+async function loadEvents() {
+  const res = await fetch(CONFIG.apiBase + '/admin/events', { headers: authHeaders() });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || data.ok === false) throw new Error(data.error || T('eventsLoadError'));
+  allEvents = data.events || [];
+  let saved = null;
+  try { saved = JSON.parse(localStorage.getItem(EVENTS_KEY) || 'null'); } catch (e) { }
+  const knownCodes = allEvents.map(e => e.code);
+  selectedEventCodes = Array.isArray(saved) ? saved.filter(c => knownCodes.includes(c)) : [];
+  if (!selectedEventCodes.length) selectedEventCodes = allEvents.filter(e => e.visible_in_reports).map(e => e.code);
+  renderEventFilter();
+}
+/* Rebuilds the search box only when whether it's needed has changed (more
+   than ~8 events visible), so typing in it doesn't lose focus on every
+   keystroke -- the checklist itself (renderEventChecks) always rebuilds,
+   same as the existing section-toggle list, since checkboxes don't hold
+   in-progress typing state. */
+function renderEventFilter() {
+  const needsSearch = visibleEventList().length > 8;
+  const has = !!$('eventFilterSearch');
+  if (needsSearch && !has) {
+    $('eventFilterSearchWrap').innerHTML = `<input type="text" id="eventFilterSearch" placeholder="${esc(T('eventSearchPh'))}" style="margin-bottom:8px;width:100%;max-width:300px">`;
+    $('eventFilterSearch').addEventListener('input', renderEventChecks);
+  } else if (!needsSearch && has) {
+    $('eventFilterSearchWrap').innerHTML = '';
+  }
+  renderEventChecks();
+}
+function renderEventChecks() {
+  const list = visibleEventList();
+  const searchEl = $('eventFilterSearch');
+  const q = searchEl ? searchEl.value.trim().toLowerCase() : '';
+  const shown = q ? list.filter(e => eventLabel(e).toLowerCase().includes(q) || e.code.toLowerCase().includes(q)) : list;
+  $('eventToggles').innerHTML = shown.length ? shown.map(e =>
+    `<label class="choice"><input type="checkbox" class="eventCb" value="${esc(e.code)}" ${selectedEventCodes.includes(e.code) ? 'checked' : ''}>${esc(eventLabel(e))}</label>`
+  ).join('') : `<p class="empty">${esc(T('noData'))}</p>`;
+  $('showHiddenEventsCb').checked = showHiddenEvents;
+}
+$('eventToggles').addEventListener('change', (e) => {
+  const cb = e.target.closest('.eventCb');
+  if (!cb) return;
+  if (cb.checked) { if (!selectedEventCodes.includes(cb.value)) selectedEventCodes.push(cb.value); }
+  else selectedEventCodes = selectedEventCodes.filter(c => c !== cb.value);
+  saveSelectedEvents();
+});
+$('selectAllEvents').addEventListener('click', () => {
+  selectedEventCodes = visibleEventList().map(e => e.code);
+  saveSelectedEvents(); renderEventChecks();
+});
+$('clearAllEvents').addEventListener('click', () => {
+  selectedEventCodes = [];
+  saveSelectedEvents(); renderEventChecks();
+});
+$('showHiddenEventsCb').addEventListener('change', (e) => {
+  showHiddenEvents = e.target.checked;
+  try { localStorage.setItem(SHOW_HIDDEN_EVENTS_KEY, showHiddenEvents ? '1' : '0'); } catch (err) { }
+  renderEventFilter();
+});
+
 /* Only used to append " · Country" onto organisation labels, matching how
    every other report (Full Report, logistics) shows Org / Country together.
    Country names stay in English in both locales -- they must match travel
@@ -351,37 +446,26 @@ function kpiTile(value, label) {
   return `<div class="kpi"><div class="v">${value}</div><div class="l">${esc(label)}</div></div>`;
 }
 
-/* Registrations span one of two unrelated event clusters -- Cairo
-   (WGITA/KSC, Sept 2026) or Luxor (Technical Group/UN Panel, Dec 2026) --
-   never both, since no invitation code unlocks events from both clusters.
-   Buckets by which single event, or which pair within one cluster. */
-const CAIRO_EVENTS = ['WGITA-35-2026', 'KSC-SC18-2026'];
-const LUXOR_EVENTS = ['TG-42-2026', 'UNPEA-66-2026'];
-function eventBucketKey(e) {
-  const cairo = e.filter(c => CAIRO_EVENTS.includes(c));
-  const luxor = e.filter(c => LUXOR_EVENTS.includes(c));
-  if (cairo.length > 1) return 'cairoBoth';
-  if (cairo.length === 1) return cairo[0] === 'WGITA-35-2026' ? 'wgita' : 'ksc';
-  if (luxor.length > 1) return 'luxorBoth';
-  if (luxor.length === 1) return luxor[0] === 'TG-42-2026' ? 'tg' : 'unpea';
-  return null;
-}
-
 /* Every category (role, country, organisation, job title, hotel, diet...)
-   broken down by which event(s) each person is attending. No folding into
-   "Other" -- every distinct value gets its own row. */
-function groupCountByEvent(rows, keyFn, nameMap) {
+   broken down by which selected event(s) each person is attending -- one
+   counter per event CODE, built fresh from whichever events are currently
+   selected, so a future event needs no change here. Someone attending more
+   than one selected event increments every one of those columns (no more
+   "both" bucket -- see the dashboard-rework plan for why this is simpler
+   and generalizes to any number of events). No folding into "Other" for the
+   category value itself -- every distinct value still gets its own row. */
+function groupCountByEvent(rows, keyFn, nameMap, evCols) {
   const counts = {};
   rows.forEach(r => {
     const raw = keyFn(r);
     const vals = Array.isArray(raw) ? raw : [raw];
-    const bucket = eventBucketKey(events(r));
-    if (!bucket) return;
+    const myEvents = events(r).filter(c => evCols.some(ec => ec.key === c));
+    if (!myEvents.length) return;
     vals.forEach(v => {
       if (!v) return;
       const label = (nameMap && nameMap[v]) || v;
-      if (!counts[label]) counts[label] = { label, wgita: 0, ksc: 0, cairoBoth: 0, tg: 0, unpea: 0, luxorBoth: 0 };
-      counts[label][bucket]++;
+      if (!counts[label]) counts[label] = Object.fromEntries([['label', label], ...evCols.map(ec => [ec.key, 0])]);
+      myEvents.forEach(c => { counts[label][c]++; });
     });
   });
   return Object.values(counts);
@@ -468,7 +552,11 @@ let lastRows = null;
 async function loadDashboard() {
   const msg = $('topMsg'); msg.className = 'msg';
   try {
-    const res = await fetch(CONFIG.apiBase + '/admin/export.json?src=dashboard', { headers: authHeaders() });
+    authHeaders(); // throws needToken before we bother loading events
+    if (!allEvents.length) await loadEvents();
+    if (!selectedEventCodes.length) throw new Error(T('needEvents'));
+    const qs = '&events=' + encodeURIComponent(selectedEventCodes.join(','));
+    const res = await fetch(CONFIG.apiBase + '/admin/export.json?src=dashboard' + qs, { headers: authHeaders() });
     const data = await res.json().catch(() => ({}));
     if (!res.ok || data.ok === false) throw new Error(data.error || ('HTTP ' + res.status));
     const rows = (data.registrations || []).filter(r => r.status === 'approved');
@@ -484,8 +572,8 @@ function renderDashboard(rows) {
   const content = $('content');
   if (!rows.length) { content.innerHTML = `<p class="empty">${esc(T('noApprovedYet'))}</p>`; return; }
 
-  const eventCols = [{ key: 'wgita', label: 'WGITA' }, { key: 'ksc', label: 'KSC' }, { key: 'cairoBoth', label: T('cairoBoth') },
-    { key: 'tg', label: 'TG' }, { key: 'unpea', label: 'UNPEA' }, { key: 'luxorBoth', label: T('luxorBoth') }];
+  const evs = selectedEvents();
+  const eventCols = evs.map(e => ({ key: e.code, label: eventLabel(e) }));
   const tierCols = [{ key: 'president', label: T('president') }, { key: 'vice_president', label: T('vicePresident') }, { key: 'other', label: T('other') }];
   const participantsCols = [{ key: 'main', label: T('mainParticipants') }, { key: 'accompanying', label: T('kpiAccompanying') }];
 
@@ -496,21 +584,9 @@ function renderDashboard(rows) {
     if (d.accommodation_type === 'own') return d.own_hotel_name_address || T('ownNotGiven');
     return T('notDecided');
   };
-  const cairoBothCount = rows.filter(r => eventBucketKey(events(r)) === 'cairoBoth').length;
-  const luxorBothCount = rows.filter(r => eventBucketKey(events(r)) === 'luxorBoth').length;
-  const wgitaOnly = rows.filter(r => eventBucketKey(events(r)) === 'wgita').length;
-  const kscOnly = rows.filter(r => eventBucketKey(events(r)) === 'ksc').length;
-  const tgOnly = rows.filter(r => eventBucketKey(events(r)) === 'tg').length;
-  const unpeaOnly = rows.filter(r => eventBucketKey(events(r)) === 'unpea').length;
-  /* Total headcount for each event -- unlike wgitaOnly/kscOnly above (which
-     the "Registrations by event" table needs so a dual-event person is
-     counted once, under its cluster's "both" row), this is the number
-     actually attending that event, so someone on both of a cluster's
-     events counts toward both totals. */
-  const wgitaAttendance = rows.filter(r => events(r).includes('WGITA-35-2026')).length;
-  const kscAttendance = rows.filter(r => events(r).includes('KSC-SC18-2026')).length;
-  const tgAttendance = rows.filter(r => events(r).includes('TG-42-2026')).length;
-  const unpeaAttendance = rows.filter(r => events(r).includes('UNPEA-66-2026')).length;
+  /* Headcount per selected event -- someone attending more than one of them
+     counts toward each one's total (no "both" bucket; see groupCountByEvent). */
+  const attendanceByEvent = evs.map(e => ({ code: e.code, label: eventLabel(e), count: rows.filter(r => events(r).includes(e.code)).length }));
   const orgs = new Set(rows.map(r => r.organization_name).filter(Boolean));
   const speaking = rows.filter(r => dset(r).wants_to_present === 'yes').length;
   /* Reused below for anything an accompanying person answers for themself
@@ -536,15 +612,15 @@ function renderDashboard(rows) {
   const accCountOf = (r) => accListOf(r).length;
   const totalAccompanying = rows.reduce((s, r) => s + accCountOf(r), 0);
 
-  const byRole = groupCountByEvent(rows, r => r.role_in_delegation, roleNames());
-  const byTierEvent = groupCountByEvent(rows, r => r.participant_tier || 'other', tierNames());
+  const byRole = groupCountByEvent(rows, r => r.role_in_delegation, roleNames(), eventCols);
+  const byTierEvent = groupCountByEvent(rows, r => r.participant_tier || 'other', tierNames(), eventCols);
   /* Org name plus country, same as every other report (Full Report,
      logistics) -- two SAIs that happen to share a name still read as
      distinct rows, and it's the context an admin actually wants here. */
   const orgCountryLabel = (r) => r.organization_name
     ? r.organization_name + (r.country ? ' · ' + (COUNTRY_NAMES[r.country] || r.country) : '')
     : null;
-  const byOrgEvent = groupCountByEvent(rows, orgCountryLabel);
+  const byOrgEvent = groupCountByEvent(rows, orgCountryLabel, null, eventCols);
   const byOrgTier = groupCountByTier(rows, orgCountryLabel);
   const byOrgParticipants = groupOrgParticipants(rows, accCountOf, orgCountryLabel);
   /* Which organisations/countries the President and Vice President
@@ -560,8 +636,8 @@ function renderDashboard(rows) {
   const byDiet = groupCountByEvent(rows, r => {
     const v = dset(r).dietary_requirements;
     return (Array.isArray(v) && v.length) ? v : ['not_specified'];
-  }, dietNames());
-  const byHotelEvent = groupCountByEvent(rows, hotelName);
+  }, dietNames(), eventCols);
+  const byHotelEvent = groupCountByEvent(rows, hotelName, null, eventCols);
   const byHotelTier = groupCountByTier(rows, hotelName);
 
   content.innerHTML = `
@@ -570,10 +646,7 @@ function renderDashboard(rows) {
       <p class="cap">${esc(T('kpiCap'))}</p>
       <div class="kpis">
         ${kpiTile(rows.length, T('kpiTotalReg'))}
-        ${kpiTile(wgitaAttendance, T('kpiWgita'))}
-        ${kpiTile(kscAttendance, T('kpiKsc'))}
-        ${kpiTile(tgAttendance, T('kpiTg'))}
-        ${kpiTile(unpeaAttendance, T('kpiUnpea'))}
+        ${attendanceByEvent.map(a => kpiTile(a.count, T('kpiEventAttendance', a.label))).join('')}
         ${kpiTile(totalAccompanying, T('kpiAccompanying'))}
         ${kpiTile(orgs.size, T('kpiOrgs'))}
         ${kpiTile(presidents, T('kpiPresidents'))}
@@ -614,13 +687,7 @@ function renderDashboard(rows) {
         <div class="tblwrap"><table class="datatable">
           <thead><tr><th>${esc(T('event'))}</th><th class="n">${esc(T('count'))}</th></tr></thead>
           <tbody>
-            <tr><td>${esc(T('wgitaOnly'))}</td><td class="n">${wgitaOnly}</td></tr>
-            <tr><td>${esc(T('kscOnly'))}</td><td class="n">${kscOnly}</td></tr>
-            <tr><td>${esc(T('cairoBoth'))}</td><td class="n">${cairoBothCount}</td></tr>
-            <tr><td>${esc(T('tgOnly'))}</td><td class="n">${tgOnly}</td></tr>
-            <tr><td>${esc(T('unpeaOnly'))}</td><td class="n">${unpeaOnly}</td></tr>
-            <tr><td>${esc(T('luxorBoth'))}</td><td class="n">${luxorBothCount}</td></tr>
-            <tr class="totalrow"><td>${esc(T('total'))}</td><td class="n">${wgitaOnly + kscOnly + cairoBothCount + tgOnly + unpeaOnly + luxorBothCount}</td></tr>
+            ${attendanceByEvent.map(a => `<tr><td>${esc(a.label)}</td><td class="n">${a.count}</td></tr>`).join('')}
           </tbody>
         </table></div>
       </div>
@@ -689,10 +756,7 @@ function renderDashboard(rows) {
     summary: [
       [T('metric'), T('value')],
       [T('kpiTotalReg'), rows.length],
-      [T('kpiWgita'), wgitaAttendance],
-      [T('kpiKsc'), kscAttendance],
-      [T('kpiTg'), tgAttendance],
-      [T('kpiUnpea'), unpeaAttendance],
+      ...attendanceByEvent.map(a => [T('kpiEventAttendance', a.label), a.count]),
       [T('kpiAccompanying'), totalAccompanying],
       [T('kpiOrgs'), orgs.size],
       [T('kpiPresidents'), presidents],
@@ -710,13 +774,7 @@ function renderDashboard(rows) {
     ],
     byEvent: [
       [T('event'), T('count')],
-      [T('wgitaOnly'), wgitaOnly],
-      [T('kscOnly'), kscOnly],
-      [T('cairoBoth'), cairoBothCount],
-      [T('tgOnly'), tgOnly],
-      [T('unpeaOnly'), unpeaOnly],
-      [T('luxorBoth'), luxorBothCount],
-      [T('total'), wgitaOnly + kscOnly + cairoBothCount + tgOnly + unpeaOnly + luxorBothCount]
+      ...attendanceByEvent.map(a => [a.label, a.count])
     ],
     tierRoster: [
       [T('xlPresidentsCol'), T('xlVpsCol')],
@@ -778,6 +836,12 @@ function applyStaticTranslations() {
   $('showAllSections').textContent = T('showAll');
   $('hideAllSections').textContent = T('hideAll');
   renderSectionToggles();
+  $('eventsCardTitle').textContent = T('eventsCardTitle');
+  $('eventsHint').textContent = T('eventsHint');
+  $('selectAllEvents').textContent = T('selectAllEvents');
+  $('clearAllEvents').textContent = T('clearAllEvents');
+  $('showHiddenEventsLabel').textContent = T('showHiddenEvents');
+  if ($('eventFilterSearch')) $('eventFilterSearch').placeholder = T('eventSearchPh');
 }
 function setLang(newLang) {
   lang = newLang;
