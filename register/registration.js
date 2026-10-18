@@ -47,7 +47,8 @@ function toClientEvent(se) {
     blurb: { en: se.blurb_en || '', ar: se.blurb_ar || '' },
     startDate: se.start_date, endDate: se.end_date,
     venue: { en: se.venue || '', ar: se.venue_ar || se.venue || '' },
-    city: se.city || ''
+    city: se.city || '',
+    hotels: Array.isArray(se.official_hotels) ? se.official_hotels : []
   };
 }
 /* A handful of field hints/descriptions need "the city" -- always one city,
@@ -390,7 +391,14 @@ const SCHEMA = [
   showIf: inPerson,
   fields: [
     { k: 'accommodation_type', t: 'radio', wide: true, opts: OPT.accomType, l: { en: 'Where will you stay?', ar: 'أين ستقيم؟' } },
-    { k: 'official_hotel', t: 'text', showIf: (d) => d.accommodation_type === 'official', l: { en: 'Official hotel', ar: 'الفندق الرسمي' } },
+    /* Two field entries sharing the same key, with complementary showIf
+       conditions, so exactly one is ever visible/validated at a time (see
+       isVisible/validateSection) -- a dropdown when the selected event(s)
+       configured an official-hotel list (Event Management), a free-text
+       fallback otherwise so an event with no list configured keeps working
+       exactly as before. */
+    { k: 'official_hotel', t: 'select', dynamic: 'hotels', showIf: (d) => d.accommodation_type === 'official' && combinedEvent(state.events).hotels.length > 0, l: { en: 'Official hotel', ar: 'الفندق الرسمي' } },
+    { k: 'official_hotel', t: 'text', showIf: (d) => d.accommodation_type === 'official' && combinedEvent(state.events).hotels.length === 0, l: { en: 'Official hotel', ar: 'الفندق الرسمي' } },
     { k: 'room_type', t: 'select', opts: OPT.roomType, showIf: (d) => d.accommodation_type === 'official', l: { en: 'Room type', ar: 'نوع الغرفة' } },
     { k: 'own_hotel_name_address', t: 'textarea', wide: true, showIf: (d) => d.accommodation_type === 'own', l: { en: 'Hotel name and address', ar: 'اسم الفندق وعنوانه' } },
     { k: 'check_in_date', t: 'date', l: { en: 'Check-in', ar: 'تاريخ الوصول للفندق' } },
@@ -524,7 +532,15 @@ function combinedEvent(list) {
     dates: { en: items.map(e => e.dates.en).join(' · '), ar: items.map(e => e.dates.ar).join(' · ') },
     venue: items[0].venue,
     endDate: items.reduce((max, e) => (e.endDate > max ? e.endDate : max), items[0].endDate),
-    hotels: [...new Set(items.flatMap(e => e.hotels || []))]
+    /* Deduped by name (not a plain Set, since each entry is now a
+       {name,stars,venue} object) -- the first event to list a given hotel
+       name wins if two selected events happened to configure it slightly
+       differently. */
+    hotels: (() => {
+      const byName = new Map();
+      items.flatMap(e => e.hotels || []).forEach(h => { if (h && h.name && !byName.has(h.name)) byName.set(h.name, h); });
+      return [...byName.values()];
+    })()
   };
 }
 
@@ -674,8 +690,25 @@ const clear = (n) => { while (n.firstChild) n.removeChild(n.firstChild); };
 /* =============================================================================
    8. FIELD RENDERING
    ============================================================================= */
+/* Group headers for the official-hotel dropdown, by star rating -- sorted
+   highest first so Five Stars always leads, matching how these lists are
+   conventionally presented (and how the secretariat pasted the Luxor one). */
+const STAR_GROUP_LABELS = {
+  5: { en: '★★★★★ Five Stars', ar: '★★★★★ خمس نجوم' },
+  4: { en: '★★★★ Four Stars', ar: '★★★★ أربع نجوم' },
+  3: { en: '★★★ Three Stars', ar: '★★★ ثلاث نجوم' }
+};
 function optionsFor(f) {
-  if (f.dynamic === 'hotels') return (combinedEvent(state.events).hotels || []).map(h => ({ v: h, l: { en: h, ar: h } }));
+  if (f.dynamic === 'hotels') {
+    const hotels = combinedEvent(state.events).hotels || [];
+    return hotels.slice()
+      .sort((a, b) => (b.stars - a.stars) || a.name.localeCompare(b.name))
+      .map(h => ({
+        v: h.name,
+        l: { en: h.name + (h.venue ? ' (Meeting Venue)' : ''), ar: h.name + (h.venue ? ' (مكان الانعقاد)' : '') },
+        grp: STAR_GROUP_LABELS[h.stars] || { en: `${h.stars}-star`, ar: `${h.stars} نجوم` }
+      }));
+  }
   return f.opts || [];
 }
 
@@ -786,10 +819,23 @@ function renderField(f, scope, path) {
     if (f.hint) wrap.append(el('div', { class: 'hint' }, L(f.hint)));
     const sel = el('select', { id, 'aria-invalid': err ? 'true' : null });
     sel.append(el('option', { value: '' }, T('select')));
+    /* Plain options append straight to the <select>, exactly as before --
+       every existing select field (20+ of them) has no o.grp and is
+       unaffected. An option carrying .grp (currently just the official-
+       hotel dropdown, pre-sorted by star rating) opens a fresh <optgroup>
+       whenever the group label changes and appends into that instead. */
+    let curGroupLabel = null, curGroupEl = null;
     for (const o of optionsFor(f)) {
       const op = el('option', { value: o.v }, L(o.l));
       if (scope[f.k] === o.v) op.selected = true;
-      sel.append(op);
+      if (o.grp) {
+        const label = L(o.grp);
+        if (label !== curGroupLabel) { curGroupEl = el('optgroup', { label }); sel.append(curGroupEl); curGroupLabel = label; }
+        curGroupEl.append(op);
+      } else {
+        curGroupLabel = null; curGroupEl = null;
+        sel.append(op);
+      }
     }
     sel.addEventListener('change', () => { scope[f.k] = sel.value; onChange(true); });
     wrap.append(sel);

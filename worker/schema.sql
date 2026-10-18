@@ -35,6 +35,9 @@ CREATE TABLE events (
   logo_path              TEXT, -- filename under register/, e.g. 'asa-logo.jpg'
   blurb_en               TEXT, -- optional multi-line description shown on the events-picker screen when
   blurb_ar               TEXT, -- an invitation covers more than one event; blank is fine, just shows nothing extra
+  official_hotels        TEXT, -- JSON array [{name, stars (3-5), venue}] -- populates the registration
+                                 -- form's "Official hotel" dropdown for this event; NULL/empty falls back
+                                 -- to a free-text field. Edited from the Event Management page.
   start_date             TEXT NOT NULL,
   end_date               TEXT NOT NULL,
   registration_closes_at TEXT, -- NULL/future = open; past = closed (see note above)

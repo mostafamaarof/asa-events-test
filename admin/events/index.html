@@ -51,6 +51,12 @@ tr.hidden-row{background:var(--warn-tint)}
 td.code{font-family:var(--f-num)}
 .empty{color:var(--muted);font-size:13px;padding:8px 0}
 .ordernum{width:56px}
+.hotelspanel{background:#FAFCFD}
+.hotelspanel .inner{padding:14px 16px}
+.hotelrow{display:flex;gap:10px;align-items:center;margin-bottom:8px;flex-wrap:wrap}
+.hotelrow input[type="text"]{flex:1;min-width:200px}
+.hotelrow select{width:110px}
+.hotelrow label.vch{display:flex;align-items:center;gap:5px;font-size:12.5px;font-weight:400;white-space:nowrap}
 </style>
 </head>
 <body>
@@ -209,6 +215,39 @@ $('create').addEventListener('click', async () => {
 });
 
 let allEvents = [];
+let openHotelsCode = null;  // event code whose hotels panel is currently expanded, or null
+
+function hotelRowHtml(h) {
+  h = h || { name: '', stars: 5, venue: false };
+  return `<div class="hotelrow">
+    <input type="text" class="hName" value="${esc(h.name)}" placeholder="Hotel name">
+    <select class="hStars">
+      <option value="5" ${h.stars === 5 ? 'selected' : ''}>★★★★★ Five</option>
+      <option value="4" ${h.stars === 4 ? 'selected' : ''}>★★★★ Four</option>
+      <option value="3" ${h.stars === 3 ? 'selected' : ''}>★★★ Three</option>
+    </select>
+    <label class="vch"><input type="checkbox" class="hVenue" ${h.venue ? 'checked' : ''}>Meeting venue</label>
+    <button type="button" class="ghost hRemove" style="height:30px;padding:0 12px;font-size:12px">Remove</button>
+  </div>`;
+}
+/* Rendered once when the table (re)builds or a panel is freshly opened --
+   from then on, Add/Remove edit the live DOM directly (see the click
+   handler below) rather than re-rendering from a tracked array, so a
+   half-typed hotel name is never lost by clicking "+ Add hotel". */
+function renderHotelsPanelRow(e) {
+  if (openHotelsCode !== e.code) return '';
+  const rows = (e.official_hotels || []).map(hotelRowHtml).join('');
+  return `<tr class="hotelspanel" data-hotels-for="${esc(e.code)}"><td colspan="9"><div class="inner">
+    <p class="cap" style="margin:0 0 10px">Hotels shown on the registration form's "Official hotel" dropdown for <b>${esc(e.title_en)}</b>, grouped by star rating. Leave empty to fall back to a free-text field.</p>
+    <div id="hotelRows">${rows}</div>
+    <div class="actions" style="margin-top:4px">
+      <button class="ghost" id="hAdd" type="button" style="height:32px;padding:0 14px;font-size:13px">+ Add hotel</button>
+      <button id="hSave" type="button" style="height:32px;padding:0 14px;font-size:13px">Save hotels</button>
+      <button class="ghost" id="hCancel" type="button" style="height:32px;padding:0 14px;font-size:13px">Cancel</button>
+      <span id="hotelsMsg" class="msg"></span>
+    </div>
+  </div></td></tr>`;
+}
 
 async function loadList() {
   const listMsg = $('listMsg'); listMsg.className = 'msg';
@@ -227,9 +266,10 @@ async function loadList() {
         <td><input type="checkbox" class="regOpenChk" data-prev="${e.registration_open ? '1' : '0'}" ${e.registration_open ? 'checked' : ''}></td>
         <td><input type="checkbox" class="visibleChk" data-prev="${e.visible_in_reports ? '1' : '0'}" ${e.visible_in_reports ? 'checked' : ''}></td>
         <td><input type="number" class="ordernum orderInput" data-prev="${e.display_order ?? ''}" value="${e.display_order ?? ''}" placeholder="—"></td>
-      </tr>`).join('');
+        <td><button class="ghost hotelsBtn" type="button" style="height:30px;padding:0 12px;font-size:12px">Manage (${(e.official_hotels || []).length})</button></td>
+      </tr>${renderHotelsPanelRow(e)}`).join('');
     wrap.innerHTML = `<div class="tblwrap"><table>
-      <thead><tr><th>Code</th><th>Name</th><th>City</th><th>Venue</th><th>Dates</th><th>Registration open</th><th>Visible in reports</th><th>Order</th></tr></thead>
+      <thead><tr><th>Code</th><th>Name</th><th>City</th><th>Venue</th><th>Dates</th><th>Registration open</th><th>Visible in reports</th><th>Order</th><th>Hotels</th></tr></thead>
       <tbody>${rows}</tbody></table></div>`;
   } catch (e) {
     showMsg(listMsg, e.message, false);
@@ -258,6 +298,53 @@ $('listWrap').addEventListener('change', async (e) => {
     alert('Could not save that change: ' + err.message);
   } finally {
     ctrl.disabled = false;
+  }
+});
+
+/* Hotels panel: Manage/Add/Remove/Cancel all edit the DOM directly (no
+   re-render from a tracked array), so nothing a staffer already typed is
+   ever discarded by clicking "+ Add hotel" or removing a different row. */
+$('listWrap').addEventListener('click', async (e) => {
+  const manageBtn = e.target.closest('.hotelsBtn');
+  if (manageBtn) {
+    const row = manageBtn.closest('tr');
+    const code = row.dataset.code;
+    const existingPanel = document.querySelector('tr.hotelspanel');
+    if (existingPanel) existingPanel.remove();
+    openHotelsCode = (openHotelsCode === code) ? null : code;
+    if (openHotelsCode) {
+      const ev = allEvents.find(x => x.code === code);
+      row.insertAdjacentHTML('afterend', renderHotelsPanelRow(ev));
+    }
+    return;
+  }
+  if (e.target.id === 'hAdd') {
+    $('hotelRows').insertAdjacentHTML('beforeend', hotelRowHtml());
+    return;
+  }
+  const removeBtn = e.target.closest('.hRemove');
+  if (removeBtn) { removeBtn.closest('.hotelrow').remove(); return; }
+  if (e.target.id === 'hCancel') {
+    openHotelsCode = null;
+    document.querySelector('tr.hotelspanel')?.remove();
+    return;
+  }
+  if (e.target.id === 'hSave') {
+    const code = openHotelsCode;
+    const hotels = [...document.querySelectorAll('#hotelRows .hotelrow')].map(row => ({
+      name: row.querySelector('.hName').value.trim(),
+      stars: Number(row.querySelector('.hStars').value),
+      venue: row.querySelector('.hVenue').checked
+    })).filter(h => h.name);
+    const btn = e.target; btn.disabled = true;
+    try {
+      await callApi('/admin/events/update', { method: 'POST', body: JSON.stringify({ code, official_hotels: hotels }) });
+      openHotelsCode = null;
+      loadList();
+    } catch (err) {
+      showMsg($('hotelsMsg'), err.message, false);
+      btn.disabled = false;
+    }
   }
 });
 

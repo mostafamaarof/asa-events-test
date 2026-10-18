@@ -39,9 +39,11 @@ import { connect } from 'cloudflare:sockets';
                                     future conference for registration (plus an invitation code via the
                                     existing /v1/admin/invitations) (Bearer ADMIN_TOKEN)
      POST /v1/admin/events/update  update one event by code (name/city/venue/dates/display_order,
-                                    registration_open which maps to registration_closes_at, visible_in_reports
-                                    which only hides it from report filters -- never touches its
-                                    registrations/checkins/audit history) (Bearer ADMIN_TOKEN)
+                                    official_hotels (its registration form's "Official hotel" dropdown,
+                                    [{name, stars, venue}]), registration_open which maps to
+                                    registration_closes_at, visible_in_reports which only hides it from report
+                                    filters -- never touches its registrations/checkins/audit history)
+                                    (Bearer ADMIN_TOKEN)
      POST /v1/uploads               store one attachment in R2 (Bearer session), returns its key
      GET  /v1/admin/files?key=...  download a stored attachment (Bearer ADMIN_TOKEN or VIEWER_TOKEN)
      GET  /v1/admin/attachments?reference=... list one registration's attachments (Bearer ADMIN_TOKEN or VIEWER_TOKEN)
@@ -388,7 +390,7 @@ async function verifyInvitation(req, env, ch, ipHash) {
      the response below. */
   const { results: coveredEvents } = await env.DB.prepare(
     `SELECT e.code, e.title_en, e.title_ar, e.short_name, e.city, e.venue, e.venue_ar, e.blurb_en, e.blurb_ar,
-            e.start_date, e.end_date, e.registration_closes_at
+            e.official_hotels, e.start_date, e.end_date, e.registration_closes_at
      FROM invitation_events ie JOIN events e ON e.code = ie.event_code
      WHERE ie.invitation_id = ? AND e.is_active = 1`).bind(inv.invitation_id).all();
   const openEvents = coveredEvents.filter(e => !e.registration_closes_at || Date.parse(e.registration_closes_at) >= Date.now());
@@ -409,7 +411,8 @@ async function verifyInvitation(req, env, ch, ipHash) {
   return json({ ok: true, organization_name: inv.organization_name, country: inv.country,
                 allow_free_email: !!inv.allow_free_email, session,
                 invitation_id: inv.invitation_id, event_codes: openEvents.map(e => e.code),
-                events: openEvents.map(({ registration_closes_at, ...e }) => e) }, 200, ch);
+                events: openEvents.map(({ registration_closes_at, official_hotels, ...e }) =>
+                  ({ ...e, official_hotels: parseOfficialHotels(official_hotels) })) }, 200, ch);
 }
 
 /* Shared by create and edit: the rules the browser already checked, re-checked here. */
@@ -649,9 +652,9 @@ async function eventTitles(env, eventCodesStr) {
 async function publicEventsForCodes(env, codes) {
   if (!codes.length) return [];
   const { results } = await env.DB.prepare(
-    `SELECT code, title_en, title_ar, short_name, city, venue, venue_ar, blurb_en, blurb_ar, start_date, end_date
+    `SELECT code, title_en, title_ar, short_name, city, venue, venue_ar, blurb_en, blurb_ar, official_hotels, start_date, end_date
      FROM events WHERE code IN (${codes.map(() => '?').join(',')})`).bind(...codes).all();
-  return results;
+  return results.map(({ official_hotels, ...e }) => ({ ...e, official_hotels: parseOfficialHotels(official_hotels) }));
 }
 
 async function fetchForEdit(req, env, ch, ipHash) {
@@ -1619,11 +1622,12 @@ async function adminListEvents(req, env, ch, access) {
   if (!hasScope(access, ...ALL_SCOPES)) return fail('unauthorized', 401, ch);
   const { results } = await env.DB.prepare(
     `SELECT code, title_en, title_ar, short_name, city, country, venue, venue_ar, logo_path, blurb_en, blurb_ar,
-            start_date, end_date, registration_closes_at, visible_in_reports, display_order,
+            official_hotels, start_date, end_date, registration_closes_at, visible_in_reports, display_order,
             is_active, created_at, updated_at
      FROM events ORDER BY display_order IS NULL, display_order, start_date`).all();
   const events = results.map(r => ({
     ...r,
+    official_hotels: parseOfficialHotels(r.official_hotels),
     visible_in_reports: !!r.visible_in_reports,
     is_active: !!r.is_active,
     registration_open: !r.registration_closes_at || Date.parse(r.registration_closes_at) >= Date.now()
@@ -1632,6 +1636,30 @@ async function adminListEvents(req, env, ch, access) {
 }
 
 const EVENT_CODE_RE = /^[A-Z0-9][A-Z0-9-]{0,40}$/;
+
+/* The list of hotels an event's registration form offers under "Official
+   hotel" (register/registration.js's dynamic 'hotels' option source),
+   configured per event from the Event Management page -- stored as a JSON
+   array on events.official_hotels since it's a small, event-scoped list,
+   not something any other table needs to reference by row. Each entry is
+   { name, stars (3-5), venue (marks the meeting venue itself) }. undefined
+   input to normalizeOfficialHotels means "a value was provided" is false
+   at the call site -- adminUpdateEvent only calls this when
+   b.official_hotels !== undefined, so "leave it alone" is handled there,
+   not here. */
+function normalizeOfficialHotels(raw) {
+  if (!Array.isArray(raw)) throw new Error('invalid_official_hotels');
+  const cleaned = raw.map(h => ({
+    name: String((h && h.name) || '').trim(),
+    stars: Math.min(5, Math.max(3, parseInt((h && h.stars) || 0, 10) || 5)),
+    venue: !!(h && h.venue)
+  })).filter(h => h.name);
+  return JSON.stringify(cleaned);
+}
+function parseOfficialHotels(raw) {
+  if (!raw) return [];
+  try { const v = JSON.parse(raw); return Array.isArray(v) ? v : []; } catch (e) { return []; }
+}
 
 async function adminCreateEvent(req, env, ch, access, ipHash, actor) {
   if (!hasScope(access, 'events')) return fail('unauthorized', 401, ch);
@@ -1650,15 +1678,18 @@ async function adminCreateEvent(req, env, ch, access, ipHash, actor) {
   const displayOrder = (b.display_order === '' || b.display_order === null || b.display_order === undefined)
     ? null : parseInt(b.display_order, 10);
   if (displayOrder !== null && !Number.isFinite(displayOrder)) return fail('invalid_display_order', 400, ch);
+  let officialHotels;
+  try { officialHotels = normalizeOfficialHotels(b.official_hotels || []); }
+  catch (e) { return fail('invalid_official_hotels', 400, ch); }
 
   const now = new Date().toISOString();
   await env.DB.prepare(
     `INSERT INTO events (code, title_en, title_ar, short_name, city, country, venue, venue_ar, logo_path,
-       blurb_en, blurb_ar, start_date, end_date, registration_closes_at, visible_in_reports, display_order,
-       is_active, created_at, updated_at)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,?)`)
+       blurb_en, blurb_ar, official_hotels, start_date, end_date, registration_closes_at, visible_in_reports,
+       display_order, is_active, created_at, updated_at)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,?)`)
     .bind(code, titleEn, titleAr, b.short_name || null, b.city || null, b.country || null, b.venue || null,
-      b.venue_ar || null, b.logo_path || null, b.blurb_en || null, b.blurb_ar || null, startDate, endDate,
+      b.venue_ar || null, b.logo_path || null, b.blurb_en || null, b.blurb_ar || null, officialHotels, startDate, endDate,
       b.registration_closes_at || null, b.visible_in_reports === false ? 0 : 1, displayOrder, now, now).run();
 
   await audit(env, 'event_created', 'event', code, `${code}: ${titleEn}`, ipHash, actor);
@@ -1694,6 +1725,12 @@ async function adminUpdateEvent(req, env, ch, access, ipHash, actor) {
   setIf('blurb_ar', b.blurb_ar);
   setIf('start_date', b.start_date);
   setIf('end_date', b.end_date);
+  if (b.official_hotels !== undefined) {
+    let officialHotels;
+    try { officialHotels = normalizeOfficialHotels(b.official_hotels); }
+    catch (e) { return fail('invalid_official_hotels', 400, ch); }
+    fields.push('official_hotels = ?'); vals.push(officialHotels);
+  }
   if (b.display_order !== undefined) {
     const displayOrder = b.display_order === '' || b.display_order === null ? null : parseInt(b.display_order, 10);
     if (displayOrder !== null && !Number.isFinite(displayOrder)) return fail('invalid_display_order', 400, ch);
