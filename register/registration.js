@@ -163,7 +163,7 @@ const OPT = {
     ['Mr', 'Mr', 'السيد'], ['Mrs', 'Mrs', 'السيدة'], ['Ms', 'Ms', 'الآنسة']
   ]),
   gender: O([['female', 'Female', 'أنثى'], ['male', 'Male', 'ذكر'], ['na', 'Prefer not to say', 'أفضل عدم الإفصاح']]),
-  corrLang: O([['en', 'English', 'English'], ['ar', 'العربية', 'العربية'], ['fr', 'Français', 'Français']]),
+  corrLang: O([['en', 'English', 'English'], ['ar', 'العربية', 'العربية'], ['fr', 'Français', 'Français'], ['pt', 'Português', 'Português']]),
   orgType: O([
     ['sai', 'INTOSAI member SAI', 'جهاز رقابة عضو بالإنتوساي'],
     ['regional', 'Regional organisation secretariat', 'أمانة منظمة إقليمية'],
@@ -256,6 +256,15 @@ const isYes = (v) => v === 'yes';
    shows. Kept rather than ripping out showIf: inPerson everywhere, in case
    a future online-attendance option needs exactly this gate restored. */
 const inPerson = (d) => d.attendance_mode !== 'online';
+/* INTOSAI regional group doesn't apply to the two Luxor events (TG-42-2026 /
+   UNPEA-66-2026) -- hidden whenever every event the registrant selected is
+   one of those two, shown otherwise (including before any event is known
+   yet, so the field doesn't flicker away then reappear during the earlier
+   steps). Named to these two specific codes deliberately, not "the last N
+   events" -- this is a one-off business rule for this pair, not a rule
+   that should keep applying to whatever gets added next. */
+const NO_REGIONAL_GROUP_EVENTS = ['TG-42-2026', 'UNPEA-66-2026'];
+const showRegionalGroup = () => !state.events.length || state.events.some(e => !NO_REGIONAL_GROUP_EVENTS.includes(e.code));
 
 /* ---------------------------------------------------------------------------
    4. FORM SCHEMA
@@ -292,7 +301,7 @@ const SCHEMA = [
   desc: { en: 'Your institution and your role in the delegation. The secretariat matches every registration against the nomination received from your institution.', ar: 'جهة عملك وصفتك في الوفد. تطابق الأمانة كل تسجيل مع الترشيح الوارد من جهتك.' },
   fields: [
     { k: 'organization_name', t: 'text', req: true, wide: true, l: { en: 'SAI or organisation', ar: 'الجهة الرقابية أو المؤسسة' } },
-    { k: 'regional_group', t: 'select', req: true, opts: OPT.region, l: { en: 'INTOSAI regional group', ar: 'المجموعة الإقليمية' } },
+    { k: 'regional_group', t: 'select', req: true, opts: OPT.region, showIf: showRegionalGroup, l: { en: 'INTOSAI regional group', ar: 'المجموعة الإقليمية' } },
     { k: 'country', t: 'select', req: true, opts: COUNTRIES, l: { en: 'Country', ar: 'الدولة' } },
     { k: 'job_title', t: 'text', req: true, min: 3, max: 100, l: { en: 'Job title', ar: 'المسمى الوظيفي' }, hint: { en: 'Printed on your badge and in the delegates list.', ar: 'يُطبع على البادج وفي كشف المشاركين.' } },
     { k: 'department', t: 'text', max: 100, l: { en: 'Department', ar: 'الإدارة' } },
