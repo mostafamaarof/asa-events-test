@@ -267,6 +267,22 @@ const inPerson = (d) => d.attendance_mode !== 'online';
 const NO_REGIONAL_GROUP_EVENTS = ['TG-42-2026', 'UNPEA-66-2026'];
 const showRegionalGroup = () => !state.events.length || state.events.some(e => !NO_REGIONAL_GROUP_EVENTS.includes(e.code));
 
+/* The social programme's date is only pinned down for the Luxor cluster
+   (TG / UNPEA / Special Board Session) -- 6 December 2026. Deliberately
+   keyed to these three specific codes, not "whatever's selected," so an
+   event with no known social-programme date (Cairo, or a future one)
+   keeps the generic, date-free wording instead of silently showing a
+   wrong date. */
+const SOCIAL_PROGRAMME_DATE = {
+  'TG-42-2026': { en: '6 December 2026', ar: '6 ديسمبر 2026' },
+  'UNPEA-66-2026': { en: '6 December 2026', ar: '6 ديسمبر 2026' },
+  'SPECIAL-BOARD-2026': { en: '6 December 2026', ar: '6 ديسمبر 2026' }
+};
+function socialProgrammeDate() {
+  for (const e of state.events) { if (SOCIAL_PROGRAMME_DATE[e.code]) return SOCIAL_PROGRAMME_DATE[e.code]; }
+  return null;
+}
+
 /* ---------------------------------------------------------------------------
    4. FORM SCHEMA
    Field keys match the developer specification exactly.
@@ -465,7 +481,12 @@ const SCHEMA = [
   desc: { en: 'Headcounts are given to the venue and the caterer a week in advance, so an accurate answer here matters more than it looks.', ar: 'تُسلَّم الأعداد للمقر ومتعهد الضيافة قبل أسبوع، فدقة الإجابة هنا أهم مما تبدو.' },
   showIf: inPerson,
   fields: [
-    { k: 'social_program_attending', t: 'radio', req: true, wide: true, opts: OPT.yesno, l: { en: 'Will you join the social programme organised alongside this event?', ar: 'هل ستحضر البرنامج الاجتماعي المصاحب لهذا الحدث؟' } }
+    { k: 'social_program_attending', t: 'radio', req: true, wide: true, opts: OPT.yesno, l: () => {
+        const d = socialProgrammeDate();
+        return d
+          ? { en: `Will you join the social programme on ${d.en}?`, ar: `هل ستحضر البرنامج الاجتماعي يوم ${d.ar}؟` }
+          : { en: 'Will you join the social programme organised alongside this event?', ar: 'هل ستحضر البرنامج الاجتماعي المصاحب لهذا الحدث؟' };
+      } }
   ]
 },
 
