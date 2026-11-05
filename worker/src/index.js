@@ -392,7 +392,8 @@ async function verifyInvitation(req, env, ch, ipHash) {
     `SELECT e.code, e.title_en, e.title_ar, e.short_name, e.city, e.venue, e.venue_ar, e.blurb_en, e.blurb_ar,
             e.official_hotels, e.start_date, e.end_date, e.registration_closes_at
      FROM invitation_events ie JOIN events e ON e.code = ie.event_code
-     WHERE ie.invitation_id = ? AND e.is_active = 1`).bind(inv.invitation_id).all();
+     WHERE ie.invitation_id = ? AND e.is_active = 1
+     ORDER BY e.display_order IS NULL, e.display_order, e.start_date`).bind(inv.invitation_id).all();
   const openEvents = coveredEvents.filter(e => !e.registration_closes_at || Date.parse(e.registration_closes_at) >= Date.now());
   if (!openEvents.length) { await auditError(env, 'invitation_verify', 'registration_closed', code, ipHash); return fail('registration_closed', 410, ch); }
 
