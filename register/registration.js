@@ -484,7 +484,7 @@ const SCHEMA = [
     { k: 'social_program_attending', t: 'radio', req: true, wide: true, opts: OPT.yesno, l: () => {
         const d = socialProgrammeDate();
         return d
-          ? { en: `Will you join the social programme on ${d.en}?`, ar: `هل ستحضر البرنامج الاجتماعي يوم ${d.ar}؟` }
+          ? { en: `Will you join the social programme which will be (Tentatively) on ${d.en}?`, ar: `هل ستحضر البرنامج الاجتماعي الذي سيكون (مبدئياً) يوم ${d.ar}؟` }
           : { en: 'Will you join the social programme organised alongside this event?', ar: 'هل ستحضر البرنامج الاجتماعي المصاحب لهذا الحدث؟' };
       } }
   ]
