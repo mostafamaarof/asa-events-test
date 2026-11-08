@@ -268,15 +268,15 @@ const NO_REGIONAL_GROUP_EVENTS = ['TG-42-2026', 'UNPEA-66-2026'];
 const showRegionalGroup = () => !state.events.length || state.events.some(e => !NO_REGIONAL_GROUP_EVENTS.includes(e.code));
 
 /* The social programme's date is only pinned down for the Luxor cluster
-   (TG / UNPEA / Special Board Session) -- 6 December 2026. Deliberately
+   (TG / UNPEA / Special Board Session) -- 5 and 6 December 2026. Deliberately
    keyed to these three specific codes, not "whatever's selected," so an
    event with no known social-programme date (Cairo, or a future one)
    keeps the generic, date-free wording instead of silently showing a
    wrong date. */
 const SOCIAL_PROGRAMME_DATE = {
-  'TG-42-2026': { en: '6 December 2026', ar: '6 ديسمبر 2026' },
-  'UNPEA-66-2026': { en: '6 December 2026', ar: '6 ديسمبر 2026' },
-  'SPECIAL-BOARD-2026': { en: '6 December 2026', ar: '6 ديسمبر 2026' }
+  'TG-42-2026': { en: '5 and 6 December 2026', ar: '5 و 6 ديسمبر 2026' },
+  'UNPEA-66-2026': { en: '5 and 6 December 2026', ar: '5 و 6 ديسمبر 2026' },
+  'SPECIAL-BOARD-2026': { en: '5 and 6 December 2026', ar: '5 و 6 ديسمبر 2026' }
 };
 function socialProgrammeDate() {
   for (const e of state.events) { if (SOCIAL_PROGRAMME_DATE[e.code]) return SOCIAL_PROGRAMME_DATE[e.code]; }
@@ -484,7 +484,7 @@ const SCHEMA = [
     { k: 'social_program_attending', t: 'radio', req: true, wide: true, opts: OPT.yesno, l: () => {
         const d = socialProgrammeDate();
         return d
-          ? { en: `Will you join the social programme which will be (Tentatively) on ${d.en}?`, ar: `هل ستحضر البرنامج الاجتماعي الذي سيكون (مبدئياً) يوم ${d.ar}؟` }
+          ? { en: `Will you join the social programme which will be on ${d.en}?`, ar: `هل ستحضر البرنامج الاجتماعي الذي سيكون في ${d.ar}؟` }
           : { en: 'Will you join the social programme organised alongside this event?', ar: 'هل ستحضر البرنامج الاجتماعي المصاحب لهذا الحدث؟' };
       } }
   ]
